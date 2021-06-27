@@ -1,0 +1,16 @@
+[package]
+name = "niinii"
+version = "0.1.0"
+authors = ["netdex <admin@netdex.org>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+eframe = { version="0.13.0", features=["persistence"] } # Gives us egui, epi and web+native backends
+serde = { version="1", features=["derive"] }
+ichiran = { path="third-party/ichiran" }
+
+
+[workspace]
+members = ["third-party/ichiran"]
