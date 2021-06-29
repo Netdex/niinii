@@ -1,6 +1,4 @@
-mod app;
-
-use crate::app::App;
+use niinii::App;
 
 fn main() {
     let app = App::default();

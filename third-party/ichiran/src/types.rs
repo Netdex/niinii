@@ -1,81 +1,211 @@
 use serde::{
     de::{self, IgnoredAny, SeqAccess, Visitor},
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize,
 };
 use std::fmt;
 
 // Reverse-engineered from the JSON output of ichiran-cli since I can't read lisp.
-// Disclaimer: Might be wrong in several ways.
-// We don't use zero-copy because JSON has escapes.
+// Disclaimer: Might be wrong in several ways. I pulled names for some of the
+// grammatical structures out of my ass.
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// The root of a parse tree.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Root(Vec<Segment>);
+impl Root {
+    /// Get all segments under the parse tree.
+    pub fn segments(&self) -> &Vec<Segment> {
+        &self.0
+    }
+}
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// A segment, representing either a skipped string or a list of candidate clauses.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Segment {
     Skipped(String),
     Clauses(Vec<Clause>),
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// A clause, representing a segmented romanization.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct Clause(Vec<Romaji>, u32);
+pub struct Clause(Vec<Romanized>, u32);
+impl Clause {
+    /// Get all romanized blocks in this clause.
+    pub fn romanized(&self) -> &Vec<Romanized> {
+        &self.0
+    }
+    /// Get the cumulative score of this clause.
+    pub fn score(&self) -> u32 {
+        self.1
+    }
+}
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// A romanized term along with metadata.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct Romaji(String, Term, Vec<u8>);
+// TODO not sure what the last field is, maybe for limit != 1
+pub struct Romanized(String, Term, Vec<u8>);
+impl Romanized {
+    /// Get the romaji string of this romanized block.
+    pub fn romaji(&self) -> &str {
+        self.0.as_str()
+    }
+    /// Get the split metadata of this romanized block.
+    pub fn term(&self) -> &Term {
+        &self.1
+    }
+}
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// A term, representing either a word or a list of alternatives.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum Term {
+    Word(Word),
+    Alternative(Alternative),
+}
+
+/// An alternative, representing multiple words.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Alternative {
+    alternative: Vec<Word>,
+}
+impl Alternative {
+    /// Get a list of alternative words.
+    pub fn alts(&self) -> &Vec<Word> {
+        &self.alternative
+    }
+}
+
+/// A word, representing either a plain word or a compound word.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum Word {
+    Plain(Plain),
+    Compound(Compound),
+}
+impl Word {
+    /// Get the metadata block of this word.
+    pub fn meta(&self) -> &Meta {
+        match self {
+            Word::Plain(Plain { meta, .. }) | Word::Compound(Compound { meta, .. }) => meta,
+        }
+    }
+}
+
+/// A plain word.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Plain {
+    #[serde(flatten)]
+    meta: Meta,
+
+    seq: Option<u32>,
+    #[serde(default)]
+    gloss: Vec<Gloss>,
+    #[serde(default)]
+    conj: Vec<Conjugation>,
+
+    counter: Option<Counter>,
+    suffix: Option<String>,
+}
+impl Plain {
+    /// Get the sequence number of this word.
+    pub fn seq(&self) -> Option<u32> {
+        self.seq
+    }
+    /// Get a list of glosses.
+    pub fn gloss(&self) -> &Vec<Gloss> {
+        &self.gloss
+    }
+    /// Get the conjugation of this word.
+    pub fn conj(&self) -> &Vec<Conjugation> {
+        &self.conj
+    }
+    /// Get the counter data of this word.
+    pub fn counter(&self) -> Option<&Counter> {
+        self.counter.as_ref()
+    }
+    /// Get the suffix data of this word.
+    pub fn suffix(&self) -> Option<&str> {
+        self.suffix.as_deref()
+    }
+}
+
+/// A compound word.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Compound {
+    #[serde(flatten)]
+    meta: Meta,
+
+    compound: Vec<String>,
+    components: Vec<Term>,
+}
+impl Compound {
+    /// Get a list of romaji components in this compound.
+    pub fn compound(&self) -> &Vec<String> {
+        &self.compound
+    }
+    /// Get the split metadata for each component of this compound.
+    pub fn components(&self) -> &Vec<Term> {
+        &self.components
+    }
+}
+
+/// Common metadata for a term.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Meta {
     reading: String,
     text: String,
     kana: String,
     score: u32,
 }
-
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-#[serde(untagged, deny_unknown_fields)]
-pub enum Word {
-    Plain {
-        #[serde(flatten)]
-        meta: Meta,
-
-        seq: Option<u32>,
-        #[serde(default)]
-        gloss: Vec<Gloss>,
-        #[serde(default)]
-        conj: Vec<Conjugation>,
-
-        counter: Option<Counter>,
-        suffix: Option<String>,
-    },
-    Compound {
-        #[serde(flatten)]
-        meta: Meta,
-
-        compound: Vec<String>,
-        components: Vec<Term>,
-    },
+impl Meta {
+    /// Get the reading of this term.
+    pub fn reading(&self) -> &str {
+        self.reading.as_str()
+    }
+    /// Get the original text of this term.
+    pub fn text(&self) -> &str {
+        self.text.as_str()
+    }
+    /// Get the kana representation of this term.
+    pub fn kana(&self) -> &str {
+        self.kana.as_str()
+    }
+    /// Get the score of this term.
+    pub fn score(&self) -> u32 {
+        self.score
+    }
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-#[serde(untagged, deny_unknown_fields)]
-pub enum Term {
-    Word(Word),
-    Alternative { alternative: Vec<Word> },
-}
-
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// Gloss for a word.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Gloss {
     pos: String,
     gloss: String,
     info: Option<String>,
 }
+impl Gloss {
+    /// Get part-of-speech info.
+    pub fn pos(&self) -> &str {
+        self.pos.as_str()
+    }
+    /// Get the gloss explanation.
+    pub fn gloss(&self) -> &str {
+        self.gloss.as_str()
+    }
+    /// Get additional information.
+    pub fn info(&self) -> Option<&str> {
+        self.info.as_deref()
+    }
+}
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// Conjugations for a word.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Conjugation {
     prop: Vec<Property>,
@@ -86,8 +216,31 @@ pub struct Conjugation {
     via: Vec<Conjugation>,
     readok: bool,
 }
+impl Conjugation {
+    /// Get a list of conjugation properties.
+    pub fn prop(&self) -> &Vec<Property> {
+        &self.prop
+    }
+    /// Get the reading for this conjugation.
+    pub fn reading(&self) -> Option<&str> {
+        self.reading.as_deref()
+    }
+    /// Get a list of glosses.
+    pub fn gloss(&self) -> &Vec<Gloss> {
+        &self.gloss
+    }
+    /// Get a list of conjugation via info.
+    pub fn via(&self) -> &Vec<Conjugation> {
+        &self.via
+    }
+    /// TODO no idea what this is
+    pub fn readok(&self) -> bool {
+        self.readok
+    }
+}
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// Property of a conjugation.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Property {
     /// Part-of-speech
@@ -102,13 +255,42 @@ pub struct Property {
     #[serde(default)]
     fml: bool,
 }
+impl Property {
+    /// Get part-of-speech info.
+    pub fn pos(&self) -> &str {
+        self.pos.as_str()
+    }
+    /// Get the conjugation type.
+    pub fn kind(&self) -> &str {
+        self.kind.as_str()
+    }
+    /// Get whether the conjugation is negative.
+    pub fn neg(&self) -> bool {
+        self.neg
+    }
+    /// Get whether the conjugation is formal.
+    pub fn fml(&self) -> bool {
+        self.fml
+    }
+}
 
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+/// Counter info for a word.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Counter {
     value: String,
     #[serde(deserialize_with = "deserialize_anomalous_bool")]
     ordinal: bool,
+}
+impl Counter {
+    /// Get the value of the counter.
+    pub fn value(&self) -> &str {
+        self.value.as_str()
+    }
+    /// Get whether the counter is ordinal.
+    pub fn ordinal(&self) -> bool {
+        self.ordinal
+    }
 }
 
 /// Special deserializer to handle `Counter::ordinal` which is either `[]` (false) or `bool`.
@@ -143,7 +325,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_simple() {
+    fn test_nikaime() {
         const ICHIRAN_FULL: &str = r#"[
 			[ [ [ [ "nikaime", { "reading":"2\u56DE\u76EE \u3010\u306B\u304B\u3044\u3081\u3011",
 			"text":"2\u56DE\u76EE", "kana":"\u306B\u304B\u3044\u3081", "score":696, "counter":{
@@ -151,9 +333,9 @@ mod tests {
 			"gloss":"counter for occurrences" } ] }, [ ] ] ], 696 ] ] ]"#;
         let a = serde_json::from_str::<Root>(ICHIRAN_FULL).unwrap();
         let b = Root(vec![Segment::Clauses(vec![Clause(
-            vec![Romaji(
+            vec![Romanized(
                 "nikaime".into(),
-                Term::Word(Word::Plain {
+                Term::Word(Word::Plain(Plain {
                     meta: Meta {
                         reading: "2回目 【にかいめ】".into(),
                         text: "2回目".into(),
@@ -172,7 +354,7 @@ mod tests {
                         ordinal: true,
                     }),
                     suffix: None,
-                }),
+                })),
                 vec![],
             )],
             696,
