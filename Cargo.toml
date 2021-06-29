@@ -6,14 +6,21 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
-eframe = { version="0.13", features=["persistence"] } # Gives us egui, epi and web+native backends
-serde = { version="1", features=["derive"] }
-ichiran = { path="third-party/ichiran" }
+[patch.crates-io]
+imgui = { git="https://github.com/Netdex/imgui-rs", branch="hidpi-rounded-fix" }
+imgui-glium-renderer = { git="https://github.com/Netdex/imgui-rs", branch="hidpi-rounded-fix" }
+imgui-winit-support = { git="https://github.com/Netdex/imgui-rs", branch="hidpi-rounded-fix" }
 
-# very slow in debug target
-[profile.dev.package.ttf-parser]
-opt-level = 3
+[dependencies]
+imgui = "0.7"
+imgui-glium-renderer = "0.7"
+imgui-winit-support = "0.7"
+clipboard = "0.5"
+glium = { version="0.29", default-features=true }
+
+serde = { version="1", features=["derive"] }
+serde_json = "1"
+ichiran = { path="third-party/ichiran" }
 
 [workspace]
 members = ["third-party/ichiran"]
