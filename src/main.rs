@@ -18,8 +18,7 @@ fn main() {
         .and_then(|x| serde_json::from_reader(x).ok())
         .unwrap_or_default();
 
-    let system = support::init("niinii");
-    system.main_loop(|_opened, env, ui| {
+    support::main_loop("niinii", |_opened, env, ui| {
         app.ui(env, ui);
     });
 

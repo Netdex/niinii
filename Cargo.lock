@@ -514,6 +514,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "imgui-dx11-renderer"
+version = "0.7.0"
+source = "git+https://github.com/Netdex/imgui-dx11-renderer#61d31a649ba4c649256f39f41422fd502fe8837d"
+dependencies = [
+ "imgui",
+ "winapi 0.3.9",
+ "wio",
+]
+
+[[package]]
 name = "imgui-glium-renderer"
 version = "0.7.0"
 source = "git+https://github.com/Netdex/imgui-rs?branch=hidpi-rounded-fix#b201f5b8214849a7f1bc901b4910029528f64842"
@@ -798,10 +808,15 @@ dependencies = [
  "glium",
  "ichiran",
  "imgui",
+ "imgui-dx11-renderer",
  "imgui-glium-renderer",
  "imgui-winit-support",
+ "raw-window-handle",
  "serde",
  "serde_json",
+ "winapi 0.3.9",
+ "winit",
+ "wio",
 ]
 
 [[package]]
@@ -1361,6 +1376,15 @@ dependencies = [
  "wayland-client",
  "winapi 0.3.9",
  "x11-dl",
+]
+
+[[package]]
+name = "wio"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d129932f4644ac2396cb456385cbf9e63b5b30c6e8dc4820bdca4eb082037a5"
+dependencies = [
+ "winapi 0.3.9",
 ]
 
 [[package]]
