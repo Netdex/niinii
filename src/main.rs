@@ -1,18 +1,13 @@
 use std::{
-    borrow::Borrow,
-    cell::RefCell,
     fs::File,
     io::{BufReader, BufWriter},
-    rc::Rc,
 };
 
 use app::App;
-use support::View;
 
 mod app;
-mod config;
-mod rikai;
 mod support;
+mod view;
 
 fn main() {
     const STATE_PATH: &str = "niinii.json";

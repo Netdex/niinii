@@ -1,15 +1,13 @@
-use serde::{
-    de::{self, IgnoredAny, SeqAccess, Visitor},
-    Deserialize, Deserializer, Serialize,
-};
-use std::fmt;
+use serde::{Deserialize, Serialize};
+
+use crate::coerce::*;
 
 // Reverse-engineered from the JSON output of ichiran-cli since I can't read lisp.
 // Disclaimer: Might be wrong in several ways. I pulled names for some of the
 // grammatical structures out of my ass.
 
 /// The root of a parse tree.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Root(Vec<Segment>);
 impl Root {
@@ -20,7 +18,7 @@ impl Root {
 }
 
 /// A segment, representing either a skipped string or a list of candidate clauses.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Segment {
     Skipped(String),
@@ -28,22 +26,22 @@ pub enum Segment {
 }
 
 /// A clause, representing a segmented romanization.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
-pub struct Clause(Vec<Romanized>, u32);
+pub struct Clause(Vec<Romanized>, i32);
 impl Clause {
     /// Get all romanized blocks in this clause.
     pub fn romanized(&self) -> &Vec<Romanized> {
         &self.0
     }
     /// Get the cumulative score of this clause.
-    pub fn score(&self) -> u32 {
+    pub fn score(&self) -> i32 {
         self.1
     }
 }
 
 /// A romanized term along with metadata.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 // TODO not sure what the last field is, maybe for limit != 1
 pub struct Romanized(String, Term, Vec<u8>);
@@ -59,15 +57,25 @@ impl Romanized {
 }
 
 /// A term, representing either a word or a list of alternatives.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Term {
     Word(Word),
     Alternative(Alternative),
 }
+impl Term {
+    /// Get the original text for this term, assuming
+    /// that the text is the same across all alternatives.
+    pub fn text(&self) -> &str {
+        match self {
+            Term::Word(word) => word.meta().text(),
+            Term::Alternative(alt) => alt.alts().first().unwrap().meta().text(),
+        }
+    }
+}
 
 /// An alternative, representing multiple words.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct Alternative {
     alternative: Vec<Word>,
 }
@@ -79,7 +87,7 @@ impl Alternative {
 }
 
 /// A word, representing either a plain word or a compound word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Word {
     Plain(Plain),
@@ -95,7 +103,7 @@ impl Word {
 }
 
 /// A plain word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Plain {
     #[serde(flatten)]
@@ -111,6 +119,10 @@ pub struct Plain {
     suffix: Option<String>,
 }
 impl Plain {
+    // Get the meta of this word.
+    pub fn meta(&self) -> &Meta {
+        &self.meta
+    }
     /// Get the sequence number of this word.
     pub fn seq(&self) -> Option<u32> {
         self.seq
@@ -134,7 +146,7 @@ impl Plain {
 }
 
 /// A compound word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Compound {
     #[serde(flatten)]
@@ -144,6 +156,10 @@ pub struct Compound {
     components: Vec<Term>,
 }
 impl Compound {
+    // Get the meta of this compound.
+    pub fn meta(&self) -> &Meta {
+        &self.meta
+    }
     /// Get a list of romaji components in this compound.
     pub fn compound(&self) -> &Vec<String> {
         &self.compound
@@ -155,7 +171,7 @@ impl Compound {
 }
 
 /// Common metadata for a term.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub struct Meta {
     reading: String,
     text: String,
@@ -182,7 +198,7 @@ impl Meta {
 }
 
 /// Gloss for a word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Gloss {
     pos: String,
@@ -205,15 +221,18 @@ impl Gloss {
 }
 
 /// Conjugations for a word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Conjugation {
     prop: Vec<Property>,
     reading: Option<String>,
     #[serde(default)]
     gloss: Vec<Gloss>,
+
     #[serde(default)]
-    via: Vec<Conjugation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "option_seq")]
+    via: Option<Box<Conjugation>>,
     readok: bool,
 }
 impl Conjugation {
@@ -229,18 +248,28 @@ impl Conjugation {
     pub fn gloss(&self) -> &Vec<Gloss> {
         &self.gloss
     }
-    /// Get a list of conjugation via info.
-    pub fn via(&self) -> &Vec<Conjugation> {
-        &self.via
+    /// Get the source of the conjugation.
+    pub fn via(&self) -> Option<&Conjugation> {
+        self.via.as_deref()
     }
     /// TODO no idea what this is
     pub fn readok(&self) -> bool {
         self.readok
     }
+    /// Convert the via chain into a sequence.
+    pub fn flatten(&self) -> Vec<&Conjugation> {
+        let mut vec = vec![self];
+        let mut cur = self;
+        while let Some(via) = cur.via() {
+            vec.insert(0, via);
+            cur = via;
+        }
+        vec
+    }
 }
 
 /// Property of a conjugation.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Property {
     /// Part-of-speech
@@ -275,11 +304,11 @@ impl Property {
 }
 
 /// Counter info for a word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Counter {
     value: String,
-    #[serde(deserialize_with = "deserialize_anomalous_bool")]
+    #[serde(deserialize_with = "bool_seq::deserialize")]
     ordinal: bool,
 }
 impl Counter {
@@ -291,33 +320,6 @@ impl Counter {
     pub fn ordinal(&self) -> bool {
         self.ordinal
     }
-}
-
-/// Special deserializer to handle `Counter::ordinal` which is either `[]` (false) or `bool`.
-fn deserialize_anomalous_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct BoolVisitor;
-    impl<'de> Visitor<'de> for BoolVisitor {
-        type Value = bool;
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("[] or bool")
-        }
-        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-            match seq.next_element()? {
-                Some(IgnoredAny) => Err(de::Error::invalid_length(0, &self)),
-                None => Ok(false),
-            }
-        }
-        fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            Ok(v)
-        }
-    }
-    deserializer.deserialize_any(BoolVisitor)
 }
 
 #[cfg(test)]

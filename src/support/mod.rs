@@ -1,13 +1,4 @@
-use glium::{
-    glutin::{
-        self,
-        event::{Event, WindowEvent},
-        event_loop::{ControlFlow, EventLoop},
-        platform::run_return::EventLoopExtRunReturn,
-        window::WindowBuilder,
-    },
-    Display, Surface,
-};
+use glium::{Display, Surface, glutin::{self, Api, GlProfile, GlRequest, event::{Event, WindowEvent}, event_loop::{ControlFlow, EventLoop}, platform::run_return::EventLoopExtRunReturn, window::WindowBuilder}};
 use imgui::{Context, FontConfig, FontGlyphRanges, FontId, FontSource, ImString, Ui};
 use imgui_glium_renderer::Renderer;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -17,10 +8,6 @@ use std::time::Instant;
 use std::{collections::HashMap, fs};
 
 mod clipboard;
-
-pub trait View {
-    fn ui(&mut self, env: &mut Env, ui: &Ui);
-}
 
 #[derive(Deserialize, Serialize)]
 #[serde(remote = "ImString")]
@@ -42,7 +29,18 @@ pub struct System {
 
 #[derive(Default)]
 pub struct Env {
-    pub fonts: HashMap<&'static str, FontId>,
+    fonts: HashMap<TextStyle, FontId>,
+}
+impl Env {
+    pub fn get_font(&self, style: TextStyle) -> FontId {
+        *self.fonts.get(&style).unwrap()
+    }
+}
+
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum TextStyle {
+    Kanji,
+    Body,
 }
 
 pub fn init(title: &str) -> System {
@@ -51,7 +49,13 @@ pub fn init(title: &str) -> System {
         None => title,
     };
     let event_loop = EventLoop::new();
-    let context = glutin::ContextBuilder::new().with_vsync(true);
+    let context = glutin::ContextBuilder::new()
+        .with_gl(GlRequest::Specific(Api::OpenGl, (3, 3)))
+        .with_gl_profile(GlProfile::Compatibility)
+        .with_multisampling(0)
+        .with_depth_buffer(2)
+        // .with_hardware_acceleration(Some(false))
+        .with_vsync(true);
     let builder = WindowBuilder::new()
         .with_title(title.to_owned())
         .with_inner_size(glutin::dpi::LogicalSize::new(1024f64, 768f64));
@@ -76,41 +80,7 @@ pub fn init(title: &str) -> System {
 
     let mut env = Env::default();
     let hidpi_factor = platform.hidpi_factor();
-
-    let mut add_font = |name: &'static str, path: &str, size_pt: f64, config: FontConfig| {
-        env.fonts.insert(
-            name,
-            imgui.fonts().add_font(&[FontSource::TtfData {
-                data: &fs::read(path).unwrap(),
-                size_pixels: (size_pt * hidpi_factor) as f32,
-                config: Some(FontConfig {
-                    name: Some(name.to_owned()),
-                    ..config
-                }),
-            }]),
-        );
-    };
-    add_font(
-        "Sarasa Mono J 13pt",
-        "res/sarasa-mono-j-regular.ttf",
-        13.0,
-        FontConfig {
-            rasterizer_multiply: 1.75,
-            glyph_ranges: FontGlyphRanges::japanese(),
-            ..Default::default()
-        },
-    );
-    add_font(
-        "Sarasa Mono J 40pt",
-        "res/sarasa-mono-j-regular.ttf",
-        40.0,
-        FontConfig {
-            rasterizer_multiply: 1.75,
-            glyph_ranges: FontGlyphRanges::japanese(),
-            ..Default::default()
-        },
-    );
-    imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+    init_fonts(&mut env, &mut imgui, hidpi_factor);
 
     let renderer = Renderer::init(&mut imgui, &display).expect("Failed to initialize renderer");
 
@@ -122,6 +92,45 @@ pub fn init(title: &str) -> System {
         renderer,
         env,
     }
+}
+
+fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
+    let mut add_font = |style: TextStyle, path: &str, size_pt: f64, config: FontConfig| {
+        env.fonts.insert(
+            style,
+            imgui.fonts().add_font(&[FontSource::TtfData {
+                data: &fs::read(path).unwrap(),
+                size_pixels: (size_pt * hidpi_factor) as f32,
+                config: Some(FontConfig {
+                    name: Some(format!("{:?}", style)),
+                    ..config
+                }),
+            }]),
+        );
+    };
+    add_font(
+        TextStyle::Body,
+        "res/sarasa-mono-j-regular.ttf",
+        13.0,
+        FontConfig {
+            rasterizer_multiply: 1.75,
+            glyph_ranges: FontGlyphRanges::japanese(),
+            oversample_h: 2,
+            ..Default::default()
+        },
+    );
+    add_font(
+        TextStyle::Kanji,
+        "res/sarasa-mono-j-regular.ttf",
+        40.0,
+        FontConfig {
+            rasterizer_multiply: 1.75,
+            glyph_ranges: FontGlyphRanges::japanese(),
+            oversample_h: 2,
+            ..Default::default()
+        },
+    );
+    imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 }
 
 impl System {
@@ -164,7 +173,7 @@ impl System {
 
                 let gl_window = display.gl_window();
                 let mut target = display.draw();
-                target.clear_color_srgb(1.0, 1.0, 1.0, 1.0);
+                target.clear_color_srgb(0.1, 0.1, 0.1, 1.0);
                 platform.prepare_render(&ui, gl_window.window());
                 let draw_data = ui.render();
                 renderer

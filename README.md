@@ -1,5 +1,6 @@
 # niinii
 `This project is a work-in-progress. (I pinky promise to actually finish this one)`
+
 ![image](https://user-images.githubusercontent.com/2091886/124209159-04d6fa00-dab7-11eb-9ebf-32433e46db7c.png)
 
 Graphical frontend for glossing based on data from [ichiran](https://github.com/tshatrov/ichiran). 
@@ -23,11 +24,19 @@ learning purposes, not a translation tool.
 - Optimally, I would like to be able to use this tool offline
 
 ## Roadmap
-- Interface and parser for ichiran-cli (implemented as `ichiran-rs`)
-- Visual representation of segmentation
-- Visual representation of gloss on term basis (tooltip)
-- Auto-clipboard
+- Furigana over term
+- Style configuration
 - Low-barrier distribution (i.e. extract and run)
+
+TODO
+
+## Features
+i.e. Completed roadmap items
+- Interface and parser for ichiran-cli (implemented as `ichiran-rs` under `third-party\ichiran`)
+- Visual representation of segmentation (RikaiView)
+- Visual representation of gloss on term basis (TermView)
+- Click hover window to open persistent window (which itself has hovers, for stuff like vias)
+- Auto-clipboard
 
 TODO
 
