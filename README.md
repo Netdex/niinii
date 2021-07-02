@@ -1,6 +1,6 @@
 # niinii
 `This project is a work-in-progress. (I pinky promise to actually finish this one)`
-![image](https://user-images.githubusercontent.com/2091886/123896293-48066100-d92f-11eb-9bd6-aebdac5ad932.png)
+![image](https://user-images.githubusercontent.com/2091886/124209159-04d6fa00-dab7-11eb-9ebf-32433e46db7c.png)
 
 Graphical frontend for glossing based on data from [ichiran](https://github.com/tshatrov/ichiran). 
 This is a tool created to service a personal need, and may not be useful to you.
