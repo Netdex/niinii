@@ -1,3 +1,5 @@
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::coerce::*;
@@ -210,6 +212,17 @@ impl Gloss {
     pub fn pos(&self) -> &str {
         self.pos.as_str()
     }
+    /// Get individual part-of-speech info.
+    pub fn pos_split(&self) -> Vec<&str> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"[\w-]+").unwrap();
+        }
+        let captures = RE.captures_iter(self.pos.as_str());
+        captures
+            .filter_map(|cap| cap.get(0))
+            .map(|m| m.as_str())
+            .collect::<Vec<&str>>()
+    }
     /// Get the gloss explanation.
     pub fn gloss(&self) -> &str {
         self.gloss.as_str()
@@ -325,6 +338,16 @@ impl Counter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pos_split() {
+        let gloss = Gloss {
+            pos: "[n,n-adv,prt]".to_owned(),
+            gloss: "".to_owned(),
+            info: None,
+        };
+        assert_eq!(gloss.pos_split(), vec!["n", "n-adv", "prt"]);
+    }
 
     #[test]
     fn test_nikaime() {

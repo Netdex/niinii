@@ -25,6 +25,7 @@ learning purposes, not a translation tool.
 
 ## Roadmap
 - Furigana over term
+- Remember previous window position
 - Style configuration
 - Low-barrier distribution (i.e. extract and run)
 
@@ -32,6 +33,7 @@ TODO
 
 ## Features
 i.e. Completed roadmap items
+- Hover over part-of-speech abbreviation to show explanation
 - Interface and parser for ichiran-cli (implemented as `ichiran-rs` under `third-party\ichiran`)
 - Visual representation of segmentation (RikaiView)
 - Visual representation of gloss on term basis (TermView)

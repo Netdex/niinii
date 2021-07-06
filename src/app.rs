@@ -1,9 +1,8 @@
-use ichiran::types::Root;
+use ichiran::Ichiran;
 use ichiran::IchiranError;
 use imgui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::view::RawView;
 use crate::{
     support::{Env, ImStringDef},
     view::{RikaiView, SettingsView},
@@ -16,27 +15,35 @@ pub struct App {
     #[serde(with = "ImStringDef")]
     text: ImString,
 
-    root: Root,
     settings: SettingsView,
     rikai: RikaiView,
 
     show_imgui_demo: bool,
     show_settings: bool,
-    show_raw: bool,
 
+    #[serde(skip)]
+    last_clipboard: ImString,
     #[serde(skip)]
     last_err: Option<IchiranError>,
 }
 impl App {
+    fn open_error_modal(&mut self, ui: &Ui, err: IchiranError) {
+        self.last_err = Some(err);
+        ui.open_popup(ERROR_MODAL_TITLE);
+    }
     fn update(&mut self, ui: &Ui) {
-        match ichiran::romanize(self.settings.ichiran_path(), self.text.to_str()) {
-            Ok(root) => {
-                self.rikai = RikaiView::new();
-                self.root = root;
-            }
+        let ichiran = Ichiran::new(self.settings.ichiran_path.to_str());
+        match ichiran.romanize(self.text.to_str()) {
+            Ok(root) => match ichiran.jmdict_data() {
+                Ok(jmdict_data) => {
+                    self.rikai = RikaiView::new(root, jmdict_data);
+                }
+                Err(err) => {
+                    self.open_error_modal(ui, err);
+                }
+            },
             Err(err) => {
-                self.last_err = Some(err);
-                ui.open_popup(ERROR_MODAL_TITLE);
+                self.open_error_modal(ui, err);
             }
         }
     }
@@ -52,9 +59,6 @@ impl App {
                 if MenuItem::new(im_str!("ImGui Demo")).build(ui) {
                     self.show_imgui_demo = true;
                 }
-                if MenuItem::new(im_str!("Raw")).build(ui) {
-                    self.show_raw = true;
-                }
             }
         }
     }
@@ -63,9 +67,9 @@ impl App {
             PopupModal::new(ERROR_MODAL_TITLE)
                 .always_auto_resize(true)
                 .build(ui, || {
-                    ui.text(format!("{}", err));
+                    let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
+                    ui.text(&im_str!("{}", err));
                     ui.separator();
-
                     if ui.button_with_size(im_str!("OK"), [120.0, 0.0]) {
                         ui.close_current_popup();
                     }
@@ -80,7 +84,7 @@ impl App {
             .size([300.0, 110.0], Condition::FirstUseEver)
             .build(ui, || {
                 if ui
-                    .input_text(im_str!("Text"), &mut self.text)
+                    .input_text_multiline(im_str!("Text"), &mut self.text, [0.0, 50.0])
                     .resize_buffer(true)
                     .enter_returns_true(true)
                     .build()
@@ -91,8 +95,9 @@ impl App {
                     self.update(ui);
                 }
                 if let Some(clipboard) = ui.clipboard_text() {
-                    if clipboard != self.text {
-                        self.text = clipboard;
+                    if clipboard != self.last_clipboard {
+                        self.text = clipboard.clone();
+                        self.last_clipboard = clipboard;
                         self.update(ui);
                     }
                 }
@@ -102,7 +107,7 @@ impl App {
         Window::new(im_str!("Rikai"))
             .size([300., 110.], Condition::FirstUseEver)
             .build(ui, || {
-                self.rikai.ui(env, ui, &self.root);
+                self.rikai.ui(env, ui, &self.settings);
             });
 
         if self.show_imgui_demo {
@@ -110,24 +115,17 @@ impl App {
         }
 
         if self.show_settings {
-            let mut opened = true;
             Window::new(im_str!("Settings"))
                 .size([300.0, 110.0], Condition::FirstUseEver)
-                .opened(&mut opened)
+                .always_auto_resize(true)
+                .resizable(false)
                 .build(ui, || {
                     self.settings.ui(env, ui);
+                    ui.separator();
+                    if ui.button_with_size(im_str!("OK"), [120.0, 0.0]) {
+                        self.show_settings = false;
+                    }
                 });
-            self.show_settings = opened;
-        }
-        if self.show_raw {
-            let mut opened = true;
-            Window::new(im_str!("Raw"))
-                .size([300., 110.], Condition::FirstUseEver)
-                .opened(&mut opened)
-                .build(ui, || {
-                    RawView::new(&self.root).ui(env, ui);
-                });
-            self.show_raw = opened;
         }
     }
 }

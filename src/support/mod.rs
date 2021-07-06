@@ -49,40 +49,49 @@ impl From<ImStringDef> for ImString {
 }
 
 fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
-    let mut add_font = |style: TextStyle, path: &str, size_pt: f64, config: FontConfig| {
-        env.fonts.insert(
-            style,
-            imgui.fonts().add_font(&[FontSource::TtfData {
-                data: &fs::read(path).unwrap(),
+    let mut add_font = |style: TextStyle, path: &str, size_pt: f64, config: &[FontConfig]| {
+        let font_data = &fs::read(path).unwrap();
+        let font_sources: Vec<_> = config
+            .iter()
+            .map(|config| FontSource::TtfData {
+                data: font_data,
                 size_pixels: (size_pt * hidpi_factor) as f32,
                 config: Some(FontConfig {
                     name: Some(format!("{:?}", style)),
-                    ..config
+                    ..config.clone()
                 }),
-            }]),
-        );
+            })
+            .collect();
+        env.fonts
+            .insert(style, imgui.fonts().add_font(font_sources.as_slice()));
     };
-    add_font(
-        TextStyle::Body,
-        "res/sarasa-mono-j-regular.ttf",
-        13.0,
+    let jp_font_config = [
+        // japanese
         FontConfig {
             rasterizer_multiply: 1.75,
             glyph_ranges: FontGlyphRanges::japanese(),
             oversample_h: 2,
             ..Default::default()
         },
+        // latin extended-a
+        FontConfig {
+            rasterizer_multiply: 1.75,
+            glyph_ranges: FontGlyphRanges::from_slice(&[0x0100, 0x017F, 0x0]),
+            oversample_h: 2,
+            ..Default::default()
+        },
+    ];
+    add_font(
+        TextStyle::Body,
+        "res/sarasa-mono-j-regular.ttf",
+        16.0,
+        &jp_font_config,
     );
     add_font(
         TextStyle::Kanji,
         "res/sarasa-mono-j-regular.ttf",
         40.0,
-        FontConfig {
-            rasterizer_multiply: 1.75,
-            glyph_ranges: FontGlyphRanges::japanese(),
-            oversample_h: 2,
-            ..Default::default()
-        },
+        &jp_font_config,
     );
     imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 }
