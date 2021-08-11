@@ -47,7 +47,7 @@ impl App {
             }
         }
     }
-    fn show_main_menu(&mut self, env: &mut Env, ui: &Ui) {
+    fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui) {
         if let Some(_menu_bar) = ui.begin_main_menu_bar() {
             if let Some(_menu) = ui.begin_menu(im_str!("File")) {}
             if let Some(_menu) = ui.begin_menu(im_str!("Edit")) {
@@ -62,7 +62,7 @@ impl App {
             }
         }
     }
-    fn show_error_modal(&mut self, env: &mut Env, ui: &Ui) {
+    fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
         if let Some(err) = &self.last_err {
             PopupModal::new(ERROR_MODAL_TITLE)
                 .always_auto_resize(true)

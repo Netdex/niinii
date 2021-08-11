@@ -14,7 +14,7 @@ fn main() {
 
     let mut app: App = File::open(STATE_PATH)
         .ok()
-        .map(|x| BufReader::new(x))
+        .map(BufReader::new)
         .and_then(|x| serde_json::from_reader(x).ok())
         .unwrap_or_default();
 

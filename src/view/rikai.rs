@@ -146,7 +146,7 @@ impl<'a> TermView<'a> {
         }
     }
 
-    fn add_pos(&self, env: &mut Env, ui: &Ui, pos: &str) {
+    fn add_pos(&self, _env: &mut Env, ui: &Ui, pos: &str) {
         ui.text_colored([0., 1., 1., 1.], pos);
         if ui.is_item_hovered() {
             if let Some(kwpos) = self.jmdict_data.kwpos_by_kw.get(pos) {
@@ -155,7 +155,7 @@ impl<'a> TermView<'a> {
         }
     }
 
-    fn add_glosses(&self, env: &mut Env, ui: &Ui, glosses: &Vec<Gloss>) {
+    fn add_glosses(&self, env: &mut Env, ui: &Ui, glosses: &[Gloss]) {
         for (i, gloss) in glosses.iter().enumerate() {
             // index
             ui.text(format!("{}.", i + 1));

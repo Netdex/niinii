@@ -10,7 +10,7 @@ pub struct SettingsView {
     pub show_raw: bool,
 }
 impl SettingsView {
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
+    pub fn ui(&mut self, _env: &mut Env, ui: &Ui) {
         ui.input_text(im_str!("ichiran-cli"), &mut self.ichiran_path)
             .resize_buffer(true)
             .build();

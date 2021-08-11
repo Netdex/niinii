@@ -41,11 +41,8 @@ where
     T: Serialize,
 {
     let mut seq = serializer.serialize_seq(None)?;
-    match value {
-        Some(some) => {
-            seq.serialize_element(some)?;
-        }
-        _ => (),
+    if let Some(some) = value {
+        seq.serialize_element(some)?;
     }
     seq.end()
 }

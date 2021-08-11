@@ -24,7 +24,7 @@ impl<'a> RawView<'a> {
     pub fn new(root: &'a Root) -> Self {
         Self { root }
     }
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
+    pub fn ui(&mut self, _env: &mut Env, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos();
         add_root(ui, self.root);
     }
