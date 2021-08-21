@@ -1,16 +1,8 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 use ichiran::types::*;
 use imgui::*;
 
 use crate::support::Env;
-
-fn id<T: Hash>(x: T) -> i32 {
-    let mut hasher = DefaultHasher::new();
-    x.hash(&mut hasher);
-    hasher.finish() as i32
-}
+use super::id;
 
 fn wrap_bullet(ui: &Ui, text: &ImStr) {
     ui.bullet();
