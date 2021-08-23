@@ -1,14 +1,28 @@
+use std::sync::mpsc;
+use std::thread;
+
+use ichiran::types::Root;
 use ichiran::Ichiran;
 use ichiran::IchiranError;
+use ichiran::JmDictData;
 use imgui::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    support::{Env, ImStringDef},
+    common::{Env, ImStringDef},
     view::{RikaiView, SettingsView},
 };
 
 const ERROR_MODAL_TITLE: &ImStr = im_str!("Error");
+
+struct Update {
+    root: Root,
+    jmdict_data: JmDictData,
+}
+
+enum Message {
+    Ichiran(Result<Update, IchiranError>),
+}
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct App {
@@ -22,31 +36,57 @@ pub struct App {
     show_settings: bool,
 
     #[serde(skip)]
+    channel_tx: Option<mpsc::Sender<Message>>,
+    #[serde(skip)]
+    channel_rx: Option<mpsc::Receiver<Message>>,
+
+    #[serde(skip)]
     last_clipboard: ImString,
     #[serde(skip)]
     last_err: Option<IchiranError>,
 }
 impl App {
-    fn open_error_modal(&mut self, ui: &Ui, err: IchiranError) {
-        self.last_err = Some(err);
-        ui.open_popup(ERROR_MODAL_TITLE);
-    }
-    fn update(&mut self, ui: &Ui) {
-        let ichiran = Ichiran::new(self.settings.ichiran_path.to_str());
-        match ichiran.romanize(self.text.to_str()) {
-            Ok(root) => match ichiran.jmdict_data() {
-                Ok(jmdict_data) => {
-                    self.rikai = RikaiView::new(root, jmdict_data);
-                }
-                Err(err) => {
-                    self.open_error_modal(ui, err);
-                }
-            },
-            Err(err) => {
-                self.open_error_modal(ui, err);
-            }
+    fn update(&mut self) {
+        let ichiran_path = self.settings.ichiran_path.clone();
+        let text = self.text.to_string();
+        if let Some(channel_tx) = &self.channel_tx {
+            let channel_tx = channel_tx.clone();
+            thread::spawn(move || {
+                let ichiran = Ichiran::new(ichiran_path.to_str());
+                println!("processing");
+                let result = ichiran.romanize(&text).and_then(|root| {
+                    Ok(Update {
+                        root,
+                        jmdict_data: ichiran.jmdict_data()?,
+                    })
+                });
+                println!("send message");
+                let _ = channel_tx.send(Message::Ichiran(result));
+            });
         }
     }
+
+    fn poll(&mut self, ui: &Ui) {
+        if let Some(channel_rx) = &self.channel_rx {
+            match channel_rx.try_recv() {
+                Ok(Message::Ichiran(Ok(Update { root, jmdict_data }))) => {
+                    println!("message recv");
+                    self.rikai = RikaiView::new(root, jmdict_data);
+                }
+                Ok(Message::Ichiran(Err(err))) => {
+                    self.open_error_modal(ui, err);
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                _ => {}
+            }
+        } else {
+            println!("first time init channel");
+            let (tx, rx) = mpsc::channel();
+            self.channel_tx.replace(tx);
+            self.channel_rx.replace(rx);
+        }
+    }
+
     fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui) {
         if let Some(_menu_bar) = ui.begin_main_menu_bar() {
             if let Some(_menu) = ui.begin_menu(im_str!("File")) {}
@@ -62,6 +102,12 @@ impl App {
             }
         }
     }
+
+    fn open_error_modal(&mut self, ui: &Ui, err: IchiranError) {
+        self.last_err = Some(err);
+        ui.open_popup(ERROR_MODAL_TITLE);
+    }
+
     fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
         if let Some(err) = &self.last_err {
             PopupModal::new(ERROR_MODAL_TITLE)
@@ -89,16 +135,16 @@ impl App {
                     .enter_returns_true(true)
                     .build()
                 {
-                    self.update(ui);
+                    self.update();
                 }
                 if ui.button_with_size(im_str!("Go"), [120.0, 0.0]) {
-                    self.update(ui);
+                    self.update();
                 }
                 if let Some(clipboard) = ui.clipboard_text() {
                     if clipboard != self.last_clipboard {
                         self.text = clipboard.clone();
                         self.last_clipboard = clipboard;
-                        self.update(ui);
+                        self.update();
                     }
                 }
                 self.show_error_modal(env, ui);
@@ -127,5 +173,7 @@ impl App {
                     }
                 });
         }
+
+        self.poll(ui);
     }
 }

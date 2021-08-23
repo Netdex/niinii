@@ -1,8 +1,8 @@
 use ichiran::types::*;
 use imgui::*;
 
-use crate::support::Env;
 use super::id;
+use crate::common::Env;
 
 fn wrap_bullet(ui: &Ui, text: &ImStr) {
     ui.bullet();

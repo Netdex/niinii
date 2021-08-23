@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use ichiran::{types::*, JmDictData};
 use imgui::*;
 
-use crate::support::{Env, TextStyle};
+use crate::common::{Env, TextStyle};
 use crate::view::RawView;
 
 use super::SettingsView;

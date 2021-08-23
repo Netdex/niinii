@@ -1,7 +1,7 @@
 use imgui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::support::{Env, ImStringDef};
+use crate::common::{Env, ImStringDef};
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct SettingsView {

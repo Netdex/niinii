@@ -8,8 +8,11 @@ edition = "2018"
 
 [patch.crates-io]
 imgui = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
+imgui-sys = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
 # imgui-glium-renderer = { git="https://github.com/Netdex/imgui-rs", branch="hidpi-rounded-fix" }
 imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
+# imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
+imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
 imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
 
 [dependencies]
@@ -19,12 +22,14 @@ clipboard = "0.5"
 # imgui-glium-renderer = "0.7"
 # glium = { version="0.29", default-features=true }
 
+imgui-dx9-renderer = "0.7"
 imgui-dx11-renderer = "0.7"
 winapi = { version = "0.3", features = [
 	"minwindef",
 	"windef",
 	"winnt",
 	"winuser",
+	"winerror",
 	"consoleapi",
 	"libloaderapi",
 	"processthreadsapi",
@@ -40,11 +45,13 @@ detour = { version = "0.8", default-features = false }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+lazy_static = "1.4.0"
 ichiran = { path = "third-party/ichiran" }
+imgui-win32-sys = { path = "third-party/imgui-win32-sys" }
 
 [lib]
 name = "libniinii"
 crate-type = ["cdylib"]
 
 [workspace]
-members = ["third-party/ichiran"]
+members = ["third-party/ichiran", "third-party/imgui-win32-sys"]
