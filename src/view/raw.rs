@@ -4,7 +4,7 @@ use imgui::*;
 use super::id;
 use crate::common::Env;
 
-fn wrap_bullet(ui: &Ui, text: &ImStr) {
+fn wrap_bullet(ui: &Ui, text: &str) {
     ui.bullet();
     ui.text_wrapped(text);
 }
@@ -23,37 +23,33 @@ impl<'a> RawView<'a> {
 }
 
 fn add_root(ui: &Ui, root: &Root) {
-    TreeNode::new(im_str!("Root"))
-        .default_open(true)
-        .build(ui, || {
-            for segment in root.segments() {
-                let _id_token = ui.push_id(id(segment));
-                add_segment(ui, segment);
-            }
-        });
+    TreeNode::new("Root").default_open(true).build(ui, || {
+        for segment in root.segments() {
+            let _id_token = ui.push_id(id(segment));
+            add_segment(ui, segment);
+        }
+    });
 }
 fn add_segment(ui: &Ui, segment: &Segment) {
     match segment {
-        Segment::Skipped(_) => wrap_bullet(ui, &im_str!("{:?}", segment)),
+        Segment::Skipped(_) => wrap_bullet(ui, &format!("{:?}", segment)),
         Segment::Clauses(clauses) => {
-            TreeNode::new(im_str!("Clauses"))
-                .default_open(true)
-                .build(ui, || {
-                    for clause in clauses {
-                        let _id_token = ui.push_id(id(clause));
-                        add_clause(ui, clause);
-                    }
-                });
+            TreeNode::new("Clauses").default_open(true).build(ui, || {
+                for clause in clauses {
+                    let _id_token = ui.push_id(id(clause));
+                    add_clause(ui, clause);
+                }
+            });
         }
     }
 }
 fn add_clause(ui: &Ui, clause: &Clause) {
-    TreeNode::new(&im_str!("Clause (score: {})", clause.score()))
+    TreeNode::new(&format!("Clause (score: {})", clause.score()))
         .default_open(true)
         .build(ui, || {
             for romanized in clause.romanized() {
                 let _id_token = ui.push_id(id(romanized));
-                TreeNode::new(&im_str!("Romanized ({})", romanized.romaji()))
+                TreeNode::new(&format!("Romanized ({})", romanized.romaji()))
                     .default_open(true)
                     .build(ui, || {
                         add_term(ui, romanized.term());
@@ -67,7 +63,7 @@ fn add_term(ui: &Ui, term: &Term) {
             add_word(ui, word);
         }
         Term::Alternative(alts) => {
-            TreeNode::new(im_str!("Alternative"))
+            TreeNode::new("Alternative")
                 .default_open(true)
                 .build(ui, || {
                     for alt in alts.alts() {
@@ -80,7 +76,7 @@ fn add_term(ui: &Ui, term: &Term) {
 }
 fn add_word(ui: &Ui, word: &Word) {
     let meta = word.meta();
-    TreeNode::new(&im_str!("Word ({})", meta.text()))
+    TreeNode::new(&format!("Word ({})", meta.text()))
         .default_open(true)
         .build(ui, || match word {
             Word::Plain(plain) => {
@@ -93,20 +89,20 @@ fn add_word(ui: &Ui, word: &Word) {
 }
 fn add_plain(ui: &Ui, plain: &Plain) {
     let meta = plain.meta();
-    TreeNode::new(&im_str!("Plain ({})", meta.reading()))
+    TreeNode::new(&format!("Plain ({})", meta.reading()))
         .default_open(true)
         .build(ui, || {
             add_meta(ui, meta);
             if let Some(seq) = plain.seq() {
-                wrap_bullet(ui, &im_str!("seq: {}", seq));
+                wrap_bullet(ui, &format!("seq: {}", seq));
             }
             if let Some(suffix) = plain.suffix() {
-                wrap_bullet(ui, &im_str!("suffix: {}", suffix));
+                wrap_bullet(ui, &format!("suffix: {}", suffix));
             }
             if let Some(counter) = plain.counter() {
                 add_counter(ui, counter);
             }
-            TreeNode::new(&im_str!("Glosses ({})", plain.gloss().len()))
+            TreeNode::new(&format!("Glosses ({})", plain.gloss().len()))
                 .default_open(false)
                 .build(ui, || {
                     for gloss in plain.gloss() {
@@ -114,7 +110,7 @@ fn add_plain(ui: &Ui, plain: &Plain) {
                         add_gloss(ui, gloss);
                     }
                 });
-            TreeNode::new(&im_str!("Conjugations ({})", plain.conj().len()))
+            TreeNode::new(&format!("Conjugations ({})", plain.conj().len()))
                 .default_open(false)
                 .build(ui, || {
                     for conj in plain.conj() {
@@ -126,11 +122,11 @@ fn add_plain(ui: &Ui, plain: &Plain) {
 }
 fn add_compound(ui: &Ui, compound: &Compound) {
     let meta = compound.meta();
-    TreeNode::new(&im_str!("Compound ({})", compound.compound().join(" + ")))
+    TreeNode::new(&format!("Compound ({})", compound.compound().join(" + ")))
         .default_open(true)
         .build(ui, || {
             add_meta(ui, meta);
-            TreeNode::new(&im_str!("Components ({})", compound.components().len()))
+            TreeNode::new(&format!("Components ({})", compound.components().len()))
                 .default_open(false)
                 .build(ui, || {
                     for component in compound.components() {
@@ -141,30 +137,30 @@ fn add_compound(ui: &Ui, compound: &Compound) {
         });
 }
 fn add_meta(ui: &Ui, meta: &Meta) {
-    wrap_bullet(ui, &im_str!("reading: {}", meta.reading()));
-    wrap_bullet(ui, &im_str!("text: {}", meta.text()));
-    wrap_bullet(ui, &im_str!("kana: {}", meta.kana()));
-    wrap_bullet(ui, &im_str!("score: {}", meta.score()));
+    wrap_bullet(ui, &format!("reading: {}", meta.reading()));
+    wrap_bullet(ui, &format!("text: {}", meta.text()));
+    wrap_bullet(ui, &format!("kana: {}", meta.kana()));
+    wrap_bullet(ui, &format!("score: {}", meta.score()));
 }
 fn add_gloss(ui: &Ui, gloss: &Gloss) {
-    TreeNode::new(&im_str!("Gloss ({} {})", gloss.pos(), gloss.gloss()))
+    TreeNode::new(&format!("Gloss ({} {})", gloss.pos(), gloss.gloss()))
         .default_open(false)
         .build(ui, || {
-            wrap_bullet(ui, &im_str!("pos: {}", gloss.pos()));
-            wrap_bullet(ui, &im_str!("gloss: {}", gloss.gloss()));
+            wrap_bullet(ui, &format!("pos: {}", gloss.pos()));
+            wrap_bullet(ui, &format!("gloss: {}", gloss.gloss()));
             if let Some(info) = gloss.info() {
-                wrap_bullet(ui, &im_str!("info: {}", info));
+                wrap_bullet(ui, &format!("info: {}", info));
             }
         });
 }
 fn add_conj(ui: &Ui, conj: &Conjugation) {
-    TreeNode::new(&im_str!("Conjugation"))
+    TreeNode::new(&format!("Conjugation"))
         .default_open(true)
         .build(ui, || {
             if let Some(reading) = conj.reading() {
-                wrap_bullet(ui, &im_str!("reading: {}", reading));
+                wrap_bullet(ui, &format!("reading: {}", reading));
             }
-            TreeNode::new(&im_str!("Properties ({})", conj.prop().len()))
+            TreeNode::new(&format!("Properties ({})", conj.prop().len()))
                 .default_open(false)
                 .build(ui, || {
                     for prop in conj.prop() {
@@ -172,7 +168,7 @@ fn add_conj(ui: &Ui, conj: &Conjugation) {
                         add_prop(ui, prop);
                     }
                 });
-            TreeNode::new(&im_str!("Glosses ({})", conj.gloss().len()))
+            TreeNode::new(&format!("Glosses ({})", conj.gloss().len()))
                 .default_open(false)
                 .build(ui, || {
                     for gloss in conj.gloss() {
@@ -181,20 +177,20 @@ fn add_conj(ui: &Ui, conj: &Conjugation) {
                     }
                 });
             if let Some(via) = conj.via() {
-                TreeNode::new(&im_str!("Via ({})", conj.via().is_some()))
+                TreeNode::new(&format!("Via ({})", conj.via().is_some()))
                     .default_open(false)
                     .build(ui, || {
                         add_conj(ui, via);
                     });
             }
 
-            wrap_bullet(ui, &im_str!("readok: {}", conj.readok()));
+            wrap_bullet(ui, &format!("readok: {}", conj.readok()));
         });
 }
 fn add_prop(ui: &Ui, prop: &Property) {
     wrap_bullet(
         ui,
-        &im_str!(
+        &format!(
             "Property ([{}] {} {} {})",
             prop.pos(),
             prop.kind(),
@@ -206,7 +202,7 @@ fn add_prop(ui: &Ui, prop: &Property) {
 fn add_counter(ui: &Ui, counter: &Counter) {
     wrap_bullet(
         ui,
-        &im_str!(
+        &format!(
             "Counter ({} {})",
             counter.value(),
             if counter.ordinal() {

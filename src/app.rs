@@ -1,3 +1,4 @@
+use std::ffi::CString;
 use std::sync::mpsc;
 use std::thread;
 
@@ -6,154 +7,187 @@ use ichiran::Ichiran;
 use ichiran::IchiranError;
 use ichiran::JmDictData;
 use imgui::*;
-use serde::{Deserialize, Serialize};
 
 use crate::{
-    common::{Env, ImStringDef},
+    common::Env,
     view::{RikaiView, SettingsView},
 };
 
-const ERROR_MODAL_TITLE: &ImStr = im_str!("Error");
+const ERROR_MODAL_TITLE: &'static str = "Error";
 
-struct Update {
+#[derive(Debug)]
+struct IchiranAst {
     root: Root,
     jmdict_data: JmDictData,
 }
 
+#[derive(Debug)]
 enum Message {
-    Ichiran(Result<Update, IchiranError>),
+    Ichiran(Result<IchiranAst, IchiranError>),
 }
 
-#[derive(Default, Deserialize, Serialize)]
-pub struct App {
-    #[serde(with = "ImStringDef")]
-    text: ImString,
+#[derive(Debug)]
+enum State {
+    Displaying { rikai: RikaiView },
+    Error { err: IchiranError },
+    Processing,
+    None,
+}
 
-    settings: SettingsView,
-    rikai: RikaiView,
+pub struct App {
+    channel_tx: mpsc::Sender<Message>,
+    channel_rx: mpsc::Receiver<Message>,
+
+    input_text: String,
+    last_clipboard: String,
+    requested_text: Option<String>,
 
     show_imgui_demo: bool,
     show_settings: bool,
 
-    #[serde(skip)]
-    channel_tx: Option<mpsc::Sender<Message>>,
-    #[serde(skip)]
-    channel_rx: Option<mpsc::Receiver<Message>>,
-
-    #[serde(skip)]
-    last_clipboard: ImString,
-    #[serde(skip)]
-    last_err: Option<IchiranError>,
+    settings: SettingsView,
+    state: State,
 }
+
 impl App {
-    fn update(&mut self) {
-        let ichiran_path = self.settings.ichiran_path.clone();
-        let text = self.text.to_string();
-        if let Some(channel_tx) = &self.channel_tx {
-            let channel_tx = channel_tx.clone();
-            thread::spawn(move || {
-                let ichiran = Ichiran::new(ichiran_path.to_str());
-                println!("processing");
-                let result = ichiran.romanize(&text).and_then(|root| {
-                    Ok(Update {
-                        root,
-                        jmdict_data: ichiran.jmdict_data()?,
-                    })
-                });
-                println!("send message");
-                let _ = channel_tx.send(Message::Ichiran(result));
-            });
+    pub fn new(settings: SettingsView) -> Self {
+        let (channel_tx, channel_rx) = mpsc::channel();
+        App {
+            channel_tx,
+            channel_rx,
+            requested_text: None,
+            input_text: "".into(),
+            last_clipboard: "".into(),
+            show_imgui_demo: false,
+            show_settings: false,
+            settings,
+            state: State::None,
         }
     }
 
-    fn poll(&mut self, ui: &Ui) {
-        if let Some(channel_rx) = &self.channel_rx {
-            match channel_rx.try_recv() {
-                Ok(Message::Ichiran(Ok(Update { root, jmdict_data }))) => {
-                    println!("message recv");
-                    self.rikai = RikaiView::new(root, jmdict_data);
-                }
-                Ok(Message::Ichiran(Err(err))) => {
-                    self.open_error_modal(ui, err);
-                }
-                Err(mpsc::TryRecvError::Empty) => {}
-                _ => {}
+    fn request_ast(&mut self, ui: &Ui, text: &str) {
+        log::trace!("request_ast({})", text);
+        let ichiran_path = self.settings.ichiran_path.clone();
+        let text = text.to_owned();
+        let channel_tx = self.channel_tx.clone();
+
+        self.transition(ui, State::Processing);
+
+        thread::spawn(move || {
+            let ichiran = Ichiran::new(ichiran_path.as_str());
+            let result = ichiran.romanize(&text).and_then(|root| {
+                Ok(IchiranAst {
+                    root,
+                    jmdict_data: ichiran.jmdict_data()?,
+                })
+            });
+            let _ = channel_tx.send(Message::Ichiran(result));
+        });
+    }
+
+    fn transition(&mut self, ui: &Ui, state: State) {
+        // log::trace!("transition({:#?})", state);
+        match &state {
+            State::Error { .. } => {
+                ui.open_popup(ERROR_MODAL_TITLE);
             }
-        } else {
-            println!("first time init channel");
-            let (tx, rx) = mpsc::channel();
-            self.channel_tx.replace(tx);
-            self.channel_rx.replace(rx);
+            _ => (),
+        }
+        self.state = state;
+    }
+
+    fn poll(&mut self, ui: &Ui) {
+        match self.channel_rx.try_recv() {
+            Ok(Message::Ichiran(Ok(IchiranAst { root, jmdict_data }))) => self.transition(
+                ui,
+                State::Displaying {
+                    rikai: RikaiView::new(root, jmdict_data),
+                },
+            ),
+            Ok(Message::Ichiran(Err(err))) => {
+                self.transition(ui, State::Error { err });
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            x => {
+                panic!("{:?}", x);
+            }
         }
     }
 
     fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui) {
         if let Some(_menu_bar) = ui.begin_main_menu_bar() {
-            if let Some(_menu) = ui.begin_menu(im_str!("File")) {}
-            if let Some(_menu) = ui.begin_menu(im_str!("Edit")) {
-                if MenuItem::new(im_str!("Settings")).build(ui) {
+            if let Some(_menu) = ui.begin_menu("File") {}
+            if let Some(_menu) = ui.begin_menu("Edit") {
+                if MenuItem::new("Settings").build(ui) {
                     self.show_settings = true;
                 }
             }
-            if let Some(_menu) = ui.begin_menu(im_str!("View")) {
-                if MenuItem::new(im_str!("ImGui Demo")).build(ui) {
+            if let Some(_menu) = ui.begin_menu("View") {
+                if MenuItem::new("ImGui Demo").build(ui) {
                     self.show_imgui_demo = true;
                 }
             }
         }
     }
 
-    fn open_error_modal(&mut self, ui: &Ui, err: IchiranError) {
-        self.last_err = Some(err);
-        ui.open_popup(ERROR_MODAL_TITLE);
-    }
-
     fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
-        if let Some(err) = &self.last_err {
-            PopupModal::new(ERROR_MODAL_TITLE)
-                .always_auto_resize(true)
-                .build(ui, || {
-                    let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
-                    ui.text(&im_str!("{}", err));
-                    ui.separator();
-                    if ui.button_with_size(im_str!("OK"), [120.0, 0.0]) {
-                        ui.close_current_popup();
-                    }
-                });
+        match &self.state {
+            State::Error { err } => {
+                PopupModal::new(ERROR_MODAL_TITLE)
+                    .always_auto_resize(true)
+                    .build(ui, || {
+                        let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
+                        ui.text(err.to_string());
+                        ui.separator();
+                        if ui.button_with_size("OK", [120.0, 0.0]) {
+                            ui.close_current_popup();
+                        }
+                    });
+            }
+            _ => (),
         }
     }
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
         self.show_main_menu(env, ui);
 
-        Window::new(im_str!("niinii"))
+        Window::new("niinii")
             .size([300.0, 110.0], Condition::FirstUseEver)
             .build(ui, || {
-                if ui
-                    .input_text_multiline(im_str!("Text"), &mut self.text, [0.0, 50.0])
-                    .resize_buffer(true)
-                    .enter_returns_true(true)
-                    .build()
                 {
-                    self.update();
-                }
-                if ui.button_with_size(im_str!("Go"), [120.0, 0.0]) {
-                    self.update();
-                }
-                if let Some(clipboard) = ui.clipboard_text() {
-                    if clipboard != self.last_clipboard {
-                        self.text = clipboard.clone();
-                        self.last_clipboard = clipboard;
-                        self.update();
+                    let trunc = str_from_u8_nul_utf8_unchecked(self.input_text.as_bytes()).to_owned();
+                    if ui
+                        .input_text_multiline("Text", &mut self.input_text, [0.0, 50.0])
+                        .enter_returns_true(true)
+                        .build()
+                    {
+                        self.requested_text.replace(trunc.clone());
+                    }
+                    let _token = ui.begin_disabled(matches!(self.state, State::Processing));
+                    if ui.button_with_size("Go", [120.0, 0.0]) {
+                        self.requested_text.replace(trunc);
                     }
                 }
+
+                if let Some(clipboard) = ui.clipboard_text() {
+                    if clipboard != self.last_clipboard {
+                        self.input_text = clipboard.clone();
+                        self.last_clipboard = clipboard.clone();
+                        self.requested_text.replace(clipboard);
+                    }
+                }
+
                 self.show_error_modal(env, ui);
+                self.poll(ui);
             });
 
-        Window::new(im_str!("Rikai"))
+        Window::new("Rikai")
             .size([300., 110.], Condition::FirstUseEver)
-            .build(ui, || {
-                self.rikai.ui(env, ui, &self.settings);
+            .build(ui, || match &mut self.state {
+                State::Displaying { rikai, .. } => {
+                    rikai.ui(env, ui, &self.settings);
+                }
+                _ => (),
             });
 
         if self.show_imgui_demo {
@@ -161,19 +195,43 @@ impl App {
         }
 
         if self.show_settings {
-            Window::new(im_str!("Settings"))
+            Window::new("Settings")
                 .size([300.0, 110.0], Condition::FirstUseEver)
                 .always_auto_resize(true)
                 .resizable(false)
                 .build(ui, || {
                     self.settings.ui(env, ui);
                     ui.separator();
-                    if ui.button_with_size(im_str!("OK"), [120.0, 0.0]) {
+                    if ui.button_with_size("OK", [120.0, 0.0]) {
                         self.show_settings = false;
                     }
                 });
         }
 
-        self.poll(ui);
+        if let Some(requested_text) = self.requested_text.clone() {
+            match &self.state {
+                State::Displaying { .. } => {
+                    self.request_ast(ui, &requested_text);
+                    self.requested_text = None;
+                }
+                State::Error { .. } | State::None => {
+                    self.request_ast(ui, &requested_text);
+                    self.requested_text = None;
+                }
+                _ => (),
+            };
+        }
     }
+
+    pub fn settings(&self) -> &SettingsView {
+        &self.settings
+    }
+}
+
+fn str_from_u8_nul_utf8_unchecked(utf8_src: &[u8]) -> &str {
+    let nul_range_end = utf8_src
+        .iter()
+        .position(|&c| c == b'\0')
+        .unwrap_or(utf8_src.len()); // default to length if no `\0` present
+    ::std::str::from_utf8(&utf8_src[0..nul_range_end]).unwrap()
 }

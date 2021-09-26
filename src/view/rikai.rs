@@ -35,7 +35,7 @@ fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
     }
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct RikaiView {
     root: Root,
     jmdict_data: JmDictData,
@@ -52,7 +52,7 @@ impl RikaiView {
 
     fn term_window(&self, env: &mut Env, ui: &Ui, romanized: &Romanized) -> bool {
         let mut opened = true;
-        Window::new(&im_str!("{}", romanized.term().text()))
+        Window::new(&format!("{}", romanized.term().text()))
             .size([300.0, 500.0], Condition::Appearing)
             .save_settings(false)
             .focus_on_appearing(true)
@@ -118,7 +118,7 @@ impl RikaiView {
     pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView) {
         self.add_root(env, ui, &self.root);
         if settings.show_raw {
-            Window::new(im_str!("Raw"))
+            Window::new("Raw")
                 .size([300., 110.], Condition::FirstUseEver)
                 .build(ui, || {
                     RawView::new(&self.root).ui(env, ui);
@@ -176,10 +176,10 @@ impl<'a> TermView<'a> {
                 ui.text("]");
                 ui.same_line();
                 // gloss
-                ui.text(&im_str!("{}", gloss.gloss()));
+                ui.text(&format!("{}", gloss.gloss()));
                 // info
                 if let Some(info) = gloss.info() {
-                    ui.text(&im_str!("({})", info));
+                    ui.text(&format!("({})", info));
                 }
             });
         }
@@ -209,6 +209,10 @@ impl<'a> TermView<'a> {
 
         match word {
             Word::Plain(plain) => {
+                if let Some(suffix) = plain.suffix() {
+                    ui.bullet();
+                    ui.text(suffix);
+                }
                 // there should be no glosses if there are conjugations
                 self.add_glosses(env, ui, plain.gloss());
                 for conj in plain.conj() {
@@ -222,14 +226,10 @@ impl<'a> TermView<'a> {
                         ui.text_colored([0., 1., 1., 1.], "ordinal");
                     }
                 }
-                if let Some(suffix) = plain.suffix() {
-                    ui.bullet();
-                    ui.text(suffix);
-                }
             }
             Word::Compound(compound) => {
                 for component in compound.components() {
-                    TreeNode::new(&im_str!("{}", component.text()))
+                    TreeNode::new(&format!("{}", component.text()))
                         .default_open(true)
                         .build(ui, || {
                             self.add_term(env, ui, component, romaji, false);
@@ -257,7 +257,7 @@ impl<'a> TermView<'a> {
         let vias = conj.flatten();
         let base = *vias.first().unwrap();
 
-        if CollapsingHeader::new(&im_str!("{}", base.reading().unwrap_or("Conjugation")))
+        if CollapsingHeader::new(&format!("{}", base.reading().unwrap_or("Conjugation")))
             .default_open(true)
             .build(ui)
         {

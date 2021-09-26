@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::{path::PathBuf, ptr, sync::Once};
+use std::{path::PathBuf, sync::Once};
 
 use detour::GenericDetour;
 use lazy_static::lazy_static;
@@ -11,9 +11,8 @@ use winapi::shared::windef::HWND;
 use winapi::{
     shared::{
         d3d9, d3d9types,
-        minwindef::{BOOL, DWORD, HINSTANCE, LOWORD, LPARAM, LPVOID, LRESULT, TRUE, UINT, WPARAM},
+        minwindef::{BOOL, DWORD, HINSTANCE, LPARAM, LPVOID, LRESULT, TRUE, UINT, WPARAM},
         ntdef::NULL,
-        winerror,
     },
     um::{
         consoleapi, libloaderapi, objbase,
@@ -21,10 +20,11 @@ use winapi::{
         winuser,
     },
 };
-use wio::com::ComPtr;
 
 use app::App;
 use common::Env;
+
+use crate::view::SettingsView;
 
 mod app;
 mod clipboard;
@@ -64,7 +64,7 @@ unsafe fn create_app_context(p_device: d3d9::LPDIRECT3DDEVICE9) -> AppContext {
     imgui.set_ini_filename(Some(PathBuf::from("imgui.ini")));
 
     if let Some(backend) = clipboard::init() {
-        imgui.set_clipboard_backend(Box::new(backend));
+        imgui.set_clipboard_backend(backend);
     } else {
         panic!("failed to initialize clipboard");
     }
@@ -77,11 +77,12 @@ unsafe fn create_app_context(p_device: d3d9::LPDIRECT3DDEVICE9) -> AppContext {
     let mut env = Env::default();
     common::init_fonts(&mut env, &mut imgui, 1.0);
 
-    let app: App = File::open(STATE_PATH)
+    let state: SettingsView = File::open(STATE_PATH)
         .ok()
         .map(BufReader::new)
         .and_then(|x| serde_json::from_reader(x).ok())
         .unwrap_or_default();
+    let app = App::new(state);
 
     // let mut hidpi_factor = 1.0;
     // let mut hidpi_factor =
@@ -192,20 +193,39 @@ unsafe extern "system" fn wnd_proc_hook(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    use winapi::um::winuser::*;
+    let imgui = APP_CONTEXT.as_ref().map(|ctx| &ctx.imgui);
+
     if imgui_win32_sys::ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam) != 0 {
         return TRUE as LRESULT;
     }
-    // println!("{}", msg);
     match msg {
-        winuser::WM_SIZE => {
-            if wparam != winuser::SIZE_MINIMIZED {
+        WM_SIZE => {
+            if wparam != SIZE_MINIMIZED {
                 println!("invalidate renderer due to wm_size");
                 INVALIDATE_RENDERER.store(true, Ordering::SeqCst);
             }
         }
-        winuser::WM_SYSCOMMAND => {
-            if wparam & 0xFFF0 == winuser::SC_KEYMENU {
+        WM_SYSCOMMAND => {
+            if wparam & 0xFFF0 == SC_KEYMENU {
                 return FALSE as LRESULT;
+            }
+        }
+        WM_MOUSEMOVE | WM_MOUSELEAVE | WM_LBUTTONDOWN | WM_LBUTTONDBLCLK | WM_RBUTTONDOWN
+        | WM_RBUTTONDBLCLK | WM_MBUTTONDOWN | WM_MBUTTONDBLCLK | WM_XBUTTONDOWN
+        | WM_XBUTTONDBLCLK | WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP
+        | WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
+            if let Some(imgui) = imgui {
+                if imgui.io().want_capture_mouse {
+                    return FALSE as LRESULT;
+                }
+            }
+        }
+        WM_KEYDOWN | WM_KEYUP | WM_SYSKEYDOWN | WM_SYSKEYUP | WM_CHAR => {
+            if let Some(imgui) = imgui {
+                if imgui.io().want_capture_keyboard {
+                    return FALSE as LRESULT;
+                }
             }
         }
         _ => {}
@@ -222,7 +242,7 @@ unsafe fn detach() {
     println!("detach");
     if let Some(ctx) = &mut APP_CONTEXT {
         let writer = BufWriter::new(File::create(STATE_PATH).unwrap());
-        serde_json::to_writer(writer, &ctx.app).unwrap();
+        serde_json::to_writer(writer, &ctx.app.settings()).unwrap();
     }
 }
 

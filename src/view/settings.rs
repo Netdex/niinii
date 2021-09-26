@@ -1,19 +1,16 @@
 use imgui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::common::{Env, ImStringDef};
+use crate::common::Env;
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct SettingsView {
-    #[serde(with = "ImStringDef")]
-    pub ichiran_path: ImString,
+    pub ichiran_path: String,
     pub show_raw: bool,
 }
 impl SettingsView {
     pub fn ui(&mut self, _env: &mut Env, ui: &Ui) {
-        ui.input_text(im_str!("ichiran-cli"), &mut self.ichiran_path)
-            .resize_buffer(true)
-            .build();
-        ui.checkbox(im_str!("Show raw"), &mut self.show_raw);
+        ui.input_text("ichiran-cli", &mut self.ichiran_path).build();
+        ui.checkbox("Show raw", &mut self.show_raw);
     }
 }
