@@ -26,11 +26,12 @@ use common::Env;
 
 use crate::view::SettingsView;
 
-mod app;
-mod clipboard;
-mod common;
-mod hook;
-mod view;
+pub mod app;
+pub mod backend;
+pub mod clipboard;
+pub mod common;
+pub mod hook;
+pub mod view;
 
 lazy_static! {
     static ref DETOUR: GenericDetour<hook::d3d9_hook::EndScene> =

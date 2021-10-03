@@ -32,7 +32,7 @@ impl JmDictData {
     }
 
     fn add_errata(&mut self) {
-		// cop-da renamed to cop, but cop-da still exists
+        // cop-da renamed to cop, but cop-da still exists
         if let Some(cop) = self.kwpos_by_kw.get("cop").cloned() {
             self.kwpos_by_kw.insert("cop-da".to_owned(), cop);
         }

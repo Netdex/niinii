@@ -714,8 +714,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "imgui"
-version = "0.8.1-alpha.0"
-source = "git+https://github.com/Netdex/imgui-rs?branch=hidpi-rounded-fix#0eb888b8ccb15e7b55db2dba50ea2e6e2f4f2697"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4edc4023dc7b1161e25ec9bcee478173f97d6f618a1d04eced2d559ce03119b4"
 dependencies = [
  "bitflags",
  "imgui-sys",
@@ -725,6 +726,7 @@ dependencies = [
 [[package]]
 name = "imgui-dx11-renderer"
 version = "0.8.0"
+source = "git+https://github.com/Netdex/imgui-dx11-renderer#e97bf947b4d21d786a30b3a625008130c1925b4d"
 dependencies = [
  "imgui",
  "winapi 0.3.9",
@@ -734,6 +736,7 @@ dependencies = [
 [[package]]
 name = "imgui-dx9-renderer"
 version = "0.8.0"
+source = "git+https://github.com/Netdex/imgui-dx9-renderer#a4948edfab9db7caf18cc01056eaafc34e207eec"
 dependencies = [
  "imgui",
  "winapi 0.3.9",
@@ -742,8 +745,9 @@ dependencies = [
 
 [[package]]
 name = "imgui-glow-renderer"
-version = "0.8.1-alpha.0"
-source = "git+https://github.com/Netdex/imgui-rs?branch=hidpi-rounded-fix#0eb888b8ccb15e7b55db2dba50ea2e6e2f4f2697"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb8dba3f6cfdf050e8403fa19196ca3ec6bb97b1f68b92b6e36ec53363ec7138"
 dependencies = [
  "glow",
  "imgui",
@@ -752,8 +756,9 @@ dependencies = [
 
 [[package]]
 name = "imgui-sys"
-version = "0.8.1-alpha.0"
-source = "git+https://github.com/Netdex/imgui-rs?branch=hidpi-rounded-fix#0eb888b8ccb15e7b55db2dba50ea2e6e2f4f2697"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0914d5ebaec1086300b970defc7ed71edc2cf102bdc3dd75fd51179549d4455b"
 dependencies = [
  "cc",
  "chlorine",
@@ -770,8 +775,9 @@ dependencies = [
 
 [[package]]
 name = "imgui-winit-support"
-version = "0.8.1-alpha.0"
-source = "git+https://github.com/Netdex/imgui-rs?branch=hidpi-rounded-fix#0eb888b8ccb15e7b55db2dba50ea2e6e2f4f2697"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86a8c368182829141da5d22c352684d01e64359daa1a4550df4a2976836aa8e3"
 dependencies = [
  "imgui",
  "winit",
@@ -837,9 +843,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.102"
+version = "0.2.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2a5ac8f984bfcf3a823267e5fde638acc3325f6496633a5da6bb6eb2171e103"
+checksum = "dd8f7255a17a627354f321ef0055d63b898c6fb27eff628af4d1b66b7331edf6"
 
 [[package]]
 name = "libloading"
@@ -916,12 +922,6 @@ checksum = "62bb907fe88d54d8d9ce32a3cceab4218ed2f6b7d35617cafe9adf84e43919cb"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "maybe-uninit"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
 name = "memchr"
@@ -1237,9 +1237,9 @@ checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
 name = "pkg-config"
-version = "0.3.19"
+version = "0.3.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
+checksum = "7c9b1041b4387893b91ee6746cddfc28516aff326a3519fb2adf820932c5e6cb"
 
 [[package]]
 name = "proc-macro-crate"
@@ -1844,13 +1844,12 @@ dependencies = [
 
 [[package]]
 name = "x11-dl"
-version = "2.19.0"
+version = "2.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eab1e810da9042813865ebe3477261aa77d1f2241f6be747ef8c0e442bc1fa3"
+checksum = "ea26926b4ce81a6f5d9d0f3a0bc401e5a37c6ae14a1bfaa8ff6099ca80038c59"
 dependencies = [
  "lazy_static",
  "libc",
- "maybe-uninit",
  "pkg-config",
 ]
 

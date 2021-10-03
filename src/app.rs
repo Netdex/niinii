@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 
@@ -44,6 +44,7 @@ pub struct App {
 
     show_imgui_demo: bool,
     show_settings: bool,
+    show_raw: bool,
 
     settings: SettingsView,
     state: State,
@@ -60,9 +61,36 @@ impl App {
             last_clipboard: "".into(),
             show_imgui_demo: false,
             show_settings: false,
+            show_raw: false,
             settings,
             state: State::None,
         }
+    }
+
+    pub fn start_pg_daemon(&self) {
+        let ichiran = Ichiran::new(&self.settings.ichiran_path);
+        let conn_params = ichiran.conn_params();
+        match conn_params {
+            Ok(conn_params) => {
+                log::info!("db conn params: {:?}", conn_params);
+                let proc = Command::new(&self.settings.postgres_path)
+                    .args([
+                        "-D",
+                        &self.settings.db_path,
+                        "-p",
+                        &format!("{}", conn_params.port),
+                    ])
+                    .spawn();
+                if let Err(err) = &proc {
+                    log::warn!("failed to spawn db daemon: {}", err);
+                }
+                proc.ok()
+            }
+            Err(err) => {
+                log::warn!("failed to query db conn params: {}", err);
+                None
+            }
+        };
     }
 
     fn request_ast(&mut self, ui: &Ui, text: &str) {
@@ -86,7 +114,6 @@ impl App {
     }
 
     fn transition(&mut self, ui: &Ui, state: State) {
-        // log::trace!("transition({:#?})", state);
         match &state {
             State::Error { .. } => {
                 ui.open_popup(ERROR_MODAL_TITLE);
@@ -116,13 +143,18 @@ impl App {
 
     fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui) {
         if let Some(_menu_bar) = ui.begin_main_menu_bar() {
-            if let Some(_menu) = ui.begin_menu("File") {}
+            if let Some(_menu) = ui.begin_menu("File") {
+                if MenuItem::new("Quit").build(ui) {}
+            }
             if let Some(_menu) = ui.begin_menu("Edit") {
                 if MenuItem::new("Settings").build(ui) {
                     self.show_settings = true;
                 }
             }
             if let Some(_menu) = ui.begin_menu("View") {
+                if MenuItem::new("Show Raw").build(ui) {
+                    self.show_raw = true;
+                }
                 if MenuItem::new("ImGui Demo").build(ui) {
                     self.show_imgui_demo = true;
                 }
@@ -155,15 +187,16 @@ impl App {
             .size([300.0, 110.0], Condition::FirstUseEver)
             .build(ui, || {
                 {
-                    let trunc = str_from_u8_nul_utf8_unchecked(self.input_text.as_bytes()).to_owned();
+                    let trunc =
+                        str_from_u8_nul_utf8_unchecked(self.input_text.as_bytes()).to_owned();
+                    let _token = ui.begin_disabled(matches!(self.state, State::Processing));
                     if ui
-                        .input_text_multiline("Text", &mut self.input_text, [0.0, 50.0])
+                        .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
                         .enter_returns_true(true)
                         .build()
                     {
                         self.requested_text.replace(trunc.clone());
                     }
-                    let _token = ui.begin_disabled(matches!(self.state, State::Processing));
                     if ui.button_with_size("Go", [120.0, 0.0]) {
                         self.requested_text.replace(trunc);
                     }
@@ -185,7 +218,7 @@ impl App {
             .size([300., 110.], Condition::FirstUseEver)
             .build(ui, || match &mut self.state {
                 State::Displaying { rikai, .. } => {
-                    rikai.ui(env, ui, &self.settings);
+                    rikai.ui(env, ui, &mut self.show_raw);
                 }
                 _ => (),
             });
@@ -205,6 +238,8 @@ impl App {
                     if ui.button_with_size("OK", [120.0, 0.0]) {
                         self.show_settings = false;
                     }
+                    ui.same_line();
+                    ui.text("Restart to apply all changes.");
                 });
         }
 

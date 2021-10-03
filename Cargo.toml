@@ -7,20 +7,20 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [patch.crates-io]
-imgui = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-imgui-sys = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-imgui-glow-renderer = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-# imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
-# imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
-imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
-imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
+# imgui = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
+# imgui-sys = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
+# imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
+# imgui-glow-renderer = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
+imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
+imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
+# imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
+# imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
 
 [dependencies]
-imgui = "0.8.1-alpha.0"
-imgui-winit-support = "0.8.1-alpha.0"
+imgui = "0.8"
+imgui-winit-support = "0.8"
 clipboard = "0.5"
-imgui-glow-renderer = "0.8.1-alpha.0"
+imgui-glow-renderer = "0.8"
 glow = "0.10.0"
 glutin = "0.27.0"
 
@@ -40,6 +40,7 @@ winapi = { version = "0.3", features = [
 	"d3d9types",
 	"d3dcompiler",
 	"d3dcommon",
+	"jobapi2",
 ] }
 wio = "0.2"
 raw-window-handle = "0.3"
@@ -52,13 +53,12 @@ lazy_static = "1.4.0"
 log = "0.4"
 env_logger = "0.8.4"
 
-
 ichiran = { path = "third-party/ichiran" }
 imgui-win32-sys = { path = "third-party/imgui-win32-sys" }
 
 [lib]
 name = "libniinii"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [workspace]
 members = ["third-party/ichiran", "third-party/imgui-win32-sys"]

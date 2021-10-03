@@ -1,6 +1,8 @@
+use imgui_winit_support::WinitPlatform;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
+use crate::clipboard;
 use imgui::*;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -47,7 +49,7 @@ pub fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
         env.fonts
             .insert(style, imgui.fonts().add_font(font_sources.as_slice()));
     };
-    let jp_font_config = [
+    let ext_font_config = [
         // japanese
         FontConfig {
             rasterizer_multiply: 1.75,
@@ -63,11 +65,20 @@ pub fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
             ..Default::default()
         },
     ];
+    let jp_font_config = [
+        // japanese
+        FontConfig {
+            rasterizer_multiply: 1.75,
+            glyph_ranges: FontGlyphRanges::japanese(),
+            oversample_h: 2,
+            ..Default::default()
+        },
+    ];
     add_font(
         TextStyle::Body,
         SARASA_MONO_J_REGULAR,
         16.0,
-        &jp_font_config,
+        &ext_font_config,
     );
     add_font(
         TextStyle::Kanji,
@@ -76,4 +87,31 @@ pub fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
         &jp_font_config,
     );
     imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+}
+
+pub fn imgui_init(window: &winit::window::Window) -> (WinitPlatform, imgui::Context, Env) {
+    let mut imgui = imgui::Context::create();
+    imgui.set_ini_filename(Some(PathBuf::from("imgui.ini")));
+
+    let io = imgui.io_mut();
+    io.font_allow_user_scaling = true;
+
+    if let Some(backend) = clipboard::init() {
+        imgui.set_clipboard_backend(backend);
+    } else {
+        panic!("failed to initialize clipboard");
+    }
+
+    let mut platform = WinitPlatform::init(&mut imgui);
+    platform.attach_window(
+        imgui.io_mut(),
+        window,
+        imgui_winit_support::HiDpiMode::Default,
+    );
+
+    let mut env = Env::default();
+    let hidpi_factor = platform.hidpi_factor();
+    init_fonts(&mut env, &mut imgui, hidpi_factor);
+
+    (platform, imgui, env)
 }

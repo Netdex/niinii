@@ -13,7 +13,9 @@ pub enum IchiranError {
     Failure { status: ExitStatus, stderr: String },
     #[error("Text too long ({length}/{MAX_TEXT_LENGTH} chars)")]
     TextTooLong { length: usize },
+    #[error("Parse Error:\n{0}")]
+    Parsing(String),
 
-	#[error("CSV Error: {0}")]
-	CsvError(#[from] csv::Error)
+    #[error("CSV Error: {0}")]
+    CsvError(#[from] csv::Error),
 }

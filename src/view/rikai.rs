@@ -8,15 +8,13 @@ use imgui::*;
 use crate::common::{Env, TextStyle};
 use crate::view::RawView;
 
-use super::SettingsView;
-
 fn highlight_text(ui: &Ui, text: &str) {
     let sz = ui.calc_text_size(text);
     let x = ui.cursor_screen_pos()[0];
     let y = ui.cursor_screen_pos()[1];
     let draw_list = ui.get_window_draw_list();
     draw_list
-        .add_rect([x, y], [x + sz[0], y + sz[1]], [1., 0., 0., 0.2])
+        .add_rect([x, y], [x + sz[0], y + sz[1]], [0.4, 0.6, 0.8, 0.3])
         .filled(true)
         .build();
     ui.text(text);
@@ -53,7 +51,8 @@ impl RikaiView {
     fn term_window(&self, env: &mut Env, ui: &Ui, romanized: &Romanized) -> bool {
         let mut opened = true;
         Window::new(&format!("{}", romanized.term().text()))
-            .size([300.0, 500.0], Condition::Appearing)
+            // .size([300.0, 0.0], Condition::Appearing)
+            .size_constraints([300.0, 100.0], [1000.0, 1000.0])
             .save_settings(false)
             .focus_on_appearing(true)
             .opened(&mut opened)
@@ -115,11 +114,12 @@ impl RikaiView {
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView) {
+    pub fn ui(&mut self, env: &mut Env, ui: &Ui, show_raw: &mut bool) {
         self.add_root(env, ui, &self.root);
-        if settings.show_raw {
+        if *show_raw {
             Window::new("Raw")
                 .size([300., 110.], Condition::FirstUseEver)
+                .opened(show_raw)
                 .build(ui, || {
                     RawView::new(&self.root).ui(env, ui);
                 });
@@ -261,40 +261,44 @@ impl<'a> TermView<'a> {
             .default_open(true)
             .build(ui)
         {
-            for via in vias {
-                if via != base {
-                    ui.same_line();
-                    ui.text("->");
-                    ui.same_line();
-                }
-                for prop in via.prop() {
-                    if prop != via.prop().first().unwrap() {
+            {
+                let _wrap_token = ui.push_text_wrap_pos_with_pos(-1.0);
+                for via in vias {
+                    if via != base {
                         ui.same_line();
-                        ui.text("/");
+                        ui.text("->");
                         ui.same_line();
                     }
-                    ui.text("[");
-                    ui.same_line_with_spacing(0.0, 0.0);
-                    self.add_pos(env, ui, prop.pos());
-                    ui.same_line_with_spacing(0.0, 0.0);
-                    ui.text("]");
-                    ui.same_line();
-                    ui.text(prop.kind());
-                    if prop.neg() {
+                    for prop in via.prop() {
+                        if prop != via.prop().first().unwrap() {
+                            ui.same_line();
+                            ui.text("/");
+                            ui.same_line();
+                        }
+                        ui.text("[");
+                        ui.same_line_with_spacing(0.0, 0.0);
+                        self.add_pos(env, ui, prop.pos());
+                        ui.same_line_with_spacing(0.0, 0.0);
+                        ui.text("]");
                         ui.same_line();
-                        ui.text_colored([1., 0., 0., 1.], "neg");
-                        if ui.is_item_hovered() {
-                            ui.tooltip_text("negative");
+                        ui.text(prop.kind());
+                        if prop.neg() {
+                            ui.same_line();
+                            ui.text_colored([1., 0., 0., 1.], "neg");
+                            if ui.is_item_hovered() {
+                                ui.tooltip_text("negative");
+                            }
+                        }
+                        if prop.fml() {
+                            ui.same_line();
+                            ui.text_colored([1., 0., 1., 1.], "fml");
+                            if ui.is_item_hovered() {
+                                ui.tooltip_text("formal");
+                            }
                         }
                     }
-                    if prop.fml() {
-                        ui.same_line();
-                        ui.text_colored([1., 0., 1., 1.], "fml");
-                        if ui.is_item_hovered() {
-                            ui.tooltip_text("formal");
-                        }
-                    }
                 }
+                _wrap_token.pop(ui);
             }
             self.add_glosses(env, ui, base.gloss());
         }
