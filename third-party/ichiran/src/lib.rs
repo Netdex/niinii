@@ -75,6 +75,7 @@ impl<'a> Ichiran<'a> {
             .next()
             .ok_or_else(parse_error)?
             .split(',');
+
         let database = conn_params.next().ok_or_else(parse_error)?.to_owned();
         let user = conn_params.next().ok_or_else(parse_error)?.to_owned();
         let password = conn_params.next().ok_or_else(parse_error)?.to_owned();

@@ -34,12 +34,10 @@ fn add_segment(ui: &Ui, segment: &Segment) {
     match segment {
         Segment::Skipped(_) => wrap_bullet(ui, &format!("{:?}", segment)),
         Segment::Clauses(clauses) => {
-            TreeNode::new("Clauses").default_open(true).build(ui, || {
-                for clause in clauses {
-                    let _id_token = ui.push_id(id(clause));
-                    add_clause(ui, clause);
-                }
-            });
+            for clause in clauses {
+                let _id_token = ui.push_id(id(clause));
+                add_clause(ui, clause);
+            }
         }
     }
 }

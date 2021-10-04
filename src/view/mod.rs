@@ -1,3 +1,5 @@
+use std::ffi::c_void;
+
 mod raw;
 mod rikai;
 mod settings;
@@ -6,11 +8,6 @@ pub use raw::RawView;
 pub use rikai::RikaiView;
 pub use settings::SettingsView;
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
-fn id<T: Hash>(x: T) -> i32 {
-    let mut hasher = DefaultHasher::new();
-    x.hash(&mut hasher);
-    hasher.finish() as i32
+fn id<T>(x: &T) -> *const c_void {
+    x as *const _ as *const _
 }

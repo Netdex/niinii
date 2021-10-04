@@ -36,7 +36,7 @@ fn main() {
 
     let mut app = App::new(state);
     app.start_pg_daemon();
-    libniinii::backend::glow::main_loop(window, |_opened, env, ui| {
+    libniinii::backend::d3d11::main_loop(window, |_opened, env, ui| {
         app.ui(env, ui);
     });
 

@@ -52,6 +52,7 @@ serde_json = "1"
 lazy_static = "1.4.0"
 log = "0.4"
 env_logger = "0.8.4"
+flate2 = { version = "1.0" }
 
 ichiran = { path = "third-party/ichiran" }
 imgui-win32-sys = { path = "third-party/imgui-win32-sys" }
