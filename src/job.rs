@@ -17,9 +17,9 @@
 //! child will be associated with the job object as well. This means if we add
 //! ourselves to the job object we create then everything will get torn down!
 
-pub use self::imp::Setup;
+pub use self::imp::JobObject;
 
-pub fn setup() -> Option<Setup> {
+pub fn setup() -> Option<JobObject> {
     unsafe { imp::setup() }
 }
 
@@ -57,7 +57,7 @@ mod imp {
     use winapi::um::winnt::HANDLE;
     use winapi::um::winnt::*;
 
-    pub struct Setup {
+    pub struct JobObject {
         job: Handle,
     }
 
@@ -69,7 +69,7 @@ mod imp {
         io::Error::last_os_error()
     }
 
-    pub unsafe fn setup() -> Option<Setup> {
+    pub unsafe fn setup() -> Option<JobObject> {
         // Creates a new job object for us to use and then adds ourselves to it.
         // Note that all errors are basically ignored in this function,
         // intentionally. Job objects are "relatively new" in Windows,
@@ -110,10 +110,10 @@ mod imp {
             return None;
         }
 
-        Some(Setup { job })
+        Some(JobObject { job })
     }
 
-    impl Drop for Setup {
+    impl Drop for JobObject {
         fn drop(&mut self) {
             // On normal exits (not ctrl-c), we don't want to kill any child
             // processes. The destructor here configures our job object to

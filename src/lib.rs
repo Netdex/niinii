@@ -24,14 +24,16 @@ use winapi::{
 use app::App;
 use common::Env;
 
-use crate::view::SettingsView;
+use crate::view::settings::SettingsView;
 
 pub mod app;
 pub mod backend;
 pub mod clipboard;
 pub mod common;
 pub mod hook;
+pub mod pgdaemon;
 pub mod view;
+pub mod job;
 
 lazy_static! {
     static ref DETOUR: GenericDetour<hook::d3d9_hook::EndScene> =

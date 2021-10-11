@@ -1,6 +1,6 @@
-pub use error::IchiranError;
-pub use jmdict_data::JmDictData;
 use std::{
+    collections::HashMap,
+    ffi::OsStr,
     io::{self, ErrorKind},
     path::{Path, PathBuf},
     process::Command,
@@ -9,7 +9,14 @@ use std::{
 mod coerce;
 pub mod error;
 pub mod jmdict_data;
-pub mod types;
+pub mod kanji;
+pub mod romanize;
+
+pub use error::IchiranError;
+pub use jmdict_data::JmDictData;
+use kanji::{is_kanji, Kanji};
+use ketos::FromValue;
+use romanize::Root;
 
 const MAX_TEXT_LENGTH: usize = 512;
 
@@ -29,7 +36,8 @@ impl<'a> Ichiran<'a> {
     pub fn new(path: &'a str) -> Self {
         Self { path }
     }
-    pub fn romanize(&self, text: &str) -> Result<types::Root, IchiranError> {
+
+    pub fn romanize(&self, text: &str) -> Result<Root, IchiranError> {
         if text.len() > MAX_TEXT_LENGTH {
             return Err(IchiranError::TextTooLong { length: text.len() });
         }
@@ -41,7 +49,7 @@ impl<'a> Ichiran<'a> {
             .output()?;
 
         if output.status.success() {
-            let root: types::Root = serde_json::from_slice(&output.stdout)?;
+            let root: Root = serde_json::from_slice(&output.stdout)?;
             Ok(root)
         } else {
             Err(IchiranError::Failure {
@@ -49,6 +57,46 @@ impl<'a> Ichiran<'a> {
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             })
         }
+    }
+
+    pub fn kanji(&self, chars: &[char]) -> Result<HashMap<char, Kanji>, IchiranError> {
+        let mut kanji_info: HashMap<char, Kanji> = HashMap::new();
+        if chars.len() == 0 {
+            return Ok(kanji_info);
+        }
+
+        // this is what happens when you don't know lisp
+        let commands: Vec<String> = chars
+            .iter()
+            .map(|chr| {
+                format!(
+                    r#"(jsown:to-json (ichiran/kanji:kanji-info-json #\{}))"#,
+                    chr
+                )
+            })
+            .collect();
+        let expr = format!("(list {})", commands.join(" "));
+
+        let output = self.ichiran_eval(expr)?;
+        let output = format!("'{}", output); // add an apostrophe to turn it into a list
+        let output: Vec<String> = self.lisp_interp(&output)?;
+
+        output.iter().try_for_each(|x| {
+            if *x != "[]" {
+                let kanji: kanji::Kanji = serde_json::from_str(x)?;
+                kanji_info.insert(kanji.text().chars().next().unwrap(), kanji);
+            }
+            Ok::<(), IchiranError>(())
+        })?;
+        Ok(kanji_info)
+    }
+
+    pub fn kanji_from_str(&self, text: &str) -> Result<HashMap<char, Kanji>, IchiranError> {
+        let mut uniq: Vec<char> = text.chars().filter(is_kanji).collect();
+        uniq.sort();
+        uniq.dedup();
+
+        self.kanji(&uniq)
     }
 
     pub fn jmdict_data(&self) -> Result<JmDictData, IchiranError> {
@@ -96,7 +144,8 @@ impl<'a> Ichiran<'a> {
         })
     }
 
-    fn ichiran_eval(&self, expr: &str) -> Result<String, IchiranError> {
+    /// Evaluate the expression with ichiran and return the raw output.
+    fn ichiran_eval<E: AsRef<OsStr>>(&self, expr: E) -> Result<String, IchiranError> {
         let working_dir = self.working_dir()?;
         let output = Command::new(self.path)
             .current_dir(working_dir)
@@ -112,6 +161,15 @@ impl<'a> Ichiran<'a> {
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             })
         }
+    }
+
+    fn lisp_interp<T>(&self, expr: &str) -> Result<T, IchiranError>
+    where
+        T: FromValue,
+    {
+        let interp = ketos::Interpreter::new();
+        let result = interp.run_single_expr(expr, None)?;
+        Ok(T::from_value(result).map_err(|err| ketos::Error::ExecError(err))?)
     }
 
     fn working_dir(&self) -> Result<&Path, io::Error> {

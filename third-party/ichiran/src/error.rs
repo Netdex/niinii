@@ -15,7 +15,15 @@ pub enum IchiranError {
     TextTooLong { length: usize },
     #[error("Parse Error:\n{0}")]
     Parsing(String),
-
     #[error("CSV Error: {0}")]
     CsvError(#[from] csv::Error),
+    #[error("Lisp Error:\n{0}")]
+    KetosError(String)
+}
+
+// ketos::Error is non-Send so we need to serialize it.
+impl From<ketos::Error> for IchiranError {
+    fn from(err: ketos::Error) -> Self {
+        IchiranError::KetosError(format!("{:#?}", err))
+    }
 }

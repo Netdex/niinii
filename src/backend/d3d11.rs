@@ -108,25 +108,26 @@ where
         unreachable!()
     };
 
+    // unsafe {
+    //     let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
+    //     winuser::SetWindowLongA(
+    //         hwnd as *mut _,
+    //         winuser::GWL_EXSTYLE,
+    //         (style as u32 | winuser::WS_EX_LAYERED) as i32,
+    //     );
+    //     // winuser::SetLayeredWindowAttributes(hwnd as *mut _, 0, 0, winuser::LWA_COLORKEY);
+    //     winuser::SetLayeredWindowAttributes(hwnd as *mut _, 0, 255, winuser::LWA_ALPHA);
+    //     let margin = uxtheme::MARGINS {
+    //         cxLeftWidth: -1,
+    //         cxRightWidth: -1,
+    //         cyTopHeight: -1,
+    //         cyBottomHeight: -1,
+    //     };
+    //     dwmapi::DwmExtendFrameIntoClientArea(hwnd as *mut _, &margin);
+    // }
+
     let (swapchain, device, context) = unsafe { create_device(hwnd.cast()) }.unwrap();
     let mut main_rtv = unsafe { create_render_target(&swapchain, &device) };
-
-    // let blend_state: *mut ID3D11BlendState = ptr::null_mut();
-    // let blend_desc = D3D11_BLEND_DESC {
-    //     AlphaToCoverageEnable: FALSE,
-    //     IndependentBlendEnable: FALSE,
-    //     RenderTarget: [D3D11_RENDER_TARGET_BLEND_DESC {
-    //         BlendEnable: TRUE,
-    //         SrcBlend: D3D11_BLEND_SRC_ALPHA,
-    //         DestBlend: D3D11_BLEND_INV_SRC_ALPHA,
-    //         BlendOp: D3D11_BLEND_OP_ADD,
-    //         SrcBlendAlpha: D3D11_BLEND_INV_DEST_ALPHA,
-    //         DestBlendAlpha: D3D11_BLEND_ONE,
-    //         BlendOpAlpha: D3D11_BLEND_OP_ADD,
-    //         RenderTargetWriteMask: D3D11_COLOR_WRITE_ENABLE_ALL as u8,
-    //     }; 8],
-    // };
-    // unsafe { device.CreateBlendState(&blend_desc, blend_state as *mut _) };
 
     let (mut platform, mut imgui, mut env) = imgui_init(&window);
 
@@ -152,7 +153,6 @@ where
         Event::RedrawRequested(_) => {
             unsafe {
                 context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
-                // context.OMSetBlendState(blend_state, &clear_color, 0xffffffff);
                 context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
             }
             let mut ui = imgui.frame();

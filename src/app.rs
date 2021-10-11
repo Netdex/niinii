@@ -1,16 +1,14 @@
-use std::process::Command;
+use std::collections::HashMap;
 use std::sync::mpsc;
 use std::thread;
 
-use ichiran::types::Root;
-use ichiran::Ichiran;
-use ichiran::IchiranError;
-use ichiran::JmDictData;
+use ichiran::{kanji::Kanji, romanize::Root, Ichiran, IchiranError, JmDictData};
 use imgui::*;
 
+use crate::pgdaemon::PostgresDaemon;
 use crate::{
     common::Env,
-    view::{RikaiView, SettingsView},
+    view::{rikai::RikaiView, settings::SettingsView},
 };
 
 const ERROR_MODAL_TITLE: &'static str = "Error";
@@ -18,6 +16,7 @@ const ERROR_MODAL_TITLE: &'static str = "Error";
 #[derive(Debug)]
 struct IchiranAst {
     root: Root,
+    kanji_info: HashMap<char, Kanji>,
     jmdict_data: JmDictData,
 }
 
@@ -48,11 +47,24 @@ pub struct App {
 
     settings: SettingsView,
     state: State,
+    _pg_daemon: Option<PostgresDaemon>,
 }
 
 impl App {
     pub fn new(settings: SettingsView) -> Self {
         let (channel_tx, channel_rx) = mpsc::channel();
+        let ichiran = Ichiran::new(&settings.ichiran_path);
+        let pg_daemon = match ichiran.conn_params() {
+            Ok(conn_params) => {
+                let pg_daemon =
+                    PostgresDaemon::new(&settings.postgres_path, &settings.db_path, conn_params);
+                Some(pg_daemon)
+            }
+            Err(_) => {
+                log::warn!("could not get db conn params from ichiran");
+                None
+            }
+        };
         App {
             channel_tx,
             channel_rx,
@@ -64,33 +76,8 @@ impl App {
             show_raw: false,
             settings,
             state: State::None,
+            _pg_daemon: pg_daemon,
         }
-    }
-
-    pub fn start_pg_daemon(&self) {
-        let ichiran = Ichiran::new(&self.settings.ichiran_path);
-        let conn_params = ichiran.conn_params();
-        match conn_params {
-            Ok(conn_params) => {
-                log::info!("db conn params: {:?}", conn_params);
-                let proc = Command::new(&self.settings.postgres_path)
-                    .args([
-                        "-D",
-                        &self.settings.db_path,
-                        "-p",
-                        &format!("{}", conn_params.port),
-                    ])
-                    .spawn();
-                if let Err(err) = &proc {
-                    log::warn!("failed to spawn db daemon: {}", err);
-                }
-                proc.ok()
-            }
-            Err(err) => {
-                log::warn!("failed to query db conn params: {}", err);
-                None
-            }
-        };
     }
 
     fn request_ast(&mut self, ui: &Ui, text: &str) {
@@ -103,12 +90,15 @@ impl App {
 
         thread::spawn(move || {
             let ichiran = Ichiran::new(ichiran_path.as_str());
-            let result = ichiran.romanize(&text).and_then(|root| {
+            let result = (|| {
+                let root = ichiran.romanize(&text)?;
+                let kanji_info = ichiran.kanji_from_str(&text)?;
                 Ok(IchiranAst {
                     root,
+                    kanji_info,
                     jmdict_data: ichiran.jmdict_data()?,
                 })
-            });
+            })();
             let _ = channel_tx.send(Message::Ichiran(result));
         });
     }
@@ -125,10 +115,14 @@ impl App {
 
     fn poll(&mut self, ui: &Ui) {
         match self.channel_rx.try_recv() {
-            Ok(Message::Ichiran(Ok(IchiranAst { root, jmdict_data }))) => self.transition(
+            Ok(Message::Ichiran(Ok(IchiranAst {
+                root,
+                kanji_info,
+                jmdict_data,
+            }))) => self.transition(
                 ui,
                 State::Displaying {
-                    rikai: RikaiView::new(root, jmdict_data),
+                    rikai: RikaiView::new(root, kanji_info, jmdict_data),
                 },
             ),
             Ok(Message::Ichiran(Err(err))) => {
@@ -218,7 +212,7 @@ impl App {
             .size([300., 110.], Condition::FirstUseEver)
             .build(ui, || match &mut self.state {
                 State::Displaying { rikai, .. } => {
-                    rikai.ui(env, ui, &mut self.show_raw);
+                    rikai.ui(env, ui, &mut self.show_raw, self.settings.ruby_text());
                 }
                 _ => (),
             });
@@ -239,7 +233,7 @@ impl App {
                         self.show_settings = false;
                     }
                     ui.same_line();
-                    ui.text("Restart to apply all changes.");
+                    ui.text("* Restart to apply these changes");
                 });
         }
 

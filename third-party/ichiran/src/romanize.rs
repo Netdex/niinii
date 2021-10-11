@@ -14,7 +14,7 @@ use crate::coerce::*;
 pub struct Root(Vec<Segment>);
 impl Root {
     /// Get all segments under the parse tree.
-    pub fn segments(&self) -> &Vec<Segment> {
+    pub fn segments(&self) -> &[Segment] {
         &self.0
     }
 }
@@ -33,7 +33,7 @@ pub enum Segment {
 pub struct Clause(Vec<Romanized>, i32);
 impl Clause {
     /// Get all romanized blocks in this clause.
-    pub fn romanized(&self) -> &Vec<Romanized> {
+    pub fn romanized(&self) -> &[Romanized] {
         &self.0
     }
     /// Get the cumulative score of this clause.
@@ -66,12 +66,21 @@ pub enum Term {
     Alternative(Alternative),
 }
 impl Term {
-    /// Get the original text for this term, assuming
-    /// that the text is the same across all alternatives.
+    /// Get the original text for this term
     pub fn text(&self) -> &str {
+        self.best().meta().text()
+    }
+
+    /// Get the kana for this term
+    pub fn kana(&self) -> &str {
+        self.best().meta().kana()
+    }
+
+    /// Get the word or best alternative
+    pub fn best(&self) -> &Word {
         match self {
-            Term::Word(word) => word.meta().text(),
-            Term::Alternative(alt) => alt.alts().first().unwrap().meta().text(),
+            Term::Word(word) => word,
+            Term::Alternative(alt) => alt.alts().iter().max_by_key(|x| x.meta().score()).unwrap(),
         }
     }
 }
@@ -83,7 +92,7 @@ pub struct Alternative {
 }
 impl Alternative {
     /// Get a list of alternative words.
-    pub fn alts(&self) -> &Vec<Word> {
+    pub fn alts(&self) -> &[Word] {
         &self.alternative
     }
 }
@@ -130,11 +139,11 @@ impl Plain {
         self.seq
     }
     /// Get a list of glosses.
-    pub fn gloss(&self) -> &Vec<Gloss> {
+    pub fn gloss(&self) -> &[Gloss] {
         &self.gloss
     }
     /// Get the conjugation of this word.
-    pub fn conj(&self) -> &Vec<Conjugation> {
+    pub fn conj(&self) -> &[Conjugation] {
         &self.conj
     }
     /// Get the counter data of this word.
@@ -163,11 +172,11 @@ impl Compound {
         &self.meta
     }
     /// Get a list of romaji components in this compound.
-    pub fn compound(&self) -> &Vec<String> {
+    pub fn compound(&self) -> &[String] {
         &self.compound
     }
     /// Get the split metadata for each component of this compound.
-    pub fn components(&self) -> &Vec<Term> {
+    pub fn components(&self) -> &[Term] {
         &self.components
     }
 }
@@ -250,7 +259,7 @@ pub struct Conjugation {
 }
 impl Conjugation {
     /// Get a list of conjugation properties.
-    pub fn prop(&self) -> &Vec<Property> {
+    pub fn prop(&self) -> &[Property] {
         &self.prop
     }
     /// Get the reading for this conjugation.
@@ -258,7 +267,7 @@ impl Conjugation {
         self.reading.as_deref()
     }
     /// Get a list of glosses.
-    pub fn gloss(&self) -> &Vec<Gloss> {
+    pub fn gloss(&self) -> &[Gloss] {
         &self.gloss
     }
     /// Get the source of the conjugation.

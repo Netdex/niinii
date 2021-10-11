@@ -1,26 +1,75 @@
+use ichiran::kanji::Kanji;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use ichiran::{types::*, JmDictData};
+use ichiran::{romanize::*, JmDictData};
 use imgui::*;
 
 use crate::common::{Env, TextStyle};
-use crate::view::RawView;
+use crate::view::raw::RawView;
 
-fn highlight_text(ui: &Ui, text: &str) {
-    let sz = ui.calc_text_size(text);
-    let x = ui.cursor_screen_pos()[0];
-    let y = ui.cursor_screen_pos()[1];
+use super::kanji::KanjiView;
+use super::settings::RubyTextType;
+
+fn draw_kanji_text(
+    ui: &Ui,
+    env: &Env,
+    text: &str,
+    highlight: bool,
+    show_ruby: bool,
+    ruby_text: Option<&str>,
+) {
+    let ruby_sz = if let Some(furigana) = ruby_text {
+        ui.calc_text_size(furigana)
+    } else if show_ruby {
+        ui.calc_text_size(" ")
+    } else {
+        [0.0, 0.0]
+    };
+
+    let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
+    let kanji_sz = ui.calc_text_size(text);
+    drop(_kanji_font_token);
+
+    let mut x = ui.cursor_screen_pos()[0];
+    let mut y = ui.cursor_screen_pos()[1];
+    let w = f32::max(kanji_sz[0], ruby_sz[0]);
+    let h = kanji_sz[1] + ruby_sz[1];
+
     let draw_list = ui.get_window_draw_list();
-    draw_list
-        .add_rect([x, y], [x + sz[0], y + sz[1]], [0.4, 0.6, 0.8, 0.3])
-        .filled(true)
-        .build();
-    ui.text(text);
+
+    if let Some(ruby_text) = ruby_text {
+        let cx = x + w / 2.0 - ruby_sz[0] / 2.0;
+        draw_list.add_text([cx, y], [1.0, 1.0, 1.0, 1.0], ruby_text);
+    }
+
+    x += w / 2.0 - kanji_sz[0] / 2.0;
+    y += ruby_sz[1];
+
+    if highlight {
+        draw_list
+            .add_rect(
+                [x, y],
+                [x + kanji_sz[0], y + kanji_sz[1]],
+                [0.4, 0.6, 0.8, 0.3],
+            )
+            .filled(true)
+            .build();
+    }
+
+    let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
+    draw_list.add_text([x, y], [1.0, 1.0, 1.0, 1.0], text);
+    drop(_kanji_font_token);
+
+    ui.dummy([w, h]);
 }
 
-fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
+fn wrap_line(ui: &Ui, env: &Env, text: &str, style: TextStyle) -> bool {
+    let _font_token = ui.push_font(env.get_font(style));
+    let expected_width = ui.calc_text_size(text)[0];
+    drop(_font_token);
+
     let visible_x = ui.window_pos()[0] + ui.window_content_region_max()[0];
     let last_x = ui.item_rect_max()[0];
     let style = ui.clone_style();
@@ -36,13 +85,15 @@ fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct RikaiView {
     root: Root,
+    kanji_info: HashMap<char, Kanji>,
     jmdict_data: JmDictData,
     show_term_window: RefCell<HashSet<Romanized>>,
 }
 impl RikaiView {
-    pub fn new(root: Root, jmdict_data: JmDictData) -> Self {
+    pub fn new(root: Root, kanji_info: HashMap<char, Kanji>, jmdict_data: JmDictData) -> Self {
         Self {
             root,
+            kanji_info,
             jmdict_data,
             show_term_window: RefCell::new(HashSet::new()),
         }
@@ -51,36 +102,50 @@ impl RikaiView {
     fn term_window(&self, env: &mut Env, ui: &Ui, romanized: &Romanized) -> bool {
         let mut opened = true;
         Window::new(&format!("{}", romanized.term().text()))
-            // .size([300.0, 0.0], Condition::Appearing)
             .size_constraints([300.0, 100.0], [1000.0, 1000.0])
             .save_settings(false)
             .focus_on_appearing(true)
             .opened(&mut opened)
             .build(ui, || {
-                TermView::new(&self.jmdict_data, romanized, 0.0).ui(env, ui);
+                TermView::new(&self.jmdict_data, &self.kanji_info, romanized, 0.0).ui(env, ui);
             });
         opened
     }
 
     fn term_tooltip(&self, env: &mut Env, ui: &Ui, romanized: &Romanized) {
-        ui.tooltip(|| TermView::new(&self.jmdict_data, romanized, 30.0).ui(env, ui));
+        ui.tooltip(|| {
+            TermView::new(&self.jmdict_data, &self.kanji_info, romanized, 30.0).ui(env, ui)
+        });
     }
 
-    fn add_skipped(&self, env: &mut Env, ui: &Ui, skipped: &str) {
-        let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
-        wrap_line(ui, ui.calc_text_size(skipped)[0]);
-        ui.text(skipped);
+    fn add_skipped(&self, env: &mut Env, ui: &Ui, skipped: &str, ruby_text: RubyTextType) {
+        wrap_line(ui, env, skipped, TextStyle::Kanji);
+        draw_kanji_text(
+            ui,
+            env,
+            skipped,
+            false,
+            ruby_text != RubyTextType::None,
+            None,
+        );
     }
 
-    fn add_romanized(&self, env: &mut Env, ui: &Ui, romanized: &Romanized) {
+    fn add_romanized(
+        &self,
+        env: &mut Env,
+        ui: &Ui,
+        romanized: &Romanized,
+        ruby_text: RubyTextType,
+    ) {
         let term = romanized.term();
 
-        {
-            let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
-            wrap_line(ui, ui.calc_text_size(term.text())[0]);
-            // draw red box behind term
-            highlight_text(ui, term.text());
-        }
+        wrap_line(ui, env, term.text(), TextStyle::Kanji);
+        let fg_text = match ruby_text {
+            RubyTextType::None => None,
+            RubyTextType::Furigana => Some(term.kana()),
+            RubyTextType::Romaji => Some(romanized.romaji()),
+        };
+        draw_kanji_text(ui, env, term.text(), true, false, fg_text);
 
         if ui.is_item_hovered() {
             ui.set_mouse_cursor(Some(MouseCursor::Hand));
@@ -93,29 +158,29 @@ impl RikaiView {
         }
     }
 
-    fn add_segment(&self, env: &mut Env, ui: &Ui, segment: &Segment) {
+    fn add_segment(&self, env: &mut Env, ui: &Ui, segment: &Segment, ruby_text: RubyTextType) {
         match segment {
             Segment::Skipped(skipped) => {
-                self.add_skipped(env, ui, skipped);
+                self.add_skipped(env, ui, skipped, ruby_text);
             }
             Segment::Clauses(clauses) => {
                 if let Some(clause) = clauses.first() {
                     for romanized in clause.romanized() {
-                        self.add_romanized(env, ui, romanized);
+                        self.add_romanized(env, ui, romanized, ruby_text);
                     }
                 }
             }
         }
     }
 
-    fn add_root(&self, env: &mut Env, ui: &Ui, root: &Root) {
+    fn add_root(&self, env: &mut Env, ui: &Ui, root: &Root, ruby_text: RubyTextType) {
         for segment in root.segments() {
-            self.add_segment(env, ui, segment);
+            self.add_segment(env, ui, segment, ruby_text);
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui, show_raw: &mut bool) {
-        self.add_root(env, ui, &self.root);
+    pub fn ui(&mut self, env: &mut Env, ui: &Ui, show_raw: &mut bool, ruby_text: RubyTextType) {
+        self.add_root(env, ui, &self.root, ruby_text);
         if *show_raw {
             Window::new("Raw")
                 .size([300., 110.], Condition::FirstUseEver)
@@ -134,13 +199,20 @@ impl RikaiView {
 
 pub struct TermView<'a> {
     jmdict_data: &'a JmDictData,
+    kanji_info: &'a HashMap<char, Kanji>,
     romaji: &'a Romanized,
     wrap_x: f32,
 }
 impl<'a> TermView<'a> {
-    pub fn new(jmdict_data: &'a JmDictData, romaji: &'a Romanized, wrap_w: f32) -> Self {
+    pub fn new(
+        jmdict_data: &'a JmDictData,
+        kanji_info: &'a HashMap<char, Kanji>,
+        romaji: &'a Romanized,
+        wrap_w: f32,
+    ) -> Self {
         Self {
             jmdict_data,
+            kanji_info,
             romaji,
             wrap_x: wrap_w,
         }
@@ -185,13 +257,31 @@ impl<'a> TermView<'a> {
         }
     }
 
+    fn kanji_tooltip(&self, env: &mut Env, ui: &Ui, kanji: &Kanji) {
+        ui.tooltip(|| KanjiView::new(kanji, 25.0).ui(env, ui));
+    }
+
     fn add_word(&self, env: &mut Env, ui: &Ui, word: &Word, romaji: &str, show_kanji: bool) {
         let meta = word.meta();
 
         if show_kanji {
             {
-                let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
-                ui.text(meta.text());
+                for chr in meta.text().chars() {
+                    let kanji = self.kanji_info.get(&chr);
+                    {
+                        let _style_token = ui.push_style_var(StyleVar::ItemSpacing([2.0, 4.0]));
+                        let text = format!("{}", chr);
+                        ui.same_line();
+                        draw_kanji_text(ui, env, &text, kanji != None, false, None);
+                    }
+
+                    if let Some(kanji) = kanji {
+                        if ui.is_item_hovered() {
+                            // ui.set_mouse_cursor(Some(MouseCursor::Hand));
+                            self.kanji_tooltip(env, ui, &kanji);
+                        }
+                    }
+                }
             }
             if meta.kana() != meta.text() {
                 ui.text_colored([0.7, 0.7, 0.7, 1.0], "[?]");
@@ -305,10 +395,7 @@ impl<'a> TermView<'a> {
     }
 
     fn ui(&mut self, env: &mut Env, ui: &Ui) {
-        let _body_font_token = ui.push_font(env.get_font(TextStyle::Body));
         let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_x);
-        // ui.text(self.romaji.romaji());
-        // ui.separator();
         self.add_term(env, ui, self.romaji.term(), self.romaji.romaji(), true);
     }
 }

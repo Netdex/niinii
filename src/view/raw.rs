@@ -1,4 +1,4 @@
-use ichiran::types::*;
+use ichiran::romanize::*;
 use imgui::*;
 
 use super::id;

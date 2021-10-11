@@ -33,6 +33,8 @@ i.e. Completed roadmap items
 - Auto-clipboard
 - Injection and D3D9 hook
 - Automatic Postgres daemon
+- Ruby text (furigana, romaji)
+- Kanji lookup
 
 ## Build
 TODO

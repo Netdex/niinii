@@ -11,13 +11,13 @@ edition = "2018"
 # imgui-sys = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
 # imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
 # imgui-glow-renderer = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
-imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
-# imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
-# imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
+# imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
+# imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
+imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
+imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
 
 [dependencies]
-imgui = "0.8"
+imgui = { version = "0.8", features = ["tables-api"] }
 imgui-winit-support = "0.8"
 clipboard = "0.5"
 imgui-glow-renderer = "0.8"
@@ -47,12 +47,17 @@ raw-window-handle = "0.3"
 winit = "0.25"
 detour = { version = "0.8", default-features = false }
 
+log = "0.4"
+env_logger = "0.8.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 lazy_static = "1.4.0"
-log = "0.4"
-env_logger = "0.8.4"
-flate2 = { version = "1.0" }
+num-traits = "0.2"
+num-derive = "0.3"
+strum = "0.21"
+strum_macros = "0.21"
+
+flate2 = { version = "1.0", features = ["zlib"], default-features = false }
 
 ichiran = { path = "third-party/ichiran" }
 imgui-win32-sys = { path = "third-party/imgui-win32-sys" }
