@@ -1,8 +1,9 @@
 # niinii
 `This project is a work-in-progress. (I pinky promise to actually finish this one)`
 
-[![image](https://user-images.githubusercontent.com/2091886/135916292-64d1bdc0-db0d-4cd1-a7bc-4e4041464e48.png)](https://streamable.com/oeooyw)
-[Demonstration](https://streamable.com/oeooyw)
+[![image](https://user-images.githubusercontent.com/2091886/136855310-728670e8-706e-40e8-8b60-1a520ac7b44d.png)](https://streamable.com/rpvc9s)
+
+[Demonstration](https://streamable.com/rpvc9s)
 
 Graphical frontend for glossing based on data from [ichiran](https://github.com/tshatrov/ichiran). 
 This is a tool created to service a personal need, and may not be useful to you.
