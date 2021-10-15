@@ -10,7 +10,7 @@ pub struct KwPos {
     pub ents: String,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct JmDictData {
     pub kwpos_by_kw: HashMap<String, KwPos>,
 }

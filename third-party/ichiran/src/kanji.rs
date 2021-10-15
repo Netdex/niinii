@@ -66,7 +66,7 @@ impl Kanji {
             Some(x @ 8) => format!("Grade {} (secondary) jōyō kanji", x),
             Some(x @ 9) => format!("Grade {} jinmeiyō, regular name kanji", x),
             Some(x @ 10) => format!("Grade {} jinmeiyō, jōyō variant kanji", x),
-            _ => "(uncommon) hyōgai kanji".into(),
+            _ => "hyōgai kanji".into(),
         }
     }
 }

@@ -10,13 +10,13 @@ use crate::common::Env;
 use super::mixins;
 
 #[derive(FromPrimitive, EnumString, EnumVariantNames)]
-pub enum RendererType {
+pub enum SupportedRenderer {
     Glow = 0,
     Direct3D11 = 1,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, FromPrimitive, EnumString, EnumVariantNames)]
-pub enum RubyTextType {
+pub enum DisplayRubyText {
     None = 0,
     Furigana = 1,
     Romaji = 2,
@@ -29,10 +29,10 @@ pub struct SettingsView {
     pub on_top: bool,
     pub postgres_path: String,
     pub db_path: String,
-    pub renderer_type_idx: usize,
+    renderer_type_idx: usize,
 
-    pub ruby_text_type_idx: usize,
-    pub kanji: bool,
+    ruby_text_type_idx: usize,
+    pub show_variant_switcher: bool,
 }
 impl SettingsView {
     pub fn ui(&mut self, _env: &mut Env, ui: &Ui) {
@@ -54,7 +54,7 @@ impl SettingsView {
         ui.combo_simple_string(
             "Renderer*",
             &mut self.renderer_type_idx,
-            RendererType::VARIANTS,
+            SupportedRenderer::VARIANTS,
         );
         ui.checkbox("Transparent*", &mut self.transparent);
         ui.same_line();
@@ -72,16 +72,16 @@ impl SettingsView {
         ui.combo_simple_string(
             "Ruby text",
             &mut self.ruby_text_type_idx,
-            RubyTextType::VARIANTS,
+            DisplayRubyText::VARIANTS,
         );
-        ui.checkbox("Kanji lookup (slow)", &mut self.kanji);
+        ui.checkbox("Variant switcher", &mut self.show_variant_switcher);
     }
 
-    pub fn renderer(&self) -> RendererType {
-        RendererType::from_usize(self.renderer_type_idx).unwrap()
+    pub fn active_renderer(&self) -> SupportedRenderer {
+        SupportedRenderer::from_usize(self.renderer_type_idx).unwrap()
     }
 
-    pub fn ruby_text(&self) -> RubyTextType {
-        RubyTextType::from_usize(self.ruby_text_type_idx).unwrap()
+    pub fn display_ruby_text(&self) -> DisplayRubyText {
+        DisplayRubyText::from_usize(self.ruby_text_type_idx).unwrap()
     }
 }

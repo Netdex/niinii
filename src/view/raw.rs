@@ -34,10 +34,12 @@ fn add_segment(ui: &Ui, segment: &Segment) {
     match segment {
         Segment::Skipped(_) => wrap_bullet(ui, &format!("{:?}", segment)),
         Segment::Clauses(clauses) => {
-            for clause in clauses {
-                let _id_token = ui.push_id(id(clause));
-                add_clause(ui, clause);
-            }
+            TreeNode::new("Segment").default_open(true).build(ui, || {
+                for clause in clauses {
+                    let _id_token = ui.push_id(id(clause));
+                    add_clause(ui, clause);
+                }
+            });
         }
     }
 }
@@ -174,14 +176,13 @@ fn add_conj(ui: &Ui, conj: &Conjugation) {
                         add_gloss(ui, gloss);
                     }
                 });
-            if let Some(via) = conj.via() {
-                TreeNode::new(&format!("Via ({})", conj.via().is_some()))
+            for via in conj.vias() {
+                TreeNode::new(&format!("Via"))
                     .default_open(false)
                     .build(ui, || {
                         add_conj(ui, via);
                     });
             }
-
             wrap_bullet(ui, &format!("readok: {}", conj.readok()));
         });
 }

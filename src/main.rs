@@ -1,7 +1,7 @@
 use glutin::platform::windows::WindowBuilderExtWindows;
 use libniinii::{
     app::App,
-    view::settings::{RendererType, SettingsView},
+    view::settings::{SettingsView, SupportedRenderer},
 };
 use std::{
     fs::File,
@@ -32,18 +32,18 @@ fn main() {
         .and_then(|x| serde_json::from_reader(x).ok())
         .unwrap_or_default();
 
-    let renderer = state.renderer();
+    let renderer = state.active_renderer();
     let window = create_window(state.transparent, state.on_top);
 
     let mut app = App::new(state);
 
     match renderer {
-        RendererType::Glow => {
+        SupportedRenderer::Glow => {
             libniinii::backend::glow::main_loop(window, |_opened, env, ui| {
                 app.ui(env, ui);
             });
         }
-        RendererType::Direct3D11 => {
+        SupportedRenderer::Direct3D11 => {
             libniinii::backend::d3d11::main_loop(window, |_opened, env, ui| {
                 app.ui(env, ui);
             });

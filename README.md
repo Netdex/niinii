@@ -21,6 +21,7 @@ much better at segmentation, provides more metadata, and makes fewer mistakes.
 There are some features I'd like to experiment with to improve the glossing experience.
 
 ## Roadmap
+- Display omitted segments
 - Style configuration
 - Distribution
 
@@ -36,9 +37,13 @@ i.e. Completed roadmap items
 - Automatic Postgres daemon
 - Ruby text (furigana, romaji)
 - Kanji lookup
+- Display all clause variants
 
 ## Build
 TODO
+
+## Known Issues
+### High CPU usage when out of focus
 
 ## Troubleshooting
 TODO

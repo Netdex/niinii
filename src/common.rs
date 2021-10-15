@@ -72,16 +72,10 @@ pub fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
                 0x2000, 0x206F, // General Punctuation
                 0x0,
             ]),
-            oversample_h: 2,
+            oversample_h: 1,
             ..Default::default()
         },
     ];
-    let jp_font_config = [FontConfig {
-        rasterizer_multiply: 1.75,
-        glyph_ranges: FontGlyphRanges::japanese(),
-        oversample_h: 2,
-        ..Default::default()
-    }];
     add_font(
         TextStyle::Body,
         SARASA_MONO_J_REGULAR,
@@ -92,7 +86,7 @@ pub fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
         TextStyle::Kanji,
         SARASA_MONO_J_REGULAR,
         40.0,
-        &jp_font_config,
+        &ext_font_config,
     );
     imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 }

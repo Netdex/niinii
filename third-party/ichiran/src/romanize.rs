@@ -9,7 +9,7 @@ use crate::coerce::*;
 // grammatical structures out of my ass.
 
 /// The root of a parse tree.
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Root(Vec<Segment>);
 impl Root {
@@ -20,7 +20,7 @@ impl Root {
 }
 
 /// A segment, representing either a skipped string or a list of candidate clauses.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Segment {
     Skipped(String),
@@ -28,7 +28,7 @@ pub enum Segment {
 }
 
 /// A clause, representing a segmented romanization.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Clause(Vec<Romanized>, i32);
 impl Clause {
@@ -43,7 +43,7 @@ impl Clause {
 }
 
 /// A romanized term along with metadata.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 // TODO not sure what the last field is, maybe for limit != 1
 pub struct Romanized(String, Term, Vec<u8>);
@@ -59,7 +59,7 @@ impl Romanized {
 }
 
 /// A term, representing either a word or a list of alternatives.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Term {
     Word(Word),
@@ -86,7 +86,7 @@ impl Term {
 }
 
 /// An alternative, representing multiple words.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Alternative {
     alternative: Vec<Word>,
 }
@@ -98,7 +98,7 @@ impl Alternative {
 }
 
 /// A word, representing either a plain word or a compound word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Word {
     Plain(Plain),
@@ -114,7 +114,7 @@ impl Word {
 }
 
 /// A plain word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Plain {
     #[serde(flatten)]
@@ -157,7 +157,7 @@ impl Plain {
 }
 
 /// A compound word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Compound {
     #[serde(flatten)]
@@ -182,7 +182,7 @@ impl Compound {
 }
 
 /// Common metadata for a term.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Meta {
     reading: String,
     text: String,
@@ -209,7 +209,7 @@ impl Meta {
 }
 
 /// Gloss for a word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Gloss {
     pos: String,
@@ -243,18 +243,17 @@ impl Gloss {
 }
 
 /// Conjugations for a word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Conjugation {
     prop: Vec<Property>,
     reading: Option<String>,
     #[serde(default)]
     gloss: Vec<Gloss>,
-
     #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "option_seq")]
-    via: Option<Box<Conjugation>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    via: Vec<Box<Conjugation>>,
+    #[serde(deserialize_with = "bool_seq::deserialize")]
     readok: bool,
 }
 impl Conjugation {
@@ -271,27 +270,42 @@ impl Conjugation {
         &self.gloss
     }
     /// Get the source of the conjugation.
-    pub fn via(&self) -> Option<&Conjugation> {
-        self.via.as_deref()
+    pub fn vias(&self) -> Vec<&Conjugation> {
+        self.via.iter().map(Box::as_ref).collect()
     }
     /// TODO no idea what this is
     pub fn readok(&self) -> bool {
         self.readok
     }
-    /// Convert the via chain into a sequence.
-    pub fn flatten(&self) -> Vec<&Conjugation> {
-        let mut vec = vec![self];
-        let mut cur = self;
-        while let Some(via) = cur.via() {
-            vec.insert(0, via);
-            cur = via;
+    /// Convert the via tree into a list of reverse root-to-leaf sequences,
+    /// representing all possible via paths to reach this conjugation.
+    /// e.g.
+    /// The tree with edges
+    ///     [A -> B, B -> C, A -> D]
+    /// is converted to the sequence
+    ///     [C -> B -> A, D -> a]
+    pub fn flatten(&self) -> Vec<Vec<&Conjugation>> {
+        fn chain<'a>(
+            mut head: Vec<&'a Conjugation>,
+            tail: &'a Conjugation,
+        ) -> Vec<Vec<&'a Conjugation>> {
+            head.insert(0, tail);
+            if tail.vias().is_empty() {
+                vec![head]
+            } else {
+                let mut agg = vec![];
+                for via in tail.vias() {
+                    agg.extend(chain(head.clone(), via));
+                }
+                agg
+            }
         }
-        vec
+        chain(vec![], self)
     }
 }
 
 /// Property of a conjugation.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Property {
     /// Part-of-speech
@@ -326,7 +340,7 @@ impl Property {
 }
 
 /// Counter info for a word.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct Counter {
     value: String,
@@ -348,6 +362,7 @@ impl Counter {
 mod tests {
     use super::*;
 
+    /// Part-of-speech split
     #[test]
     fn test_pos_split() {
         let gloss = Gloss {
@@ -358,13 +373,10 @@ mod tests {
         assert_eq!(gloss.pos_split(), vec!["n", "n-adv", "prt"]);
     }
 
+    /// Full match nikaime
     #[test]
     fn test_nikaime() {
-        const ICHIRAN_FULL: &str = r#"[
-			[ [ [ [ "nikaime", { "reading":"2\u56DE\u76EE \u3010\u306B\u304B\u3044\u3081\u3011",
-			"text":"2\u56DE\u76EE", "kana":"\u306B\u304B\u3044\u3081", "score":696, "counter":{
-			"value":"Value: 2nd", "ordinal":true }, "seq":1199330, "gloss":[ { "pos":"[ctr]",
-			"gloss":"counter for occurrences" } ] }, [ ] ] ], 696 ] ] ]"#;
+        const ICHIRAN_FULL: &str = r#"[[[[["nikaime",{"reading":"2回目 【にかいめ】","text":"2回目","kana":"にかいめ","score":696,"counter":{"value":"Value: 2nd","ordinal":true},"seq":1199330,"gloss":[{"pos":"[ctr]","gloss":"counter for occurrences"}]},[]]],696]]]"#;
         let a = serde_json::from_str::<Root>(ICHIRAN_FULL).unwrap();
         let b = Root(vec![Segment::Clauses(vec![Clause(
             vec![Romanized(
@@ -394,5 +406,19 @@ mod tests {
             696,
         )])]);
         assert_eq!(a, b);
+    }
+
+    /// Multiple vias example
+    #[test]
+    fn test_furaseteiru() {
+        const ICHIRAN_FULL: &str = r#"[[[[["furaseteiru",{"reading":"\u964D\u3089\u305B\u3066\u3044\u308B \u3010\u3075\u3089\u305B\u3066\u3044\u308B\u3011","text":"\u964D\u3089\u305B\u3066\u3044\u308B","kana":"\u3075\u3089\u305B\u3066\u3044\u308B","score":704,"compound":["\u964D\u3089\u305B\u3066","\u3044\u308B"],"components":[{"reading":"\u964D\u3089\u305B\u3066 \u3010\u3075\u3089\u305B\u3066\u3011","text":"\u964D\u3089\u305B\u3066","kana":"\u3075\u3089\u305B\u3066","score":0,"seq":10383239,"conj":[{"prop":[{"pos":"v1","type":"Conjunctive (~te)"}],"reading":"\u964D\u3089\u305B\u308B \u3010\u3075\u3089\u305B\u308B\u3011","gloss":[{"pos":"[vt,v1]","gloss":"to send (rain); to shed"}],"readok":true},{"prop":[{"pos":"v1","type":"Conjunctive (~te)"}],"via":[{"prop":[{"pos":"v5s","type":"Potential"}],"reading":"\u964D\u3089\u3059 \u3010\u3075\u3089\u3059\u3011","gloss":[{"pos":"[vt,v5s]","gloss":"to send (rain); to shed"}],"readok":true},{"prop":[{"pos":"v5r","type":"Causative"}],"reading":"\u964D\u308B \u3010\u3075\u308B\u3011","gloss":[{"pos":"[v5r,vi]","gloss":"to fall (of rain, snow, ash, etc.); to come down"},{"pos":"[v5r,vi]","gloss":"to form (of frost)"},{"pos":"[v5r,vi]","gloss":"to beam down (of sunlight or moonlight); to pour in"},{"pos":"[vi,v5r]","gloss":"to visit (of luck, misfortune, etc.); to come; to arrive"}],"readok":true}],"readok":true}]},{"reading":"\u3044\u308B","text":"\u3044\u308B","kana":"\u3044\u308B","score":0,"seq":1577980,"suffix":"indicates continuing action (to be ...ing)","conj":[]}]},[]]],704]]]"#;
+        let _root = serde_json::from_str::<Root>(ICHIRAN_FULL).unwrap();
+    }
+
+    /// readok false example
+    #[test]
+    fn test_naidesho() {
+        const ICHIRAN_FULL: &str = r#"[[[[["nai desho",{"alternative":[{"reading":"\u306A\u3044\u3067\u3057\u3087","text":"\u306A\u3044\u3067\u3057\u3087","kana":"\u306A\u3044 \u3067\u3057\u3087","score":430,"compound":["\u306A\u3044","\u3067\u3057\u3087"],"components":[{"reading":"\u306A\u3044","text":"\u306A\u3044","kana":"\u306A\u3044","score":0,"seq":10560524,"conj":[{"prop":[{"pos":"v5r-i","type":"Non-past","neg":true}],"reading":"\u5728\u308B \u3010\u3042\u308B\u3011","gloss":[{"pos":"[v5r-i,vi]","gloss":"to be; to exist; to live","info":"usu. of inanimate objects"},{"pos":"[v5r-i,vi]","gloss":"to have"},{"pos":"[v5r-i,vi]","gloss":"to be located"},{"pos":"[v5r-i,vi]","gloss":"to be equipped with"},{"pos":"[vi,v5r-i]","gloss":"to happen; to come about"}],"readok":true}]},{"reading":"\u3067\u3057\u3087","text":"\u3067\u3057\u3087","kana":"\u3067\u3057\u3087","score":0,"seq":1008420,"suffix":"it seems/perhaps/don't you think?","conj":[{"prop":[{"pos":"cop","type":"Volitional","fml":true}],"reading":"\u3060","gloss":[{"pos":"[cop,cop-da]","gloss":"be; is","info":"plain copula"}],"readok":[]}]}]},{"reading":"\u306A\u3044\u3067\u3057\u3087","text":"\u306A\u3044\u3067\u3057\u3087","kana":"\u306A\u3044 \u3067\u3057\u3087","score":313,"compound":["\u306A\u3044","\u3067\u3057\u3087"],"components":[{"reading":"\u306A\u3044","text":"\u306A\u3044","kana":"\u306A\u3044","score":0,"seq":10625233,"conj":[{"prop":[{"pos":"v5u","type":"Continuative (~i)"}],"reading":"\u7DAF\u3046 \u3010\u306A\u3046\u3011","gloss":[{"pos":"[v5u]","gloss":"to twine (fibers to make rope); to twist"}],"readok":true}]},{"reading":"\u3067\u3057\u3087","text":"\u3067\u3057\u3087","kana":"\u3067\u3057\u3087","score":0,"seq":1008420,"suffix":"it seems/perhaps/don't you think?","conj":[{"prop":[{"pos":"cop","type":"Volitional","fml":true}],"reading":"\u3060","gloss":[{"pos":"[cop,cop-da]","gloss":"be; is","info":"plain copula"}],"readok":[]}]}]}]},[]]],430],[[["nai",{"alternative":[{"reading":"\u306A\u3044","text":"\u306A\u3044","kana":"\u306A\u3044","score":40,"seq":10560524,"conj":[{"prop":[{"pos":"v5r-i","type":"Non-past","neg":true}],"reading":"\u5728\u308B \u3010\u3042\u308B\u3011","gloss":[{"pos":"[v5r-i,vi]","gloss":"to be; to exist; to live","info":"usu. of inanimate objects"},{"pos":"[v5r-i,vi]","gloss":"to have"},{"pos":"[v5r-i,vi]","gloss":"to be located"},{"pos":"[v5r-i,vi]","gloss":"to be equipped with"},{"pos":"[vi,v5r-i]","gloss":"to happen; to come about"}],"readok":true}]},{"reading":"\u306A\u3044","text":"\u306A\u3044","kana":"\u306A\u3044","score":40,"seq":1529520,"gloss":[{"pos":"[adj-i]","gloss":"nonexistent; not being (there)"},{"pos":"[adj-i]","gloss":"unowned; not had; unpossessed"},{"pos":"[adj-i]","gloss":"unique"},{"pos":"[adj-i]","gloss":"not; impossible; won't happen","info":"as ...\u3053\u3068\u304C\u306A\u3044, etc.; indicates negation, inexperience, unnecessariness or impossibility"},{"pos":"[aux-adj]","gloss":"not","info":"after the ren'youkei form of an adjective"},{"pos":"[aux-adj]","gloss":"to not be; to have not","info":"after the -te form of a verb"}],"conj":[]}]},[]],["desho",{"reading":"\u3067\u3057\u3087","text":"\u3067\u3057\u3087","kana":"\u3067\u3057\u3087","score":12,"seq":1008420,"gloss":[{"pos":"[exp]","gloss":"it seems; I think; I guess; I wonder"},{"pos":"[exp]","gloss":"right?; don't you agree?"}],"conj":[]},[]]],52],[[["na",{"reading":"\u306A","text":"\u306A","kana":"\u306A","score":6,"seq":2029110,"gloss":[{"pos":"[prt]","gloss":"don't","info":"prohibitive; used with dictionary form verb"},{"pos":"[prt]","gloss":"do","info":"imperative (from \u306A\u3055\u3044); used with -masu stem of verb"},{"pos":"[int]","gloss":"hey; listen; you"},{"pos":"[prt]","gloss":"now, ...; well, ...; I tell you!; you know","info":"when seeking confirmation, for emphasis, etc.; used at sentence end"},{"pos":"[prt]","gloss":"wow; ooh","info":"used to express admiration, emotionality, etc.; used at sentence end"},{"pos":"[prt]","gloss":"indicates \u306A-adjective"}],"conj":[]},[]],["i",{"reading":"\u3044","text":"\u3044","kana":"\u3044","score":0},[]],["desho",{"reading":"\u3067\u3057\u3087","text":"\u3067\u3057\u3087","kana":"\u3067\u3057\u3087","score":12,"seq":1008420,"gloss":[{"pos":"[exp]","gloss":"it seems; I think; I guess; I wonder"},{"pos":"[exp]","gloss":"right?; don't you agree?"}],"conj":[]},[]]],-482],[[["naide",{"reading":"\u306A\u3044\u3067","text":"\u306A\u3044\u3067","kana":"\u306A\u3044\u3067","score":90,"seq":10560532,"conj":[{"prop":[{"pos":"v5r-i","type":"Conjunctive (~te)","neg":true}],"reading":"\u5728\u308B \u3010\u3042\u308B\u3011","gloss":[{"pos":"[v5r-i,vi]","gloss":"to be; to exist; to live","info":"usu. of inanimate objects"},{"pos":"[v5r-i,vi]","gloss":"to have"},{"pos":"[v5r-i,vi]","gloss":"to be located"},{"pos":"[v5r-i,vi]","gloss":"to be equipped with"},{"pos":"[vi,v5r-i]","gloss":"to happen; to come about"}],"readok":true}]},[]],["sho",{"reading":"\u3057\u3087","text":"\u3057\u3087","kana":"\u3057\u3087","score":0},[]]],-910],[[["nai",{"alternative":[{"reading":"\u306A\u3044","text":"\u306A\u3044","kana":"\u306A\u3044","score":40,"seq":10560524,"conj":[{"prop":[{"pos":"v5r-i","type":"Non-past","neg":true}],"reading":"\u5728\u308B \u3010\u3042\u308B\u3011","gloss":[{"pos":"[v5r-i,vi]","gloss":"to be; to exist; to live","info":"usu. of inanimate objects"},{"pos":"[v5r-i,vi]","gloss":"to have"},{"pos":"[v5r-i,vi]","gloss":"to be located"},{"pos":"[v5r-i,vi]","gloss":"to be equipped with"},{"pos":"[vi,v5r-i]","gloss":"to happen; to come about"}],"readok":true}]},{"reading":"\u306A\u3044","text":"\u306A\u3044","kana":"\u306A\u3044","score":40,"seq":1529520,"gloss":[{"pos":"[adj-i]","gloss":"nonexistent; not being (there)"},{"pos":"[adj-i]","gloss":"unowned; not had; unpossessed"},{"pos":"[adj-i]","gloss":"unique"},{"pos":"[adj-i]","gloss":"not; impossible; won't happen","info":"as ...\u3053\u3068\u304C\u306A\u3044, etc.; indicates negation, inexperience, unnecessariness or impossibility"},{"pos":"[aux-adj]","gloss":"not","info":"after the ren'youkei form of an adjective"},{"pos":"[aux-adj]","gloss":"to not be; to have not","info":"after the -te form of a verb"}],"conj":[]}]},[]],["de",{"reading":"\u3067","text":"\u3067","kana":"\u3067","score":11,"seq":2028980,"gloss":[{"pos":"[prt]","gloss":"at; in","info":"indicates location of action; \u306B\u3066 is the formal literary form"},{"pos":"[prt]","gloss":"at; when","info":"indicates time of action"},{"pos":"[prt]","gloss":"by; with","info":"indicates means of action"},{"pos":"[conj]","gloss":"and then; so"},{"pos":"[aux]","gloss":"and; then","info":"indicates continuing action; alternative form of \u301C\u3066 used for some verb types"},{"pos":"[prt]","gloss":"let me tell you; don't you know","info":"at sentence-end; indicates certainty, emphasis, etc."}],"conj":[{"prop":[{"pos":"cop","type":"Conjunctive (~te)"}],"reading":"\u3060","gloss":[{"pos":"[cop,cop-da]","gloss":"be; is","info":"plain copula"}],"readok":true}]},[]],["sho",{"reading":"\u3057\u3087","text":"\u3057\u3087","kana":"\u3057\u3087","score":0},[]]],-949]]]"#;
+        let _root = serde_json::from_str::<Root>(ICHIRAN_FULL).unwrap();
     }
 }

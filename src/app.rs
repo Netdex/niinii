@@ -44,7 +44,10 @@ pub struct App {
     show_imgui_demo: bool,
     show_settings: bool,
     show_raw: bool,
+    show_metrics_window: bool,
+    show_style_editor: bool,
 
+    ichiran: Ichiran,
     settings: SettingsView,
     state: State,
     _pg_daemon: Option<PostgresDaemon>,
@@ -53,7 +56,7 @@ pub struct App {
 impl App {
     pub fn new(settings: SettingsView) -> Self {
         let (channel_tx, channel_rx) = mpsc::channel();
-        let ichiran = Ichiran::new(&settings.ichiran_path);
+        let ichiran = Ichiran::new(settings.ichiran_path.clone());
         let pg_daemon = match ichiran.conn_params() {
             Ok(conn_params) => {
                 let pg_daemon =
@@ -74,6 +77,9 @@ impl App {
             show_imgui_demo: false,
             show_settings: false,
             show_raw: false,
+            show_metrics_window: false,
+            show_style_editor: false,
+            ichiran,
             settings,
             state: State::None,
             _pg_daemon: pg_daemon,
@@ -82,17 +88,19 @@ impl App {
 
     fn request_ast(&mut self, ui: &Ui, text: &str) {
         log::trace!("request_ast({})", text);
-        let ichiran_path = self.settings.ichiran_path.clone();
         let text = text.to_owned();
         let channel_tx = self.channel_tx.clone();
 
         self.transition(ui, State::Processing);
 
-        thread::spawn(move || {
-            let ichiran = Ichiran::new(ichiran_path.as_str());
+        let ichiran = &self.ichiran;
+        thread::spawn(enclose! { (ichiran) move || {
             let result = (|| {
-                let root = ichiran.romanize(&text)?;
+                let root =
+                    thread::spawn(enclose! { (ichiran, text) move || ichiran.romanize(&text, 5) });
                 let kanji_info = ichiran.kanji_from_str(&text)?;
+                let root = root.join().unwrap()?;
+
                 Ok(IchiranAst {
                     root,
                     kanji_info,
@@ -100,12 +108,13 @@ impl App {
                 })
             })();
             let _ = channel_tx.send(Message::Ichiran(result));
-        });
+        }});
     }
 
     fn transition(&mut self, ui: &Ui, state: State) {
         match &state {
-            State::Error { .. } => {
+            State::Error { err } => {
+                log::error!("{}", err);
                 ui.open_popup(ERROR_MODAL_TITLE);
             }
             _ => (),
@@ -130,7 +139,7 @@ impl App {
             }
             Err(mpsc::TryRecvError::Empty) => {}
             x => {
-                panic!("{:?}", x);
+                log::error!("unhandled message: {:?}", x);
             }
         }
     }
@@ -146,8 +155,14 @@ impl App {
                 }
             }
             if let Some(_menu) = ui.begin_menu("View") {
-                if MenuItem::new("Show Raw").build(ui) {
+                if MenuItem::new("Raw").build(ui) {
                     self.show_raw = true;
+                }
+                if MenuItem::new("Style Editor").build(ui) {
+                    self.show_style_editor = true;
+                }
+                if MenuItem::new("Debugger").build(ui) {
+                    self.show_metrics_window = true;
                 }
                 if MenuItem::new("ImGui Demo").build(ui) {
                     self.show_imgui_demo = true;
@@ -175,12 +190,17 @@ impl App {
     }
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
-        self.show_main_menu(env, ui);
-
+        let io = ui.io();
         Window::new("niinii")
-            .size([300.0, 110.0], Condition::FirstUseEver)
+            .position([0.0, 20.0], Condition::Always)
+            .size(io.display_size, Condition::Always)
+            .flags(
+                WindowFlags::NO_DECORATION | WindowFlags::NO_COLLAPSE | WindowFlags::NO_TITLE_BAR,
+            )
+            .bring_to_front_on_focus(false)
             .build(ui, || {
                 {
+                    self.show_main_menu(env, ui);
                     let trunc =
                         str_from_u8_nul_utf8_unchecked(self.input_text.as_bytes()).to_owned();
                     let _token = ui.begin_disabled(matches!(self.state, State::Processing));
@@ -204,17 +224,16 @@ impl App {
                     }
                 }
 
+                ui.separator();
+                match &mut self.state {
+                    State::Displaying { rikai, .. } => {
+                        rikai.ui(env, ui, &self.settings, &mut self.show_raw);
+                    }
+                    _ => (),
+                }
+
                 self.show_error_modal(env, ui);
                 self.poll(ui);
-            });
-
-        Window::new("Rikai")
-            .size([300., 110.], Condition::FirstUseEver)
-            .build(ui, || match &mut self.state {
-                State::Displaying { rikai, .. } => {
-                    rikai.ui(env, ui, &mut self.show_raw, self.settings.ruby_text());
-                }
-                _ => (),
             });
 
         if self.show_imgui_demo {
@@ -223,9 +242,9 @@ impl App {
 
         if self.show_settings {
             Window::new("Settings")
-                .size([300.0, 110.0], Condition::FirstUseEver)
+                // .size([300.0, 110.0], Condition::FirstUseEver)
                 .always_auto_resize(true)
-                .resizable(false)
+                // .resizable(false)
                 .build(ui, || {
                     self.settings.ui(env, ui);
                     ui.separator();
@@ -234,6 +253,18 @@ impl App {
                     }
                     ui.same_line();
                     ui.text("* Restart to apply these changes");
+                });
+        }
+
+        if self.show_metrics_window {
+            ui.show_metrics_window(&mut self.show_metrics_window);
+        }
+
+        if self.show_style_editor {
+            Window::new("Style Editor")
+                .opened(&mut self.show_style_editor)
+                .build(ui, || {
+                    ui.show_default_style_editor();
                 });
         }
 

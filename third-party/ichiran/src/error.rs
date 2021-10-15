@@ -18,7 +18,7 @@ pub enum IchiranError {
     #[error("CSV Error: {0}")]
     CsvError(#[from] csv::Error),
     #[error("Lisp Error:\n{0}")]
-    KetosError(String)
+    KetosError(String),
 }
 
 // ketos::Error is non-Send so we need to serialize it.

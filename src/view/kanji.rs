@@ -21,9 +21,12 @@ impl<'a> KanjiView<'a> {
         ui.group(|| {
             if let Some(freq) = kanji.freq() {
                 ui.text(format!("#{}/2501 most common", freq));
+            } else {
+                ui.text(format!("Uncommon"));
             }
+            ui.same_line();
             ui.text(format!(
-                "{} stroke{}",
+                "({} stroke{})",
                 kanji.stroke_count(),
                 if kanji.stroke_count() != 1 { "s" } else { "" }
             ));
@@ -33,7 +36,7 @@ impl<'a> KanjiView<'a> {
         ui.same_line();
         ui.text_wrapped(format!("{}", kanji.meanings().join(", ")));
 
-        if let Some(_t) = ui.begin_table_header_with_flags(
+        if let Some(_t) = ui.begin_table_header(
             "readings",
             [
                 TableColumnSetup::new("Type"),
@@ -42,7 +45,6 @@ impl<'a> KanjiView<'a> {
                 TableColumnSetup::new("Okuri"),
                 TableColumnSetup::new("Frequency"),
             ],
-            TableFlags::SIZING_STRETCH_PROP,
         ) {
             for reading in kanji.readings() {
                 ui.table_next_column();
