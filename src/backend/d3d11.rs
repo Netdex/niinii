@@ -137,54 +137,57 @@ where
 
     let mut last_frame = Instant::now();
 
-    event_loop.run_return(move |event, _, control_flow| match event {
-        Event::NewEvents(_) => {
-            let now = Instant::now();
-            imgui.io_mut().update_delta_time(now - last_frame);
-            last_frame = now;
-        }
-        Event::MainEventsCleared => {
-            let io = imgui.io_mut();
-            platform
-                .prepare_frame(io, &window)
-                .expect("Failed to start frame");
-            window.request_redraw();
-        }
-        Event::RedrawRequested(_) => {
-            unsafe {
-                context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
-                context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
+    event_loop.run_return(move |event, _, control_flow| {
+        // *control_flow = ControlFlow::Wait;
+        match event {
+            Event::NewEvents(_) => {
+                let now = Instant::now();
+                imgui.io_mut().update_delta_time(now - last_frame);
+                last_frame = now;
             }
-            let mut ui = imgui.frame();
+            Event::MainEventsCleared => {
+                let io = imgui.io_mut();
+                platform
+                    .prepare_frame(io, &window)
+                    .expect("Failed to start frame");
+                window.request_redraw();
+            }
+            Event::RedrawRequested(_) => {
+                unsafe {
+                    context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
+                    context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
+                }
+                let mut ui = imgui.frame();
 
-            let mut run = true;
-            run_ui(&mut run, &mut env, &mut ui);
-            if !run {
-                *control_flow = ControlFlow::Exit;
-            }
+                let mut run = true;
+                run_ui(&mut run, &mut env, &mut ui);
+                if !run {
+                    *control_flow = ControlFlow::Exit;
+                }
 
-            platform.prepare_render(&ui, &window);
-            renderer.render(ui.render()).unwrap();
-            unsafe {
-                swapchain.Present(1, 0);
+                platform.prepare_render(&ui, &window);
+                renderer.render(ui.render()).unwrap();
+                unsafe {
+                    swapchain.Present(1, 0);
+                }
             }
-        }
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => *control_flow = winit::event_loop::ControlFlow::Exit,
-        Event::WindowEvent {
-            event: WindowEvent::Resized(winit::dpi::PhysicalSize { height, width }),
-            ..
-        } => unsafe {
-            ptr::drop_in_place(&mut main_rtv);
-            swapchain.ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-            ptr::write(&mut main_rtv, create_render_target(&swapchain, &device));
-            platform.handle_event(imgui.io_mut(), &window, &event);
-        },
-        Event::LoopDestroyed => (),
-        event => {
-            platform.handle_event(imgui.io_mut(), &window, &event);
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *control_flow = winit::event_loop::ControlFlow::Exit,
+            Event::WindowEvent {
+                event: WindowEvent::Resized(winit::dpi::PhysicalSize { height, width }),
+                ..
+            } => unsafe {
+                ptr::drop_in_place(&mut main_rtv);
+                swapchain.ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+                ptr::write(&mut main_rtv, create_render_target(&swapchain, &device));
+                platform.handle_event(imgui.io_mut(), &window, &event);
+            },
+            Event::LoopDestroyed => (),
+            event => {
+                platform.handle_event(imgui.io_mut(), &window, &event);
+            }
         }
     });
 }

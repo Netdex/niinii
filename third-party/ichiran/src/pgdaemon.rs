@@ -1,26 +1,47 @@
 use std::{
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
-use ichiran::ConnParams;
-
-use crate::job::{self, JobObject};
+use crate::{
+    job::{self, JobObject},
+    ConnParams,
+};
 
 pub struct PostgresDaemon {
-    pg_bin_dir: String,
-    data_path: String,
+    pg_bin_dir: PathBuf,
+    data_path: PathBuf,
     pg_proc: Result<std::process::Child, std::io::Error>,
     _job_obj: Option<JobObject>,
+    silent: bool,
 }
 impl PostgresDaemon {
-    pub fn new(pg_bin_dir: &str, data_path: &str, conn_params: ConnParams) -> Self {
+    pub fn new<N: Into<PathBuf>, M: Into<PathBuf>>(
+        pg_bin_dir: N,
+        data_path: M,
+        conn_params: ConnParams,
+        silent: bool,
+    ) -> Self {
+        let pg_bin_dir = pg_bin_dir.into();
+        let data_path = data_path.into();
+
         let job_obj = job::setup();
-        log::info!("starting pg daemon in {} at {}", pg_bin_dir, data_path);
-        let postgres_bin_path = Self::pg_bin_path(pg_bin_dir, "postgres");
-        let proc = Command::new(postgres_bin_path)
-            .args(["-D", data_path, "-p", &format!("{}", conn_params.port)])
-            .spawn();
+        log::info!(
+            "starting pg daemon in {:?} at {:?}",
+            &pg_bin_dir,
+            &data_path
+        );
+        let postgres_bin_path = Self::pg_bin_path(&pg_bin_dir, "postgres");
+
+        let mut proc = Command::new(postgres_bin_path);
+        let mut proc = proc
+            .args(["-p", &format!("{}", conn_params.port)])
+            .arg("-D")
+            .arg(&data_path);
+        if silent {
+            proc = proc.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+        let proc = proc.spawn();
 
         match &proc {
             Ok(proc) => {
@@ -32,16 +53,17 @@ impl PostgresDaemon {
         }
 
         PostgresDaemon {
-            pg_bin_dir: pg_bin_dir.to_owned(),
-            data_path: data_path.to_owned(),
+            pg_bin_dir,
+            data_path,
             pg_proc: proc,
             _job_obj: job_obj,
+            silent,
         }
     }
-    fn pg_bin_path(pg_bin_dir: &str, name: &str) -> PathBuf {
-        let mut bin = PathBuf::from(name);
+    fn pg_bin_path<N: AsRef<Path>, M: Into<PathBuf>>(pg_bin_dir: N, name: M) -> PathBuf {
+        let mut bin = name.into();
         bin.set_extension(std::env::consts::EXE_EXTENSION);
-        Path::new(pg_bin_dir).join(bin)
+        pg_bin_dir.as_ref().join(bin)
     }
 }
 impl Drop for PostgresDaemon {
@@ -52,9 +74,14 @@ impl Drop for PostgresDaemon {
                 Ok(None) => {
                     log::info!("stopping pg daemon w/ pid {}", pg_proc.id());
                     let pgctl_bin_path = Self::pg_bin_path(&self.pg_bin_dir, "pg_ctl");
-                    let pgctl_proc = Command::new(pgctl_bin_path)
-                        .args(["-D", &self.data_path, "stop"])
-                        .spawn();
+
+                    let mut pgctl_proc = Command::new(pgctl_bin_path);
+                    let mut pgctl_proc = pgctl_proc.arg("-D").arg(&self.data_path).arg("stop");
+                    if self.silent {
+                        pgctl_proc = pgctl_proc.stdout(Stdio::null()).stderr(Stdio::null());
+                    }
+                    let pgctl_proc = pgctl_proc.spawn();
+
                     match pgctl_proc {
                         Ok(mut pgctl_proc) => {
                             // TODO: there's a case where we crash after pg is

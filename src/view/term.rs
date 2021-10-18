@@ -5,6 +5,7 @@ use imgui::*;
 
 use super::kanji::KanjiView;
 use super::mixins::*;
+use super::settings::SettingsView;
 use crate::common::Env;
 
 pub struct TermView<'a> {
@@ -71,7 +72,15 @@ impl<'a> TermView<'a> {
         ui.tooltip(|| KanjiView::new(kanji, 25.0).ui(env, ui));
     }
 
-    fn add_word(&self, env: &mut Env, ui: &Ui, word: &Word, romaji: &str, show_kanji: bool) {
+    fn add_word(
+        &self,
+        env: &mut Env,
+        ui: &Ui,
+        settings: &SettingsView,
+        word: &Word,
+        romaji: &str,
+        show_kanji: bool,
+    ) {
         let meta = word.meta();
 
         if show_kanji {
@@ -94,19 +103,15 @@ impl<'a> TermView<'a> {
 
                     if let Some(kanji) = kanji {
                         if ui.is_item_hovered() {
-                            // ui.set_mouse_cursor(Some(MouseCursor::Hand));
                             self.kanji_tooltip(env, ui, &kanji);
                         }
                     }
                 }
             }
             if meta.kana() != meta.text() {
-                ui.text_colored([0.7, 0.7, 0.7, 1.0], "[?]");
-                ui.same_line();
-                ui.text(meta.kana());
-                if ui.is_item_hovered() {
-                    ui.tooltip_text(romaji);
-                }
+                ui.text(format!("{}\u{ff0f}{}", meta.kana(), romaji));
+            } else {
+                ui.text(romaji);
             }
         }
 
@@ -139,22 +144,30 @@ impl<'a> TermView<'a> {
                     TreeNode::new(&format!("{}", component.text()))
                         .default_open(true)
                         .build(ui, || {
-                            self.add_term(env, ui, component, romaji, false);
+                            self.add_term(env, ui, settings, component, romaji, false);
                         });
                 }
             }
         }
     }
 
-    fn add_term(&self, env: &mut Env, ui: &Ui, term: &Term, romaji: &str, show_kanji: bool) {
+    fn add_term(
+        &self,
+        env: &mut Env,
+        ui: &Ui,
+        settings: &SettingsView,
+        term: &Term,
+        romaji: &str,
+        show_kanji: bool,
+    ) {
         match term {
-            Term::Word(word) => self.add_word(env, ui, word, romaji, show_kanji),
+            Term::Word(word) => self.add_word(env, ui, settings, word, romaji, show_kanji),
             Term::Alternative(alt) => {
                 for (idx, word) in alt.alts().iter().enumerate() {
                     if idx != 0 {
                         ui.separator();
                     }
-                    self.add_word(env, ui, word, romaji, true);
+                    self.add_word(env, ui, settings, word, romaji, true);
                 }
             }
         }
@@ -212,8 +225,15 @@ impl<'a> TermView<'a> {
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
+    pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_x);
-        self.add_term(env, ui, self.romaji.term(), self.romaji.romaji(), true);
+        self.add_term(
+            env,
+            ui,
+            settings,
+            self.romaji.term(),
+            self.romaji.romaji(),
+            true,
+        );
     }
 }

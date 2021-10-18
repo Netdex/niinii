@@ -20,5 +20,13 @@ lazy_static = "1.4.0"
 strum = "0.21"
 strum_macros = "0.21"
 
+winapi = { version = "0.3", features = [
+	"minwindef",
+	"windef",
+	"winnt",
+	"winuser",
+	"jobapi2",
+] }
+
 [dev-dependencies]
 serde_path_to_error = "0.1"

@@ -5,11 +5,11 @@ use std::thread;
 use ichiran::{kanji::Kanji, romanize::Root, Ichiran, IchiranError, JmDictData};
 use imgui::*;
 
-use crate::pgdaemon::PostgresDaemon;
 use crate::{
     common::Env,
     view::{rikai::RikaiView, settings::SettingsView},
 };
+use ichiran::pgdaemon::PostgresDaemon;
 
 const ERROR_MODAL_TITLE: &'static str = "Error";
 
@@ -59,8 +59,12 @@ impl App {
         let ichiran = Ichiran::new(settings.ichiran_path.clone());
         let pg_daemon = match ichiran.conn_params() {
             Ok(conn_params) => {
-                let pg_daemon =
-                    PostgresDaemon::new(&settings.postgres_path, &settings.db_path, conn_params);
+                let pg_daemon = PostgresDaemon::new(
+                    &settings.postgres_path,
+                    &settings.db_path,
+                    conn_params,
+                    false,
+                );
                 Some(pg_daemon)
             }
             Err(_) => {
@@ -191,6 +195,7 @@ impl App {
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
         let io = ui.io();
+
         Window::new("niinii")
             .position([0.0, 20.0], Condition::Always)
             .size(io.display_size, Condition::Always)
@@ -199,11 +204,11 @@ impl App {
             )
             .bring_to_front_on_focus(false)
             .build(ui, || {
-                {
-                    self.show_main_menu(env, ui);
+                self.show_main_menu(env, ui);
+                if self.settings.show_manual_input {
+                    let _token = ui.begin_disabled(matches!(self.state, State::Processing));
                     let trunc =
                         str_from_u8_nul_utf8_unchecked(self.input_text.as_bytes()).to_owned();
-                    let _token = ui.begin_disabled(matches!(self.state, State::Processing));
                     if ui
                         .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
                         .enter_returns_true(true)
@@ -214,6 +219,7 @@ impl App {
                     if ui.button_with_size("Go", [120.0, 0.0]) {
                         self.requested_text.replace(trunc);
                     }
+                    ui.separator();
                 }
 
                 if let Some(clipboard) = ui.clipboard_text() {
@@ -224,11 +230,11 @@ impl App {
                     }
                 }
 
-                ui.separator();
                 match &mut self.state {
                     State::Displaying { rikai, .. } => {
                         rikai.ui(env, ui, &self.settings, &mut self.show_raw);
                     }
+                    State::Processing => ui.set_mouse_cursor(Some(MouseCursor::NotAllowed)),
                     _ => (),
                 }
 

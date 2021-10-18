@@ -29,7 +29,13 @@ impl RikaiView {
         }
     }
 
-    fn term_window(&self, env: &mut Env, ui: &Ui, romanized: &Romanized) -> bool {
+    fn term_window(
+        &self,
+        env: &mut Env,
+        ui: &Ui,
+        settings: &SettingsView,
+        romanized: &Romanized,
+    ) -> bool {
         let mut opened = true;
         Window::new(&format!("{}", romanized.term().text()))
             .size_constraints([300.0, 100.0], [1000.0, 1000.0])
@@ -37,14 +43,16 @@ impl RikaiView {
             .focus_on_appearing(true)
             .opened(&mut opened)
             .build(ui, || {
-                TermView::new(&self.jmdict_data, &self.kanji_info, romanized, 0.0).ui(env, ui);
+                TermView::new(&self.jmdict_data, &self.kanji_info, romanized, 0.0)
+                    .ui(env, ui, settings);
             });
         opened
     }
 
-    fn term_tooltip(&self, env: &mut Env, ui: &Ui, romanized: &Romanized) {
+    fn term_tooltip(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, romanized: &Romanized) {
         ui.tooltip(|| {
-            TermView::new(&self.jmdict_data, &self.kanji_info, romanized, 30.0).ui(env, ui)
+            TermView::new(&self.jmdict_data, &self.kanji_info, romanized, 30.0)
+                .ui(env, ui, settings)
         });
     }
 
@@ -67,6 +75,7 @@ impl RikaiView {
         &self,
         env: &mut Env,
         ui: &Ui,
+        settings: &SettingsView,
         romanized: &Romanized,
         ruby_text: DisplayRubyText,
         underline: UnderlineMode,
@@ -82,7 +91,7 @@ impl RikaiView {
 
         if ui.is_item_hovered() {
             ui.set_mouse_cursor(Some(MouseCursor::Hand));
-            self.term_tooltip(env, ui, romanized);
+            self.term_tooltip(env, ui, settings, romanized);
         }
 
         let mut show_term_window = self.show_term_window.borrow_mut();
@@ -109,6 +118,7 @@ impl RikaiView {
                         let ul_hover = self.add_romanized(
                             env,
                             ui,
+                            settings,
                             rz,
                             settings.display_ruby_text(),
                             match settings.show_variant_switcher {
@@ -170,6 +180,6 @@ impl RikaiView {
         // show all term windows, close if requested (this is actually witchcraft)
         self.show_term_window
             .borrow_mut()
-            .retain(|romanized| self.term_window(env, ui, romanized));
+            .retain(|romanized| self.term_window(env, ui, settings, romanized));
     }
 }

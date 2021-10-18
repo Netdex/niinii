@@ -3,7 +3,12 @@ pub mod error;
 pub mod jmdict_data;
 pub mod kanji;
 mod lisp;
+pub mod pgdaemon;
 pub mod romanize;
+mod job;
+
+#[cfg(test)]
+mod fixture;
 
 use std::{
     collections::HashMap,
@@ -38,7 +43,7 @@ pub struct Ichiran {
     shared: Arc<Shared>,
 }
 struct Shared {
-    path: String,
+    path: PathBuf,
     state: Mutex<State>,
 }
 struct State {
@@ -47,10 +52,10 @@ struct State {
 }
 
 impl Ichiran {
-    pub fn new(path: String) -> Self {
+    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
         Self {
             shared: Arc::new(Shared {
-                path,
+                path: path.into(),
                 state: Mutex::new(State {
                     kanji_cache: LruCache::new(MAX_TEXT_LENGTH),
                     jmdict: None,
@@ -59,8 +64,9 @@ impl Ichiran {
         }
     }
 
-    pub fn romanize(&self, text: &str, limit: u32) -> Result<Root, IchiranError> {
+    pub fn romanize<T: AsRef<str>>(&self, text: T, limit: u32) -> Result<Root, IchiranError> {
         assert!(limit > 0);
+        let text = text.as_ref();
 
         if text.len() > MAX_TEXT_LENGTH {
             return Err(IchiranError::TextTooLong { length: text.len() });
@@ -135,7 +141,11 @@ impl Ichiran {
         Ok(kanji_info)
     }
 
-    pub fn kanji_from_str(&self, text: &str) -> Result<HashMap<char, Kanji>, IchiranError> {
+    pub fn kanji_from_str<T: AsRef<str>>(
+        &self,
+        text: T,
+    ) -> Result<HashMap<char, Kanji>, IchiranError> {
+        let text = text.as_ref();
         if text.len() > MAX_TEXT_LENGTH {
             return Err(IchiranError::TextTooLong { length: text.len() });
         }

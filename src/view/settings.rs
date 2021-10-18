@@ -31,6 +31,7 @@ pub struct SettingsView {
     pub db_path: String,
     renderer_type_idx: usize,
 
+    pub show_manual_input: bool,
     ruby_text_type_idx: usize,
     pub show_variant_switcher: bool,
 }
@@ -74,6 +75,7 @@ impl SettingsView {
             &mut self.ruby_text_type_idx,
             DisplayRubyText::VARIANTS,
         );
+        ui.checkbox("Show manual input", &mut self.show_manual_input);
         ui.checkbox("Variant switcher", &mut self.show_variant_switcher);
     }
 

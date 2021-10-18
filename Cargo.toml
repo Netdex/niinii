@@ -8,14 +8,18 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [patch.crates-io]
+# imgui = { path = "../imgui-rs/imgui" }
+# imgui-winit-support = { path = "../imgui-rs/imgui-winit-support" }
+# imgui-glow-renderer = { path = "../imgui-rs/imgui-glow-renderer" }
+
 # imgui = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
 # imgui-sys = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
 # imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
 # imgui-glow-renderer = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-# imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
-# imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
-imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
-imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
+imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
+imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
+# imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
+# imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
 
 [dependencies]
 imgui = { version = "0.8", features = ["tables-api"] }

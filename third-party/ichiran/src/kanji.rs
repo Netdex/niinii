@@ -147,12 +147,15 @@ pub fn is_kanji(c: &char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixture;
 
     #[test]
-    fn test_kita() {
-        const ICHIRAN_FULL: &str = r#"{"text":"\u6765","rc":75,"rn":4,"strokes":7,"total":76,"irr":0,"irr_perc":"0.00%","readings":[{"text":"\u3089\u3044","rtext":"rai","type":"ja_on","okuri":[],"sample":54,"perc":"71.05%"},{"text":"\u305F\u3044","rtext":"tai","type":"ja_on","okuri":[],"sample":1,"perc":"1.32%"},{"text":"\u304D","rtext":"ki","type":"ja_kun","okuri":["\u305F\u3059","\u305F\u308B"],"sample":16,"perc":"21.05%"},{"text":"\u304F","rtext":"ku","type":"ja_kun","okuri":["\u308B"],"sample":5,"perc":"6.58%"},{"text":"\u304D\u305F","rtext":"kita","type":"ja_kun","okuri":["\u3059","\u308B"],"sample":0,"perc":"0.00%"},{"text":"\u3053","rtext":"ko","type":"ja_kun","okuri":[],"sample":0,"perc":"0.00%"}],"meanings":["come","due","next","cause","become"],"freq":102,"grade":2}"#;
-        let a = serde_json::from_str::<Kanji>(ICHIRAN_FULL).unwrap();
-        let b = Kanji {
+    fn test_match() {
+        let (ichiran, _pg) = fixture::ichiran();
+
+        let a = ichiran.kanji(&['来']).unwrap();
+        let a = a.get(&'来').unwrap();
+        let b = &Kanji {
             text: "来".into(),
             rc: 75,
             rn: 4,

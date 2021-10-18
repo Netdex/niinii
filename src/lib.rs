@@ -34,8 +34,6 @@ pub mod backend;
 pub mod clipboard;
 pub mod common;
 pub mod hook;
-pub mod job;
-pub mod pgdaemon;
 pub mod view;
 
 lazy_static! {
