@@ -79,7 +79,7 @@ pub fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
     add_font(
         TextStyle::Body,
         SARASA_MONO_J_REGULAR,
-        16.0,
+        18.0,
         &ext_font_config,
     );
     add_font(

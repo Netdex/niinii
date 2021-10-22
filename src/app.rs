@@ -148,10 +148,12 @@ impl App {
         }
     }
 
-    fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui) {
-        if let Some(_menu_bar) = ui.begin_main_menu_bar() {
+    fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui, run: &mut bool) {
+        ui.menu_bar(|| {
             if let Some(_menu) = ui.begin_menu("File") {
-                if MenuItem::new("Quit").build(ui) {}
+                if MenuItem::new("Quit").build(ui) {
+                    *run = false;
+                }
             }
             if let Some(_menu) = ui.begin_menu("Edit") {
                 if MenuItem::new("Settings").build(ui) {
@@ -172,7 +174,8 @@ impl App {
                     self.show_imgui_demo = true;
                 }
             }
-        }
+        });
+        ui.new_line();
     }
 
     fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
@@ -193,54 +196,59 @@ impl App {
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
+    pub fn ui(&mut self, env: &mut Env, ui: &Ui, run: &mut bool) {
         let io = ui.io();
 
-        Window::new("niinii")
-            .position([0.0, 20.0], Condition::Always)
-            .size(io.display_size, Condition::Always)
-            .flags(
-                WindowFlags::NO_DECORATION | WindowFlags::NO_COLLAPSE | WindowFlags::NO_TITLE_BAR,
-            )
-            .bring_to_front_on_focus(false)
-            .build(ui, || {
-                self.show_main_menu(env, ui);
-                if self.settings.show_manual_input {
-                    let _token = ui.begin_disabled(matches!(self.state, State::Processing));
-                    let trunc =
-                        str_from_u8_nul_utf8_unchecked(self.input_text.as_bytes()).to_owned();
-                    if ui
-                        .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
-                        .enter_returns_true(true)
-                        .build()
-                    {
-                        self.requested_text.replace(trunc.clone());
-                    }
-                    if ui.button_with_size("Go", [120.0, 0.0]) {
-                        self.requested_text.replace(trunc);
-                    }
-                    ui.separator();
-                }
+        let niinii = Window::new("niinii");
 
-                if let Some(clipboard) = ui.clipboard_text() {
-                    if clipboard != self.last_clipboard {
-                        self.input_text = clipboard.clone();
-                        self.last_clipboard = clipboard.clone();
-                        self.requested_text.replace(clipboard);
-                    }
-                }
+        let niinii = if self.settings().overlay_mode {
+            niinii.flags(WindowFlags::MENU_BAR | WindowFlags::NO_BACKGROUND)
+        } else {
+            niinii
+                .position([0.0, 0.0], Condition::Always)
+                .size(io.display_size, Condition::Always)
+                .flags(WindowFlags::MENU_BAR | WindowFlags::NO_DECORATION)
+                .bring_to_front_on_focus(false)
+        };
 
-                match &mut self.state {
-                    State::Displaying { rikai, .. } => {
-                        rikai.ui(env, ui, &self.settings, &mut self.show_raw);
-                    }
-                    State::Processing => ui.set_mouse_cursor(Some(MouseCursor::NotAllowed)),
-                    _ => (),
-                }
+        niinii.build(ui, || {
+            self.show_main_menu(env, ui, run);
 
-                self.show_error_modal(env, ui);
-                self.poll(ui);
-            });
+            if self.settings.show_manual_input {
+                let _token = ui.begin_disabled(matches!(self.state, State::Processing));
+                let trunc = str_from_u8_nul_utf8_unchecked(self.input_text.as_bytes()).to_owned();
+                if ui
+                    .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
+                    .enter_returns_true(true)
+                    .build()
+                {
+                    self.requested_text.replace(trunc.clone());
+                }
+                if ui.button_with_size("Go", [120.0, 0.0]) {
+                    self.requested_text.replace(trunc);
+                }
+                ui.separator();
+            }
+
+            if let Some(clipboard) = ui.clipboard_text() {
+                if clipboard != self.last_clipboard {
+                    self.input_text = clipboard.clone();
+                    self.last_clipboard = clipboard.clone();
+                    self.requested_text.replace(clipboard);
+                }
+            }
+
+            match &mut self.state {
+                State::Displaying { rikai, .. } => {
+                    rikai.ui(env, ui, &self.settings, &mut self.show_raw);
+                }
+                State::Processing => ui.set_mouse_cursor(Some(MouseCursor::NotAllowed)),
+                _ => (),
+            }
+
+            self.show_error_modal(env, ui);
+            self.poll(ui);
+        });
 
         if self.show_imgui_demo {
             ui.show_demo_window(&mut self.show_imgui_demo);

@@ -62,6 +62,7 @@ impl RikaiView {
             env,
             skipped,
             false,
+            true,
             UnderlineMode::None,
             if settings.display_ruby_text() == DisplayRubyText::None {
                 RubyTextMode::None
@@ -87,7 +88,7 @@ impl RikaiView {
             DisplayRubyText::Furigana => RubyTextMode::Text(term.kana()),
             DisplayRubyText::Romaji => RubyTextMode::Text(romanized.romaji()),
         };
-        let ul_hover = draw_kanji_text(ui, env, term.text(), true, underline, fg_text);
+        let ul_hover = draw_kanji_text(ui, env, term.text(), true, true, underline, fg_text);
 
         if ui.is_item_hovered() {
             ui.set_mouse_cursor(Some(MouseCursor::Hand));

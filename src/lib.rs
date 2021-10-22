@@ -169,8 +169,9 @@ pub unsafe extern "stdcall" fn hk_end_scene(p_device: d3d9::LPDIRECT3DDEVICE9) -
     // println!("{:?} {:?}", io.mouse_pos, io.display_framebuffer_scale);
 
     imgui_win32_sys::ImGui_ImplWin32_NewFrame();
-    let ui = imgui.frame();
-    app.ui(env, &ui);
+    let mut ui = imgui.frame();
+    let mut run = true;
+    app.ui(env, &mut ui, &mut run);
 
     // backup current d3d9 state
     // let mut preserve_block: d3d9::LPDIRECT3DSTATEBLOCK9 = ptr::null_mut();

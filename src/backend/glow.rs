@@ -6,14 +6,14 @@ use glutin::{
 use imgui::Ui;
 use std::time::Instant;
 
-use crate::common::{imgui_init, Env};
+use crate::{
+    app::App,
+    common::{imgui_init, Env},
+};
 
 pub type Window = glutin::WindowedContext<glutin::PossiblyCurrent>;
 
-pub fn main_loop<F>(window: winit::window::WindowBuilder, mut run_ui: F)
-where
-    F: FnMut(&mut bool, &mut Env, &mut Ui),
-{
+pub fn main_loop(window: winit::window::WindowBuilder, app: &mut App) {
     // Common setup for creating a winit window and imgui context, not specifc
     // to this renderer at all except that glutin is used to create the window
     // since it will give us access to a GL context
@@ -52,7 +52,7 @@ where
 
                 let mut ui = imgui.frame();
                 let mut run = true;
-                run_ui(&mut run, &mut env, &mut ui);
+                app.ui(&mut env, &mut ui, &mut run);
                 if !run {
                     *control_flow = ControlFlow::Exit;
                 }

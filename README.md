@@ -27,17 +27,16 @@ There are some features I'd like to experiment with to improve the glossing expe
 
 ## Features
 i.e. Completed roadmap items
-- Hover over part-of-speech abbreviation to show explanation
+- Visual representation of segmentation
 - Interface and parser for ichiran-cli (implemented as `ichiran-rs` under `third-party\ichiran`)
-- Visual representation of segmentation (RikaiView)
-- Visual representation of gloss on term basis (TermView)
-- Click hover window to open persistent window (which itself has hovers, for stuff like vias)
-- Auto-clipboard
-- Injection and D3D9 hook
-- Automatic Postgres daemon
+- Postgres daemon
+- Clipboard capture
+- Injectable DLL with D3D9 hook
 - Ruby text (furigana, romaji)
-- Kanji lookup
-- Display all clause variants
+- Kanji lookup tooltip
+- Cycle through segment variations
+- Persistent vocabulary windows
+- Fullscreen overlay
 
 ## Build
 TODO

@@ -26,6 +26,7 @@ pub fn draw_kanji_text(
     env: &Env,
     text: &str,
     highlight: bool,
+    stroke: bool,
     underline: UnderlineMode,
     ruby_text: RubyTextMode,
 ) -> bool {
@@ -39,7 +40,10 @@ pub fn draw_kanji_text(
     let kanji_sz = ui.calc_text_size(text);
     drop(_kanji_font_token);
 
-    let vpad = 8.0;
+    let vpad = match ruby_text {
+        RubyTextMode::None => 0.0,
+        _ => 8.0,
+    };
     let w = f32::max(kanji_sz[0], ruby_sz[0]);
     let h = kanji_sz[1] + ruby_sz[1] + vpad;
 
@@ -50,10 +54,32 @@ pub fn draw_kanji_text(
 
     let draw_list = ui.get_window_draw_list();
 
+    let maybe_stroke_text = |text: &str, pos: [f32; 2], thick: f32| {
+        if stroke {
+            for off in [
+                [-1.0, -1.0],
+                [-1.0, 1.0],
+                [1.0, -1.0],
+                [1.0, 1.0],
+                [-1.0, 0.0],
+                [1.0, 0.0],
+                [0.0, -1.0],
+                [0.0, 1.0],
+            ] {
+                draw_list.add_text(
+                    [pos[0] + off[0] * thick, pos[1] + off[1] * thick],
+                    ui.style_color(StyleColor::TitleBg),
+                    text,
+                );
+            }
+        }
+        draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
+    };
+
     match ruby_text {
         RubyTextMode::Text(text) => {
             let cx = x + w / 2.0 - ruby_sz[0] / 2.0;
-            draw_list.add_text([cx, y], ui.style_color(StyleColor::Text), text);
+            maybe_stroke_text(text, [cx, y], 1.0);
         }
         _ => (),
     }
@@ -89,7 +115,7 @@ pub fn draw_kanji_text(
         .build();
 
     let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
-    draw_list.add_text([cx, y], ui.style_color(StyleColor::Text), text);
+    maybe_stroke_text(text, [cx, y], 1.5);
     drop(_kanji_font_token);
 
     ui.dummy([w, h]);
