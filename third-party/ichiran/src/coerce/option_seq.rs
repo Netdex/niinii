@@ -6,6 +6,7 @@ use serde::{
 use std::{fmt, marker::PhantomData};
 
 /// Special deserializer deriving an `Option` from a seq of length 0 or 1.
+#[allow(unused)]
 pub(crate) fn deserialize<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
@@ -35,6 +36,7 @@ where
 }
 
 /// Special serializer deriving an `Option` from a seq of length 0 or 1.
+#[allow(unused)]
 pub(crate) fn serialize<S, T>(value: &Option<T>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,

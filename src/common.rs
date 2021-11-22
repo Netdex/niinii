@@ -60,13 +60,13 @@ pub fn init_fonts(env: &mut Env, imgui: &mut Context, hidpi_factor: f64) {
     };
     let ext_font_config = [
         FontConfig {
-            rasterizer_multiply: 1.75,
+            rasterizer_multiply: 1.00,
             glyph_ranges: FontGlyphRanges::japanese(),
             oversample_h: 2,
             ..Default::default()
         },
         FontConfig {
-            rasterizer_multiply: 1.75,
+            rasterizer_multiply: 1.00,
             glyph_ranges: FontGlyphRanges::from_slice(&[
                 0x0100, 0x017F, // Latin Extended-A
                 0x2000, 0x206F, // General Punctuation

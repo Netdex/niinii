@@ -12,6 +12,7 @@ use super::mixins;
 #[derive(FromPrimitive, EnumString, EnumVariantNames)]
 pub enum SupportedRenderer {
     Glow = 0,
+    #[cfg(windows)]
     Direct3D11 = 1,
 }
 
@@ -23,6 +24,7 @@ pub enum DisplayRubyText {
 }
 
 #[derive(Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct SettingsView {
     pub ichiran_path: String,
     pub transparent: bool,
@@ -30,7 +32,8 @@ pub struct SettingsView {
     pub postgres_path: String,
     pub db_path: String,
     renderer_type_idx: usize,
-    #[serde(default)]
+
+    #[cfg(windows)]
     pub overlay_mode: bool,
 
     pub show_manual_input: bool,
@@ -70,12 +73,15 @@ impl SettingsView {
             "Whether to always put the window on top of others or not",
         );
 
-        ui.checkbox("Overlay mode*", &mut self.overlay_mode);
-        ui.same_line();
-        mixins::help_marker(
-            ui,
-            "Turns the window into an overlay on top of all other windows (D3D11 only)",
-        );
+        #[cfg(windows)]
+        {
+            ui.checkbox("Overlay mode*", &mut self.overlay_mode);
+            ui.same_line();
+            mixins::help_marker(
+                ui,
+                "Turns the window into an overlay on top of all other windows (D3D11 only)",
+            );
+        }
 
         ui.separator();
 

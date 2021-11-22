@@ -1,5 +1,4 @@
-use glutin::{platform::windows::WindowBuilderExtWindows, window::Fullscreen};
-use libniinii::{
+use niinii::{
     app::App,
     view::settings::{SettingsView, SupportedRenderer},
 };
@@ -7,6 +6,7 @@ use std::{
     fs::File,
     io::{BufReader, BufWriter},
 };
+use winit::platform::windows::WindowBuilderExtWindows;
 use winit::window;
 
 const TITLE: &'static str = "niinii";
@@ -45,10 +45,10 @@ fn main() {
 
     match renderer {
         SupportedRenderer::Glow => {
-            libniinii::backend::glow::main_loop(window, &mut app);
+            niinii::backend::glow::main_loop(window, &mut app);
         }
         SupportedRenderer::Direct3D11 => {
-            libniinii::backend::d3d11::main_loop(window, &mut app);
+            niinii::backend::d3d11::main_loop(window, &mut app);
         }
     }
 

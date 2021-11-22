@@ -5,25 +5,18 @@ use imgui::*;
 use imgui_winit_support::WinitPlatform;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use std::cell::RefCell;
-use winapi::{
-    shared::{
+use winapi::{Interface as _, shared::{
+        basetsd::{DWORD_PTR, UINT_PTR},
         dxgi::*,
         dxgiformat::*,
         dxgitype::*,
         minwindef::{LPARAM, LRESULT, TRUE, UINT, WPARAM},
         windef::{HHOOK, HWND},
-        winerror::{SUCCEEDED, S_OK},
-    },
-    um::{
-        d3d11::*,
-        d3dcommon::*,
-        winuser::{
+        winerror::S_OK,
+    }, um::{commctrl::DefSubclassProc, d3d11::*, d3dcommon::*, dwmapi, uxtheme, winuser::{
             self, CallNextHookEx, SetWindowsHookExA, UnhookWindowsHookEx, MSLLHOOKSTRUCT,
             WH_MOUSE_LL,
-        },
-    },
-    Interface as _,
-};
+        }}};
 use winit::{
     event::{DeviceId, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -31,10 +24,7 @@ use winit::{
 };
 use wio::com::ComPtr;
 
-use crate::{
-    app::App,
-    common::{imgui_init, Env},
-};
+use crate::{app::App, common::imgui_init};
 
 unsafe fn create_device(
     hwnd: HWND,
@@ -112,20 +102,6 @@ unsafe fn create_render_target(
     device.CreateRenderTargetView(back_buffer.cast(), ptr::null_mut(), &mut main_rtv);
     (&*back_buffer).Release();
     ComPtr::from_raw(main_rtv)
-}
-fn to_winit_cursor(cursor: imgui::MouseCursor) -> winit::window::CursorIcon {
-    use winit::window::CursorIcon;
-    match cursor {
-        imgui::MouseCursor::Arrow => CursorIcon::Default,
-        imgui::MouseCursor::TextInput => CursorIcon::Text,
-        imgui::MouseCursor::ResizeAll => CursorIcon::Move,
-        imgui::MouseCursor::ResizeNS => CursorIcon::NsResize,
-        imgui::MouseCursor::ResizeEW => CursorIcon::EwResize,
-        imgui::MouseCursor::ResizeNESW => CursorIcon::NeswResize,
-        imgui::MouseCursor::ResizeNWSE => CursorIcon::NwseResize,
-        imgui::MouseCursor::Hand => CursorIcon::Hand,
-        imgui::MouseCursor::NotAllowed => CursorIcon::NotAllowed,
-    }
 }
 
 struct System {
@@ -229,6 +205,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                     },
                 );
             }
+            // who even has a horizontal mouse wheel
             // winuser::WM_MOUSEHWHEEL => {}
             _ => {}
         }
@@ -259,6 +236,26 @@ unsafe extern "system" fn low_level_mouse_proc(
     }
 }
 
+unsafe extern "system" fn subclass_proc(
+    hwnd: HWND,
+    umsg: UINT,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    uidsubclass: UINT_PTR,
+    dwrefdata: DWORD_PTR,
+) -> LRESULT {
+    log::trace!(
+        "subclass_proc({:?}, {:x}, {}, {}, {}, {})",
+        hwnd,
+        umsg,
+        wparam,
+        lparam,
+        uidsubclass,
+        dwrefdata
+    );
+    DefSubclassProc(hwnd, umsg, wparam, lparam)
+}
+
 pub fn main_loop(window: winit::window::WindowBuilder, app: &mut App) {
     let mut event_loop = EventLoop::new();
     let window = window.build(&event_loop).unwrap();
@@ -284,6 +281,7 @@ pub fn main_loop(window: winit::window::WindowBuilder, app: &mut App) {
                 ptr::null_mut(),
                 0,
             ));
+            // SetWindowSubclass(hwnd as *mut _, Some(subclass_proc), 0, 0);
             // winuser::SetLayeredWindowAttributes(hwnd as *mut _, 0, 0, winuser::LWA_COLORKEY);
             // winuser::SetLayeredWindowAttributes(hwnd as *mut _, 0, 255, winuser::LWA_ALPHA);
             // let margin = uxtheme::MARGINS {

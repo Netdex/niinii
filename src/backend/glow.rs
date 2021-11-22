@@ -3,13 +3,9 @@ use glutin::{
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
-use imgui::Ui;
 use std::time::Instant;
 
-use crate::{
-    app::App,
-    common::{imgui_init, Env},
-};
+use crate::{app::App, common::imgui_init};
 
 pub type Window = glutin::WindowedContext<glutin::PossiblyCurrent>;
 
