@@ -37,7 +37,7 @@ impl RikaiView {
         romanized: &Romanized,
     ) -> bool {
         let mut opened = true;
-        Window::new(&format!("{}", romanized.term().text()))
+        Window::new(&romanized.term().text().to_string())
             .size_constraints([300.0, 100.0], [1000.0, 1000.0])
             .save_settings(false)
             .focus_on_appearing(true)

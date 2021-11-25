@@ -113,16 +113,10 @@ impl Reading {
         &self.perc
     }
     pub fn prefix(&self) -> bool {
-        match self.prefixp {
-            Some(prefix) => prefix,
-            None => false,
-        }
+        self.prefixp.unwrap_or(false)
     }
     pub fn suffix(&self) -> bool {
-        match self.suffixp {
-            Some(suffix) => suffix,
-            None => false,
-        }
+        self.suffixp.unwrap_or(false)
     }
 }
 

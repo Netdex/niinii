@@ -252,6 +252,7 @@ pub struct Conjugation {
     gloss: Vec<Gloss>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[allow(clippy::vec_box)]
     via: Vec<Box<Conjugation>>,
     #[serde(deserialize_with = "bool_seq::deserialize")]
     readok: bool,

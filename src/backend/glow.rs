@@ -5,7 +5,7 @@ use glutin::{
 };
 use imgui_glow_renderer::AutoRenderer;
 use imgui_winit_support::WinitPlatform;
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::time::Instant;
 
 use super::renderer::{Env, Renderer};
 use crate::{app::App, view::settings::SettingsView};

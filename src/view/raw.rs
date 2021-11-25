@@ -155,7 +155,7 @@ fn add_gloss(ui: &Ui, gloss: &Gloss) {
         });
 }
 fn add_conj(ui: &Ui, conj: &Conjugation) {
-    TreeNode::new(&format!("Conjugation"))
+    TreeNode::new(&"Conjugation".to_string())
         .default_open(true)
         .build(ui, || {
             if let Some(reading) = conj.reading() {
@@ -178,7 +178,7 @@ fn add_conj(ui: &Ui, conj: &Conjugation) {
                     }
                 });
             for via in conj.vias() {
-                TreeNode::new(&format!("Via"))
+                TreeNode::new(&"Via".to_string())
                     .default_open(false)
                     .build(ui, || {
                         add_conj(ui, via);

@@ -76,12 +76,9 @@ pub fn draw_kanji_text(
         draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
     };
 
-    match ruby_text {
-        RubyTextMode::Text(text) => {
-            let cx = x + w / 2.0 - ruby_sz[0] / 2.0;
-            maybe_stroke_text(text, [cx, y], 1.0);
-        }
-        _ => (),
+    if let RubyTextMode::Text(text) = ruby_text {
+        let cx = x + w / 2.0 - ruby_sz[0] / 2.0;
+        maybe_stroke_text(text, [cx, y], 1.0);
     }
 
     let cx = x + w / 2.0 - kanji_sz[0] / 2.0;

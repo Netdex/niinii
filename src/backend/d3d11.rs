@@ -3,7 +3,6 @@ use std::rc::Rc;
 use std::time::Instant;
 use std::{ptr, rc::Weak};
 
-use imgui::*;
 use imgui_winit_support::WinitPlatform;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use std::cell::RefCell;
@@ -151,7 +150,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                 | winuser::WM_RBUTTONDOWN
                 | winuser::WM_RBUTTONUP => platform.handle_event::<()>(
                     imgui.io_mut(),
-                    &window,
+                    window,
                     &Event::WindowEvent {
                         window_id: window.id(),
                         event: WindowEvent::MouseInput {
@@ -173,7 +172,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                 winuser::WM_MOUSEMOVE => {
                     use winit::dpi::PhysicalPosition;
 
-                    let mut client_pos = ms.pt.clone();
+                    let mut client_pos = ms.pt;
                     assert_eq!(
                         winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _),
                         TRUE
@@ -181,7 +180,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                     let position = PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
                     platform.handle_event::<()>(
                         imgui.io_mut(),
-                        &window,
+                        window,
                         &Event::WindowEvent {
                             window_id: window.id(),
                             event: WindowEvent::CursorMoved {
@@ -201,7 +200,7 @@ unsafe extern "system" fn low_level_mouse_proc(
 
                     platform.handle_event::<()>(
                         imgui.io_mut(),
-                        &window,
+                        window,
                         &Event::WindowEvent {
                             window_id: window.id(),
                             event: WindowEvent::MouseWheel {
@@ -358,7 +357,7 @@ impl Renderer for D3D11Renderer {
                 Event::MainEventsCleared => {
                     let io = imgui.io_mut();
                     platform
-                        .prepare_frame(io, &window)
+                        .prepare_frame(io, window)
                         .expect("Failed to start frame");
                     window.request_redraw();
                 }
@@ -373,7 +372,7 @@ impl Renderer for D3D11Renderer {
                     if !run {
                         *control_flow = ControlFlow::Exit;
                     }
-                    platform.prepare_render(&ui, &window);
+                    platform.prepare_render(&ui, window);
                     renderer.render(ui.render()).unwrap();
                     unsafe {
                         swapchain.Present(1, 0);
@@ -390,11 +389,11 @@ impl Renderer for D3D11Renderer {
                     ptr::drop_in_place(main_rtv);
                     swapchain.ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
                     ptr::write(main_rtv, create_render_target(swapchain, device));
-                    platform.handle_event(imgui.io_mut(), &window, &event);
+                    platform.handle_event(imgui.io_mut(), window, &event);
                 },
                 Event::LoopDestroyed => (),
                 event => {
-                    platform.handle_event(imgui.io_mut(), &window, &event);
+                    platform.handle_event(imgui.io_mut(), window, &event);
                 }
             }
         });
@@ -402,7 +401,6 @@ impl Renderer for D3D11Renderer {
 }
 impl Drop for Inner {
     fn drop(&mut self) {
-        log::trace!("drop it");
         let Inner { mousellhook, .. } = self;
         if let Some(mousellhook) = mousellhook {
             unsafe {
@@ -431,5 +429,11 @@ impl WeakD3D11Renderer {
     pub fn upgrade(&self) -> Option<D3D11Renderer> {
         let shared = self.shared.upgrade()?;
         Some(D3D11Renderer { shared })
+    }
+}
+
+impl Default for WeakD3D11Renderer {
+    fn default() -> Self {
+        Self::new()
     }
 }

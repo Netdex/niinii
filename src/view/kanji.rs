@@ -22,7 +22,7 @@ impl<'a> KanjiView<'a> {
             if let Some(freq) = kanji.freq() {
                 ui.text(format!("#{}/2501 most common", freq));
             } else {
-                ui.text(format!("Uncommon"));
+                ui.text("Uncommon".to_string());
             }
             ui.same_line();
             ui.text(format!(
@@ -30,11 +30,11 @@ impl<'a> KanjiView<'a> {
                 kanji.stroke_count(),
                 if kanji.stroke_count() != 1 { "s" } else { "" }
             ));
-            ui.text(format!("{}", kanji.grade_desc()));
+            ui.text(kanji.grade_desc());
         });
         ui.bullet();
         ui.same_line();
-        ui.text_wrapped(format!("{}", kanji.meanings().join(", ")));
+        ui.text_wrapped(kanji.meanings().join(", "));
 
         if let Some(_t) = ui.begin_table_header(
             "readings",
@@ -89,6 +89,6 @@ impl<'a> KanjiView<'a> {
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_x);
-        self.add_kanji(env, ui, &self.kanji);
+        self.add_kanji(env, ui, self.kanji);
     }
 }

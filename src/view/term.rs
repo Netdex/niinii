@@ -60,7 +60,7 @@ impl<'a> TermView<'a> {
                 ui.text("]");
                 ui.same_line();
                 // gloss
-                ui.text(&format!("{}", gloss.gloss()));
+                ui.text(&gloss.gloss().to_string());
                 // info
                 if let Some(info) = gloss.info() {
                     ui.text(&format!("({})", info));
@@ -105,7 +105,7 @@ impl<'a> TermView<'a> {
 
                     if let Some(kanji) = kanji {
                         if ui.is_item_hovered() {
-                            self.kanji_tooltip(env, ui, &kanji);
+                            self.kanji_tooltip(env, ui, kanji);
                         }
                     }
                 }
@@ -143,7 +143,7 @@ impl<'a> TermView<'a> {
             }
             Word::Compound(compound) => {
                 for component in compound.components() {
-                    TreeNode::new(&format!("{}", component.text()))
+                    TreeNode::new(&component.text().to_string())
                         .default_open(true)
                         .build(ui, || {
                             self.add_term(env, ui, settings, component, romaji, false);
@@ -179,7 +179,7 @@ impl<'a> TermView<'a> {
         for vias in conj.flatten() {
             let base = *vias.first().unwrap();
 
-            if CollapsingHeader::new(&format!("{}", base.reading().unwrap_or("Conjugation")))
+            if CollapsingHeader::new(&base.reading().unwrap_or("Conjugation").to_string())
                 .default_open(true)
                 .build(ui)
             {

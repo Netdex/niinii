@@ -1,11 +1,11 @@
 mod coerce;
 pub mod error;
 pub mod jmdict_data;
+mod job;
 pub mod kanji;
 mod lisp;
 pub mod pgdaemon;
 pub mod romanize;
-mod job;
 
 #[cfg(test)]
 mod fixture;
@@ -118,7 +118,7 @@ impl Ichiran {
             }
         });
 
-        if commands.len() == 0 {
+        if commands.is_empty() {
             return Ok(kanji_info);
         }
 
@@ -150,7 +150,7 @@ impl Ichiran {
             return Err(IchiranError::TextTooLong { length: text.len() });
         }
         let mut uniq: Vec<char> = text.chars().filter(is_kanji).collect();
-        uniq.sort();
+        uniq.sort_unstable();
         uniq.dedup();
         self.kanji(&uniq)
     }

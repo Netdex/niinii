@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, io::Read, path::PathBuf, rc::Rc};
+use std::{collections::HashMap, io::Read, path::PathBuf};
 
 use flate2::read::GzDecoder;
 use glutin::{platform::windows::WindowBuilderExtWindows, window};
@@ -8,8 +8,7 @@ use imgui_winit_support::WinitPlatform;
 use crate::clipboard;
 use crate::{app::App, view::settings::SettingsView};
 
-static SARASA_MONO_J_REGULAR: &'static [u8] =
-    include_bytes!("../../res/sarasa-mono-j-regular.ttf.gz");
+static SARASA_MONO_J_REGULAR: &[u8] = include_bytes!("../../res/sarasa-mono-j-regular.ttf.gz");
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum TextStyle {
@@ -44,15 +43,14 @@ pub trait Renderer {
         let maximized = settings.overlay_mode;
         let decorations = !settings.overlay_mode;
 
-        let window = window::WindowBuilder::new()
+        window::WindowBuilder::new()
             .with_title("niinii")
             .with_inner_size(glutin::dpi::LogicalSize::new(768, 768))
             .with_transparent(transparent)
             .with_drag_and_drop(false)
             .with_maximized(maximized)
             .with_decorations(decorations)
-            .with_always_on_top(on_top);
-        window
+            .with_always_on_top(on_top)
     }
 
     fn create_imgui() -> imgui::Context {

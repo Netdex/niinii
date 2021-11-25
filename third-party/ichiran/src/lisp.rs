@@ -8,7 +8,7 @@ where
 {
     let interp = ketos::Interpreter::new();
     let result = interp.run_single_expr(expr, None)?;
-    Ok(T::from_value(result).map_err(|err| ketos::Error::ExecError(err))?)
+    Ok(T::from_value(result).map_err(ketos::Error::ExecError)?)
 }
 
 pub fn lisp_escape_string<T: AsRef<str>>(text: T) -> String {

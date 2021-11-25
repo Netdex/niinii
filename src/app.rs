@@ -11,7 +11,7 @@ use crate::{
 };
 use ichiran::pgdaemon::PostgresDaemon;
 
-const ERROR_MODAL_TITLE: &'static str = "Error";
+const ERROR_MODAL_TITLE: &str = "Error";
 
 #[derive(Debug)]
 struct IchiranAst {
@@ -91,7 +91,6 @@ impl App {
     }
 
     fn request_ast(&mut self, ui: &Ui, text: &str) {
-        log::trace!("request_ast({})", text);
         let text = text.to_owned();
         let channel_tx = self.channel_tx.clone();
 
@@ -116,12 +115,9 @@ impl App {
     }
 
     fn transition(&mut self, ui: &Ui, state: State) {
-        match &state {
-            State::Error { err } => {
-                log::error!("{}", err);
-                ui.open_popup(ERROR_MODAL_TITLE);
-            }
-            _ => (),
+        if let State::Error { err } = &state {
+            log::error!("{}", err);
+            ui.open_popup(ERROR_MODAL_TITLE);
         }
         self.state = state;
     }
@@ -185,20 +181,17 @@ impl App {
     }
 
     fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
-        match &self.state {
-            State::Error { err } => {
-                PopupModal::new(ERROR_MODAL_TITLE)
-                    .always_auto_resize(true)
-                    .build(ui, || {
-                        let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
-                        ui.text(err.to_string());
-                        ui.separator();
-                        if ui.button_with_size("OK", [120.0, 0.0]) {
-                            ui.close_current_popup();
-                        }
-                    });
-            }
-            _ => (),
+        if let State::Error { err } = &self.state {
+            PopupModal::new(ERROR_MODAL_TITLE)
+                .always_auto_resize(true)
+                .build(ui, || {
+                    let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
+                    ui.text(err.to_string());
+                    ui.separator();
+                    if ui.button_with_size("OK", [120.0, 0.0]) {
+                        ui.close_current_popup();
+                    }
+                });
         }
     }
 
