@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
 
-use crate::common::Env;
-
 use super::mixins;
 
 #[derive(FromPrimitive, EnumString, EnumVariantNames)]
@@ -23,7 +21,7 @@ pub enum DisplayRubyText {
     Romaji = 2,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct SettingsView {
     pub ichiran_path: String,
@@ -39,9 +37,29 @@ pub struct SettingsView {
     pub show_manual_input: bool,
     ruby_text_type_idx: usize,
     pub show_variant_switcher: bool,
+    pub watch_clipboard: bool,
+    pub stroke_text: bool,
+}
+impl Default for SettingsView {
+    fn default() -> Self {
+        Self {
+            ichiran_path: Default::default(),
+            transparent: Default::default(),
+            on_top: false,
+            postgres_path: Default::default(),
+            db_path: Default::default(),
+            renderer_type_idx: Default::default(),
+            overlay_mode: false,
+            show_manual_input: false,
+            ruby_text_type_idx: DisplayRubyText::None as usize,
+            show_variant_switcher: true,
+            watch_clipboard: true,
+            stroke_text: true,
+        }
+    }
 }
 impl SettingsView {
-    pub fn ui(&mut self, _env: &mut Env, ui: &Ui) {
+    pub fn ui(&mut self, ui: &mut Ui) {
         ui.input_text("ichiran-cli*", &mut self.ichiran_path)
             .build();
         ui.same_line();
@@ -82,6 +100,7 @@ impl SettingsView {
                 "Turns the window into an overlay on top of all other windows (D3D11 only)",
             );
         }
+        ui.checkbox("Ignore clipboard", &mut self.watch_clipboard);
 
         ui.separator();
 
@@ -91,7 +110,8 @@ impl SettingsView {
             DisplayRubyText::VARIANTS,
         );
         ui.checkbox("Show manual input", &mut self.show_manual_input);
-        ui.checkbox("Variant switcher", &mut self.show_variant_switcher);
+        ui.checkbox("Show variant switcher", &mut self.show_variant_switcher);
+        ui.checkbox("Stroke text", &mut self.stroke_text);
     }
 
     pub fn active_renderer(&self) -> SupportedRenderer {

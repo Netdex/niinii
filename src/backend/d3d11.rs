@@ -1,22 +1,31 @@
-use std::ptr;
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Instant;
+use std::{ptr, rc::Weak};
 
 use imgui::*;
 use imgui_winit_support::WinitPlatform;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use std::cell::RefCell;
-use winapi::{Interface as _, shared::{
-        basetsd::{DWORD_PTR, UINT_PTR},
+use winapi::{
+    shared::{
         dxgi::*,
         dxgiformat::*,
         dxgitype::*,
         minwindef::{LPARAM, LRESULT, TRUE, UINT, WPARAM},
         windef::{HHOOK, HWND},
         winerror::S_OK,
-    }, um::{commctrl::DefSubclassProc, d3d11::*, d3dcommon::*, dwmapi, uxtheme, winuser::{
+    },
+    um::{
+        d3d11::*,
+        d3dcommon::*,
+        winuser::{
             self, CallNextHookEx, SetWindowsHookExA, UnhookWindowsHookEx, MSLLHOOKSTRUCT,
             WH_MOUSE_LL,
-        }}};
+        },
+    },
+    Interface as _,
+};
 use winit::{
     event::{DeviceId, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -24,7 +33,9 @@ use winit::{
 };
 use wio::com::ComPtr;
 
-use crate::{app::App, common::imgui_init};
+use crate::{app::App, view::settings::SettingsView};
+
+use super::renderer::{Env, Renderer};
 
 unsafe fn create_device(
     hwnd: HWND,
@@ -104,14 +115,8 @@ unsafe fn create_render_target(
     ComPtr::from_raw(main_rtv)
 }
 
-struct System {
-    imgui: Context,
-    platform: WinitPlatform,
-    window: winit::window::Window,
-}
-
 thread_local! {
-    static SYSTEM: RefCell<Option<System>> = RefCell::new(None);
+    static SYSTEM: RefCell<WeakD3D11Renderer> = RefCell::new(WeakD3D11Renderer::new());
 }
 
 unsafe extern "system" fn low_level_mouse_proc(
@@ -122,105 +127,111 @@ unsafe extern "system" fn low_level_mouse_proc(
     let ms = &mut *(lparam as *mut MSLLHOOKSTRUCT);
 
     let sink_mouse_event = SYSTEM.with(|system| {
-        let mut system = system.borrow_mut();
-        let System {
-            imgui,
-            platform,
-            window,
-        } = system.as_mut().unwrap();
+        let weak_d3d11_renderer = system.borrow_mut();
+        if let Some(d3d11_renderer) = weak_d3d11_renderer.upgrade() {
+            let mut inner = d3d11_renderer.shared.inner.borrow_mut();
+            let Inner {
+                window,
+                platform,
+                imgui,
+                ..
+            } = &mut *inner;
 
-        let hwnd = if let RawWindowHandle::Windows(handle) = window.raw_window_handle() {
-            handle.hwnd
+            let hwnd = if let RawWindowHandle::Windows(handle) = window.raw_window_handle() {
+                handle.hwnd
+            } else {
+                unreachable!()
+            };
+
+            use winit::event::{ElementState::*, ModifiersState, MouseButton::*};
+            let wparam = wparam as UINT;
+            match wparam {
+                winuser::WM_LBUTTONDOWN
+                | winuser::WM_LBUTTONUP
+                | winuser::WM_RBUTTONDOWN
+                | winuser::WM_RBUTTONUP => platform.handle_event::<()>(
+                    imgui.io_mut(),
+                    &window,
+                    &Event::WindowEvent {
+                        window_id: window.id(),
+                        event: WindowEvent::MouseInput {
+                            device_id: DeviceId::dummy(),
+                            state: match wparam {
+                                winuser::WM_LBUTTONDOWN | winuser::WM_RBUTTONDOWN => Pressed,
+                                winuser::WM_LBUTTONUP | winuser::WM_RBUTTONUP => Released,
+                                _ => unreachable!(),
+                            },
+                            button: match wparam {
+                                winuser::WM_LBUTTONDOWN | winuser::WM_LBUTTONUP => Left,
+                                winuser::WM_RBUTTONDOWN | winuser::WM_RBUTTONUP => Right,
+                                _ => unreachable!(),
+                            },
+                            modifiers: ModifiersState::empty(),
+                        },
+                    },
+                ),
+                winuser::WM_MOUSEMOVE => {
+                    use winit::dpi::PhysicalPosition;
+
+                    let mut client_pos = ms.pt.clone();
+                    assert_eq!(
+                        winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _),
+                        TRUE
+                    );
+                    let position = PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
+                    platform.handle_event::<()>(
+                        imgui.io_mut(),
+                        &window,
+                        &Event::WindowEvent {
+                            window_id: window.id(),
+                            event: WindowEvent::CursorMoved {
+                                device_id: DeviceId::dummy(),
+                                position,
+                                modifiers: ModifiersState::empty(),
+                            },
+                        },
+                    );
+                }
+                winuser::WM_MOUSEWHEEL => {
+                    use winit::event::{MouseScrollDelta::LineDelta, TouchPhase};
+
+                    let value = (ms.mouseData >> 16) as i16;
+                    let value = value as i32;
+                    let value = value as f32 / winuser::WHEEL_DELTA as f32;
+
+                    platform.handle_event::<()>(
+                        imgui.io_mut(),
+                        &window,
+                        &Event::WindowEvent {
+                            window_id: window.id(),
+                            event: WindowEvent::MouseWheel {
+                                device_id: DeviceId::dummy(),
+                                delta: LineDelta(0.0, value),
+                                phase: TouchPhase::Moved,
+                                modifiers: ModifiersState::empty(),
+                            },
+                        },
+                    );
+                }
+                // who even has a horizontal mouse wheel
+                // winuser::WM_MOUSEHWHEEL => {}
+                _ => {}
+            }
+            let io = imgui.io_mut();
+            match wparam {
+                winuser::WM_LBUTTONDOWN
+                | winuser::WM_LBUTTONUP
+                | winuser::WM_RBUTTONDOWN
+                | winuser::WM_RBUTTONUP
+                | winuser::WM_MOUSEWHEEL
+                    if io.want_capture_mouse =>
+                {
+                    true
+                }
+                _ => false,
+            }
         } else {
-            unreachable!()
-        };
-
-        use winit::event::{ElementState::*, ModifiersState, MouseButton::*};
-        let wparam = wparam as UINT;
-        match wparam {
-            winuser::WM_LBUTTONDOWN
-            | winuser::WM_LBUTTONUP
-            | winuser::WM_RBUTTONDOWN
-            | winuser::WM_RBUTTONUP => platform.handle_event::<()>(
-                imgui.io_mut(),
-                &window,
-                &Event::WindowEvent {
-                    window_id: window.id(),
-                    event: WindowEvent::MouseInput {
-                        device_id: DeviceId::dummy(),
-                        state: match wparam {
-                            winuser::WM_LBUTTONDOWN | winuser::WM_RBUTTONDOWN => Pressed,
-                            winuser::WM_LBUTTONUP | winuser::WM_RBUTTONUP => Released,
-                            _ => unreachable!(),
-                        },
-                        button: match wparam {
-                            winuser::WM_LBUTTONDOWN | winuser::WM_LBUTTONUP => Left,
-                            winuser::WM_RBUTTONDOWN | winuser::WM_RBUTTONUP => Right,
-                            _ => unreachable!(),
-                        },
-                        modifiers: ModifiersState::empty(),
-                    },
-                },
-            ),
-            winuser::WM_MOUSEMOVE => {
-                use winit::dpi::PhysicalPosition;
-
-                let mut client_pos = ms.pt.clone();
-                assert_eq!(
-                    winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _),
-                    TRUE
-                );
-                let position = PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
-                platform.handle_event::<()>(
-                    imgui.io_mut(),
-                    &window,
-                    &Event::WindowEvent {
-                        window_id: window.id(),
-                        event: WindowEvent::CursorMoved {
-                            device_id: DeviceId::dummy(),
-                            position,
-                            modifiers: ModifiersState::empty(),
-                        },
-                    },
-                );
-            }
-            winuser::WM_MOUSEWHEEL => {
-                use winit::event::{MouseScrollDelta::LineDelta, TouchPhase};
-
-                let value = (ms.mouseData >> 16) as i16;
-                let value = value as i32;
-                let value = value as f32 / winuser::WHEEL_DELTA as f32;
-
-                platform.handle_event::<()>(
-                    imgui.io_mut(),
-                    &window,
-                    &Event::WindowEvent {
-                        window_id: window.id(),
-                        event: WindowEvent::MouseWheel {
-                            device_id: DeviceId::dummy(),
-                            delta: LineDelta(0.0, value),
-                            phase: TouchPhase::Moved,
-                            modifiers: ModifiersState::empty(),
-                        },
-                    },
-                );
-            }
-            // who even has a horizontal mouse wheel
-            // winuser::WM_MOUSEHWHEEL => {}
-            _ => {}
-        }
-        let io = imgui.io_mut();
-        match wparam {
-            winuser::WM_LBUTTONDOWN
-            | winuser::WM_LBUTTONUP
-            | winuser::WM_RBUTTONDOWN
-            | winuser::WM_RBUTTONUP
-            | winuser::WM_MOUSEWHEEL
-                if io.want_capture_mouse =>
-            {
-                true
-            }
-            _ => false,
+            false
         }
     });
 
@@ -236,92 +247,108 @@ unsafe extern "system" fn low_level_mouse_proc(
     }
 }
 
-unsafe extern "system" fn subclass_proc(
-    hwnd: HWND,
-    umsg: UINT,
-    wparam: WPARAM,
-    lparam: LPARAM,
-    uidsubclass: UINT_PTR,
-    dwrefdata: DWORD_PTR,
-) -> LRESULT {
-    log::trace!(
-        "subclass_proc({:?}, {:x}, {}, {}, {}, {})",
-        hwnd,
-        umsg,
-        wparam,
-        lparam,
-        uidsubclass,
-        dwrefdata
-    );
-    DefSubclassProc(hwnd, umsg, wparam, lparam)
+pub struct D3D11Renderer {
+    shared: Rc<Shared>,
 }
+struct Shared {
+    inner: RefCell<Inner>,
+    event_loop: Cell<Option<EventLoop<()>>>,
+}
+struct Inner {
+    window: winit::window::Window,
+    platform: WinitPlatform,
+    imgui: imgui::Context,
+    env: Env,
+    renderer: imgui_dx11_renderer::Renderer,
+    context: ComPtr<ID3D11DeviceContext>,
+    main_rtv: ComPtr<ID3D11RenderTargetView>,
+    swapchain: ComPtr<IDXGISwapChain>,
+    device: ComPtr<ID3D11Device>,
+    mousellhook: Option<HHOOK>,
+}
+impl Renderer for D3D11Renderer {
+    fn new(settings: &SettingsView) -> Self {
+        let event_loop = EventLoop::new();
+        let window = Self::create_window_builder(settings)
+            .build(&event_loop)
+            .unwrap();
 
-pub fn main_loop(window: winit::window::WindowBuilder, app: &mut App) {
-    let mut event_loop = EventLoop::new();
-    let window = window.build(&event_loop).unwrap();
+        let hwnd = if let RawWindowHandle::Windows(handle) = window.raw_window_handle() {
+            handle.hwnd
+        } else {
+            unreachable!()
+        };
 
-    let hwnd = if let RawWindowHandle::Windows(handle) = window.raw_window_handle() {
-        handle.hwnd
-    } else {
-        unreachable!()
-    };
-
-    let mut mousellhook: Option<HHOOK> = None;
-    if app.settings().overlay_mode {
-        unsafe {
-            let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
-            winuser::SetWindowLongA(
-                hwnd as *mut _,
-                winuser::GWL_EXSTYLE,
-                (style as u32 | winuser::WS_EX_LAYERED | winuser::WS_EX_TRANSPARENT) as i32,
-            );
-            mousellhook.replace(SetWindowsHookExA(
-                WH_MOUSE_LL,
-                Some(low_level_mouse_proc),
-                ptr::null_mut(),
-                0,
-            ));
-            // SetWindowSubclass(hwnd as *mut _, Some(subclass_proc), 0, 0);
-            // winuser::SetLayeredWindowAttributes(hwnd as *mut _, 0, 0, winuser::LWA_COLORKEY);
-            // winuser::SetLayeredWindowAttributes(hwnd as *mut _, 0, 255, winuser::LWA_ALPHA);
-            // let margin = uxtheme::MARGINS {
-            //     cxLeftWidth: -1,
-            //     cxRightWidth: -1,
-            //     cyTopHeight: -1,
-            //     cyBottomHeight: -1,
-            // };
-            // dwmapi::DwmExtendFrameIntoClientArea(hwnd as *mut _, &margin);
+        let mut mousellhook: Option<HHOOK> = None;
+        if settings.overlay_mode {
+            unsafe {
+                let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
+                winuser::SetWindowLongA(
+                    hwnd as *mut _,
+                    winuser::GWL_EXSTYLE,
+                    (style as u32 | winuser::WS_EX_LAYERED | winuser::WS_EX_TRANSPARENT) as i32,
+                );
+                mousellhook.replace(SetWindowsHookExA(
+                    WH_MOUSE_LL,
+                    Some(low_level_mouse_proc),
+                    ptr::null_mut(),
+                    0,
+                ));
+            }
         }
+
+        let (swapchain, device, context) = unsafe { create_device(hwnd.cast()) }.unwrap();
+        let main_rtv = unsafe { create_render_target(&swapchain, &device) };
+
+        let mut imgui = Self::create_imgui();
+        let platform = Self::create_platform(&mut imgui, &window);
+        let mut env = Env::default();
+        Self::create_fonts(&mut imgui, &mut env, &platform);
+
+        let renderer =
+            unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
+
+        let d3d11_renderer = Self {
+            shared: Rc::new(Shared {
+                inner: RefCell::new(Inner {
+                    window,
+                    platform,
+                    imgui,
+                    env,
+                    renderer,
+                    context,
+                    main_rtv,
+                    swapchain,
+                    device,
+                    mousellhook,
+                }),
+                event_loop: Cell::new(Some(event_loop)),
+            }),
+        };
+        SYSTEM.with(|system| *system.borrow_mut() = d3d11_renderer.downgrade());
+        d3d11_renderer
     }
 
-    let (swapchain, device, context) = unsafe { create_device(hwnd.cast()) }.unwrap();
-    let mut main_rtv = unsafe { create_render_target(&swapchain, &device) };
+    fn main_loop(&mut self, app: &mut App) {
+        let clear_color = [0.00, 0.00, 0.00, 0.00];
+        let mut last_frame = Instant::now();
+        let mut event_loop = self.shared.event_loop.replace(None).unwrap();
 
-    let (platform, mut imgui, mut env) = imgui_init(&window);
+        event_loop.run_return(move |event, _, control_flow| {
+            // *control_flow = ControlFlow::Wait;
 
-    let mut renderer =
-        unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
-
-    SYSTEM.with(|f| {
-        *f.borrow_mut() = Some(System {
-            imgui,
-            platform,
-            window,
-        });
-    });
-
-    let clear_color = [0.00, 0.00, 0.00, 0.00];
-    let mut last_frame = Instant::now();
-    event_loop.run_return(move |event, _, control_flow| {
-        // *control_flow = ControlFlow::Wait;
-        SYSTEM.with(|system| {
-            let mut system = system.borrow_mut();
-            let System {
-                imgui,
-                platform,
+            let Inner {
                 window,
-            } = system.as_mut().unwrap();
-
+                platform,
+                imgui,
+                env,
+                renderer,
+                context,
+                main_rtv,
+                swapchain,
+                device,
+                ..
+            } = &mut *self.shared.inner.borrow_mut();
             match event {
                 Event::NewEvents(_) => {
                     let now = Instant::now();
@@ -342,7 +369,7 @@ pub fn main_loop(window: winit::window::WindowBuilder, app: &mut App) {
                     }
                     let mut ui = imgui.frame();
                     let mut run = true;
-                    app.ui(&mut env, &mut ui, &mut run);
+                    app.ui(env, &mut ui, &mut run);
                     if !run {
                         *control_flow = ControlFlow::Exit;
                     }
@@ -360,9 +387,9 @@ pub fn main_loop(window: winit::window::WindowBuilder, app: &mut App) {
                     event: WindowEvent::Resized(winit::dpi::PhysicalSize { height, width }),
                     ..
                 } => unsafe {
-                    ptr::drop_in_place(&mut main_rtv);
+                    ptr::drop_in_place(main_rtv);
                     swapchain.ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-                    ptr::write(&mut main_rtv, create_render_target(&swapchain, &device));
+                    ptr::write(main_rtv, create_render_target(swapchain, device));
                     platform.handle_event(imgui.io_mut(), &window, &event);
                 },
                 Event::LoopDestroyed => (),
@@ -371,11 +398,38 @@ pub fn main_loop(window: winit::window::WindowBuilder, app: &mut App) {
                 }
             }
         });
-    });
-
-    if let Some(mousellhook) = mousellhook {
-        unsafe {
-            UnhookWindowsHookEx(mousellhook);
+    }
+}
+impl Drop for Inner {
+    fn drop(&mut self) {
+        log::trace!("drop it");
+        let Inner { mousellhook, .. } = self;
+        if let Some(mousellhook) = mousellhook {
+            unsafe {
+                UnhookWindowsHookEx(*mousellhook);
+            }
         }
+    }
+}
+
+pub struct WeakD3D11Renderer {
+    shared: Weak<Shared>,
+}
+impl D3D11Renderer {
+    pub fn downgrade(&self) -> WeakD3D11Renderer {
+        WeakD3D11Renderer {
+            shared: Rc::downgrade(&self.shared),
+        }
+    }
+}
+impl WeakD3D11Renderer {
+    pub fn new() -> Self {
+        WeakD3D11Renderer {
+            shared: Weak::new(),
+        }
+    }
+    pub fn upgrade(&self) -> Option<D3D11Renderer> {
+        let shared = self.shared.upgrade()?;
+        Some(D3D11Renderer { shared })
     }
 }

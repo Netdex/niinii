@@ -1,5 +1,6 @@
 use niinii::{
     app::App,
+    backend::{d3d11::D3D11Renderer, renderer::Renderer},
     view::settings::{SettingsView, SupportedRenderer},
 };
 use std::{
@@ -9,25 +10,7 @@ use std::{
 use winit::platform::windows::WindowBuilderExtWindows;
 use winit::window;
 
-const TITLE: &'static str = "niinii";
 const STATE_PATH: &'static str = "niinii.json";
-
-fn create_window(settings: &SettingsView) -> window::WindowBuilder {
-    let transparent = settings.transparent || settings.overlay_mode;
-    let on_top = settings.on_top || settings.overlay_mode;
-    let maximized = settings.overlay_mode;
-    let decorations = !settings.overlay_mode;
-
-    let window = window::WindowBuilder::new()
-        .with_title(TITLE)
-        .with_inner_size(glutin::dpi::LogicalSize::new(768, 768))
-        .with_transparent(transparent)
-        .with_drag_and_drop(false)
-        .with_maximized(maximized)
-        .with_decorations(decorations)
-        .with_always_on_top(on_top);
-    window
-}
 
 fn main() {
     env_logger::init();
@@ -38,19 +21,11 @@ fn main() {
         .and_then(|x| serde_json::from_reader(x).ok())
         .unwrap_or_default();
 
-    let renderer = settings.active_renderer();
-    let window = create_window(&settings);
+    let active_renderer = settings.active_renderer();
 
     let mut app = App::new(settings);
-
-    match renderer {
-        SupportedRenderer::Glow => {
-            niinii::backend::glow::main_loop(window, &mut app);
-        }
-        SupportedRenderer::Direct3D11 => {
-            niinii::backend::d3d11::main_loop(window, &mut app);
-        }
-    }
+    let mut renderer = D3D11Renderer::new(app.settings());
+    renderer.main_loop(&mut app);
 
     let writer = BufWriter::new(File::create(STATE_PATH).unwrap());
     serde_json::to_writer(writer, &app.settings()).unwrap();

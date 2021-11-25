@@ -3,77 +3,106 @@ use glutin::{
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
-use std::time::Instant;
+use imgui_glow_renderer::AutoRenderer;
+use imgui_winit_support::WinitPlatform;
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::{app::App, common::imgui_init};
+use super::renderer::{Env, Renderer};
+use crate::{app::App, view::settings::SettingsView};
 
 pub type Window = glutin::WindowedContext<glutin::PossiblyCurrent>;
 
-pub fn main_loop(window: winit::window::WindowBuilder, app: &mut App) {
-    // Common setup for creating a winit window and imgui context, not specifc
-    // to this renderer at all except that glutin is used to create the window
-    // since it will give us access to a GL context
-    let (mut event_loop, window) = create_window(window);
-    let (mut platform, mut imgui, mut env) = imgui_init(window.window());
+struct GlowRenderer {
+    event_loop: EventLoop<()>,
+    window: Window,
+    platform: WinitPlatform,
+    imgui: imgui::Context,
+    env: Env,
+    renderer: AutoRenderer,
+}
+impl Renderer for GlowRenderer {
+    fn new(settings: &SettingsView) -> Self {
+        let (event_loop, window) = create_window(Self::create_window_builder(settings));
+        let mut imgui = Self::create_imgui();
+        let platform = Self::create_platform(&mut imgui, window.window());
+        let mut env = Env::default();
+        Self::create_fonts(&mut imgui, &mut env, &platform);
 
-    // OpenGL context from glow
-    let gl = glow_context(&window);
+        // OpenGL context from glow
+        let gl = glow_context(&window);
 
-    // OpenGL renderer from this crate
-    let mut ig_renderer = imgui_glow_renderer::AutoRenderer::initialize(gl, &mut imgui)
-        .expect("failed to create renderer");
+        // OpenGL renderer from this crate
+        let renderer = imgui_glow_renderer::AutoRenderer::initialize(gl, &mut imgui)
+            .expect("failed to create renderer");
 
-    let mut last_frame = Instant::now();
-
-    // Standard winit event loop
-    event_loop.run_return(move |event, _, control_flow| {
-        // *control_flow = glutin::event_loop::ControlFlow::Wait;
-        match event {
-            glutin::event::Event::NewEvents(_) => {
-                let now = Instant::now();
-                imgui
-                    .io_mut()
-                    .update_delta_time(now.duration_since(last_frame));
-                last_frame = now;
-            }
-            glutin::event::Event::MainEventsCleared => {
-                platform
-                    .prepare_frame(imgui.io_mut(), window.window())
-                    .unwrap();
-                window.window().request_redraw();
-            }
-            glutin::event::Event::RedrawRequested(_) => {
-                // The renderer assumes you'll be clearing the buffer yourself
-                unsafe { ig_renderer.gl_context().clear(glow::COLOR_BUFFER_BIT) };
-
-                let mut ui = imgui.frame();
-                let mut run = true;
-                app.ui(&mut env, &mut ui, &mut run);
-                if !run {
-                    *control_flow = ControlFlow::Exit;
-                }
-
-                platform.prepare_render(&ui, window.window());
-                let draw_data = ui.render();
-
-                // This is the only extra render step to add
-                ig_renderer
-                    .render(draw_data)
-                    .expect("error rendering imgui");
-
-                window.swap_buffers().unwrap();
-            }
-            glutin::event::Event::WindowEvent {
-                event: glutin::event::WindowEvent::CloseRequested,
-                ..
-            } => {
-                *control_flow = glutin::event_loop::ControlFlow::Exit;
-            }
-            event => {
-                platform.handle_event(imgui.io_mut(), window.window(), &event);
-            }
+        Self {
+            event_loop,
+            window,
+            platform,
+            imgui,
+            env,
+            renderer,
         }
-    });
+    }
+    fn main_loop(&mut self, app: &mut App) {
+        let GlowRenderer {
+            event_loop,
+            window,
+            platform,
+            imgui,
+            env,
+            renderer,
+        } = self;
+        let mut last_frame = Instant::now();
+
+        // Standard winit event loop
+        event_loop.run_return(move |event, _, control_flow| {
+            // *control_flow = glutin::event_loop::ControlFlow::Wait;
+            match event {
+                glutin::event::Event::NewEvents(_) => {
+                    let now = Instant::now();
+                    imgui
+                        .io_mut()
+                        .update_delta_time(now.duration_since(last_frame));
+                    last_frame = now;
+                }
+                glutin::event::Event::MainEventsCleared => {
+                    platform
+                        .prepare_frame(imgui.io_mut(), window.window())
+                        .unwrap();
+                    window.window().request_redraw();
+                }
+                glutin::event::Event::RedrawRequested(_) => {
+                    // The renderer assumes you'll be clearing the buffer yourself
+                    unsafe { renderer.gl_context().clear(glow::COLOR_BUFFER_BIT) };
+
+                    let mut ui = imgui.frame();
+                    let mut run = true;
+                    app.ui(env, &mut ui, &mut run);
+                    if !run {
+                        *control_flow = ControlFlow::Exit;
+                    }
+
+                    platform.prepare_render(&ui, window.window());
+                    let draw_data = ui.render();
+
+                    // This is the only extra render step to add
+                    renderer.render(draw_data).expect("error rendering imgui");
+
+                    window.swap_buffers().unwrap();
+                }
+                glutin::event::Event::WindowEvent {
+                    event: glutin::event::WindowEvent::CloseRequested,
+                    ..
+                } => {
+                    *control_flow = glutin::event_loop::ControlFlow::Exit;
+                }
+                event => {
+                    platform.handle_event(imgui.io_mut(), window.window(), &event);
+                }
+            }
+        });
+    }
 }
 
 fn create_window(window: winit::window::WindowBuilder) -> (EventLoop<()>, Window) {

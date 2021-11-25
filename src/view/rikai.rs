@@ -7,7 +7,7 @@ use imgui::*;
 
 use super::mixins::*;
 use super::settings::{DisplayRubyText, SettingsView};
-use crate::common::Env;
+use crate::backend::renderer::Env;
 use crate::view::{raw::RawView, term::TermView};
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -88,7 +88,15 @@ impl RikaiView {
             DisplayRubyText::Furigana => RubyTextMode::Text(term.kana()),
             DisplayRubyText::Romaji => RubyTextMode::Text(romanized.romaji()),
         };
-        let ul_hover = draw_kanji_text(ui, env, term.text(), true, true, underline, fg_text);
+        let ul_hover = draw_kanji_text(
+            ui,
+            env,
+            term.text(),
+            true,
+            settings.stroke_text,
+            underline,
+            fg_text,
+        );
 
         if ui.is_item_hovered() {
             ui.set_mouse_cursor(Some(MouseCursor::Hand));

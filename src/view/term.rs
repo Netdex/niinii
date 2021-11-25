@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use ichiran::{kanji::Kanji, romanize::*, JmDictData};
 use imgui::*;
 
+use crate::backend::renderer::Env;
+
 use super::kanji::KanjiView;
 use super::mixins::*;
 use super::settings::SettingsView;
-use crate::common::Env;
 
 pub struct TermView<'a> {
     jmdict_data: &'a JmDictData,

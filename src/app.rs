@@ -6,7 +6,7 @@ use ichiran::{kanji::Kanji, romanize::Root, Ichiran, IchiranError, JmDictData};
 use imgui::*;
 
 use crate::{
-    common::Env,
+    backend::renderer::Env,
     view::{rikai::RikaiView, settings::SettingsView},
 };
 use ichiran::pgdaemon::PostgresDaemon;
@@ -155,7 +155,14 @@ impl App {
                     *run = false;
                 }
             }
-            if let Some(_menu) = ui.begin_menu("Edit") {
+            if let Some(_menu) = ui.begin_menu("Options") {
+                if MenuItem::new("Watch clipboard")
+                    .selected(self.settings.watch_clipboard)
+                    .build(ui)
+                {
+                    self.settings.watch_clipboard = !self.settings.watch_clipboard;
+                }
+                ui.separator();
                 if MenuItem::new("Settings").build(ui) {
                     self.show_settings = true;
                 }
@@ -175,7 +182,6 @@ impl App {
                 }
             }
         });
-        ui.new_line();
     }
 
     fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
@@ -196,7 +202,7 @@ impl App {
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui, run: &mut bool) {
+    pub fn ui(&mut self, env: &mut Env, ui: &mut Ui, run: &mut bool) {
         let io = ui.io();
 
         let niinii = Window::new("niinii");
@@ -228,13 +234,17 @@ impl App {
                     self.requested_text.replace(trunc);
                 }
                 ui.separator();
+            } else {
+                ui.new_line();
             }
 
-            if let Some(clipboard) = ui.clipboard_text() {
-                if clipboard != self.last_clipboard {
-                    self.input_text = clipboard.clone();
-                    self.last_clipboard = clipboard.clone();
-                    self.requested_text.replace(clipboard);
+            if self.settings.watch_clipboard {
+                if let Some(clipboard) = ui.clipboard_text() {
+                    if clipboard != self.last_clipboard {
+                        self.input_text = clipboard.clone();
+                        self.last_clipboard = clipboard.clone();
+                        self.requested_text.replace(clipboard);
+                    }
                 }
             }
 
@@ -255,19 +265,15 @@ impl App {
         }
 
         if self.show_settings {
-            Window::new("Settings")
-                // .size([300.0, 110.0], Condition::FirstUseEver)
-                .always_auto_resize(true)
-                // .resizable(false)
-                .build(ui, || {
-                    self.settings.ui(env, ui);
-                    ui.separator();
-                    if ui.button_with_size("OK", [120.0, 0.0]) {
-                        self.show_settings = false;
-                    }
-                    ui.same_line();
-                    ui.text("* Restart to apply these changes");
-                });
+            if let Some(_token) = Window::new("Settings").always_auto_resize(true).begin(ui) {
+                self.settings.ui(ui);
+                ui.separator();
+                if ui.button_with_size("OK", [120.0, 0.0]) {
+                    self.show_settings = false;
+                }
+                ui.same_line();
+                ui.text("* Restart to apply these changes");
+            }
         }
 
         if self.show_metrics_window {
