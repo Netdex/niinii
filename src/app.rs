@@ -299,6 +299,9 @@ impl App {
     pub fn settings(&self) -> &SettingsView {
         &self.settings
     }
+    pub fn settings_mut(&mut self) -> &mut SettingsView {
+        &mut self.settings
+    }
 }
 
 fn str_from_u8_nul_utf8_unchecked(utf8_src: &[u8]) -> &str {

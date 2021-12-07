@@ -34,10 +34,12 @@ fn decompress_gzip_font(font_data: &[u8]) -> Vec<u8> {
 }
 
 pub trait Renderer {
-    fn new(settings: &SettingsView) -> Self;
     fn main_loop(&mut self, app: &mut App);
 
-    fn create_window_builder(settings: &SettingsView) -> window::WindowBuilder {
+    fn create_window_builder(settings: &SettingsView) -> window::WindowBuilder
+    where
+        Self: Sized,
+    {
         let transparent = settings.transparent || settings.overlay_mode;
         let on_top = settings.on_top || settings.overlay_mode;
         let maximized = settings.overlay_mode;
@@ -53,9 +55,16 @@ pub trait Renderer {
             .with_always_on_top(on_top)
     }
 
-    fn create_imgui() -> imgui::Context {
+    fn create_imgui(settings: &SettingsView) -> imgui::Context
+    where
+        Self: Sized,
+    {
         let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(Some(PathBuf::from("imgui.ini")));
+
+        if let Some(style) = settings.style() {
+            *imgui.style_mut() = style;
+        }
 
         let io = imgui.io_mut();
         io.font_allow_user_scaling = true;
@@ -68,10 +77,10 @@ pub trait Renderer {
         imgui
     }
 
-    fn create_platform(
-        imgui: &mut imgui::Context,
-        window: &winit::window::Window,
-    ) -> WinitPlatform {
+    fn create_platform(imgui: &mut imgui::Context, window: &winit::window::Window) -> WinitPlatform
+    where
+        Self: Sized,
+    {
         let mut platform = WinitPlatform::init(imgui);
         platform.attach_window(
             imgui.io_mut(),
@@ -81,7 +90,10 @@ pub trait Renderer {
         platform
     }
 
-    fn create_fonts(imgui: &mut imgui::Context, env: &mut Env, platform: &WinitPlatform) {
+    fn create_fonts(imgui: &mut imgui::Context, env: &mut Env, platform: &WinitPlatform)
+    where
+        Self: Sized,
+    {
         let hidpi_factor = platform.hidpi_factor();
         imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 

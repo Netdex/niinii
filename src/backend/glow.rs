@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use glow::HasContext;
 use glutin::{
     event_loop::{ControlFlow, EventLoop},
@@ -5,14 +7,13 @@ use glutin::{
 };
 use imgui_glow_renderer::AutoRenderer;
 use imgui_winit_support::WinitPlatform;
-use std::time::Instant;
 
 use super::renderer::{Env, Renderer};
 use crate::{app::App, view::settings::SettingsView};
 
 pub type Window = glutin::WindowedContext<glutin::PossiblyCurrent>;
 
-struct GlowRenderer {
+pub struct GlowRenderer {
     event_loop: EventLoop<()>,
     window: Window,
     platform: WinitPlatform,
@@ -20,18 +21,16 @@ struct GlowRenderer {
     env: Env,
     renderer: AutoRenderer,
 }
-impl Renderer for GlowRenderer {
-    fn new(settings: &SettingsView) -> Self {
+impl GlowRenderer {
+    pub fn new(settings: &SettingsView) -> Self {
         let (event_loop, window) = create_window(Self::create_window_builder(settings));
-        let mut imgui = Self::create_imgui();
+        let mut imgui = Self::create_imgui(settings);
         let platform = Self::create_platform(&mut imgui, window.window());
         let mut env = Env::default();
         Self::create_fonts(&mut imgui, &mut env, &platform);
 
-        // OpenGL context from glow
         let gl = glow_context(&window);
 
-        // OpenGL renderer from this crate
         let renderer = imgui_glow_renderer::AutoRenderer::initialize(gl, &mut imgui)
             .expect("failed to create renderer");
 
@@ -44,6 +43,8 @@ impl Renderer for GlowRenderer {
             renderer,
         }
     }
+}
+impl Renderer for GlowRenderer {
     fn main_loop(&mut self, app: &mut App) {
         let GlowRenderer {
             event_loop,
@@ -55,53 +56,45 @@ impl Renderer for GlowRenderer {
         } = self;
         let mut last_frame = Instant::now();
 
-        // Standard winit event loop
-        event_loop.run_return(move |event, _, control_flow| {
-            // *control_flow = glutin::event_loop::ControlFlow::Wait;
-            match event {
-                glutin::event::Event::NewEvents(_) => {
-                    let now = Instant::now();
-                    imgui
-                        .io_mut()
-                        .update_delta_time(now.duration_since(last_frame));
-                    last_frame = now;
-                }
-                glutin::event::Event::MainEventsCleared => {
-                    platform
-                        .prepare_frame(imgui.io_mut(), window.window())
-                        .unwrap();
-                    window.window().request_redraw();
-                }
-                glutin::event::Event::RedrawRequested(_) => {
-                    // The renderer assumes you'll be clearing the buffer yourself
-                    unsafe { renderer.gl_context().clear(glow::COLOR_BUFFER_BIT) };
+        event_loop.run_return(|event, _, control_flow| match event {
+            glutin::event::Event::NewEvents(_) => {
+                let now = Instant::now();
+                imgui
+                    .io_mut()
+                    .update_delta_time(now.duration_since(last_frame));
+                last_frame = now;
+            }
+            glutin::event::Event::MainEventsCleared => {
+                platform
+                    .prepare_frame(imgui.io_mut(), window.window())
+                    .unwrap();
+                window.window().request_redraw();
+            }
+            glutin::event::Event::RedrawRequested(_) => {
+                unsafe { renderer.gl_context().clear(glow::COLOR_BUFFER_BIT) };
 
-                    let mut ui = imgui.frame();
-                    let mut run = true;
-                    app.ui(env, &mut ui, &mut run);
-                    if !run {
-                        *control_flow = ControlFlow::Exit;
-                    }
-
-                    platform.prepare_render(&ui, window.window());
-                    let draw_data = ui.render();
-
-                    // This is the only extra render step to add
-                    renderer.render(draw_data).expect("error rendering imgui");
-
-                    window.swap_buffers().unwrap();
+                let mut ui = imgui.frame();
+                let mut run = true;
+                app.ui(env, &mut ui, &mut run);
+                if !run {
+                    *control_flow = ControlFlow::Exit;
                 }
-                glutin::event::Event::WindowEvent {
-                    event: glutin::event::WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    *control_flow = glutin::event_loop::ControlFlow::Exit;
-                }
-                event => {
-                    platform.handle_event(imgui.io_mut(), window.window(), &event);
-                }
+
+                platform.prepare_render(&ui, window.window());
+                let draw_data = ui.render();
+                renderer.render(draw_data).unwrap();
+
+                window.swap_buffers().unwrap();
+            }
+            glutin::event::Event::WindowEvent {
+                event: glutin::event::WindowEvent::CloseRequested,
+                ..
+            } => *control_flow = glutin::event_loop::ControlFlow::Exit,
+            event => {
+                platform.handle_event(imgui.io_mut(), window.window(), &event);
             }
         });
+        app.settings_mut().set_style(imgui.style());
     }
 }
 

@@ -39,6 +39,7 @@ pub struct SettingsView {
     pub show_variant_switcher: bool,
     pub watch_clipboard: bool,
     pub stroke_text: bool,
+    pub style: Option<Vec<u8>>,
 }
 impl Default for SettingsView {
     fn default() -> Self {
@@ -55,6 +56,7 @@ impl Default for SettingsView {
             show_variant_switcher: true,
             watch_clipboard: true,
             stroke_text: true,
+            style: None,
         }
     }
 }
@@ -100,7 +102,7 @@ impl SettingsView {
                 "Turns the window into an overlay on top of all other windows (D3D11 only)",
             );
         }
-        ui.checkbox("Ignore clipboard", &mut self.watch_clipboard);
+        ui.checkbox("Watch clipboard", &mut self.watch_clipboard);
 
         ui.separator();
 
@@ -120,5 +122,22 @@ impl SettingsView {
 
     pub fn display_ruby_text(&self) -> DisplayRubyText {
         DisplayRubyText::from_usize(self.ruby_text_type_idx).unwrap()
+    }
+
+    pub fn set_style(&mut self, style: &imgui::Style) {
+        self.style = Some(
+            unsafe {
+                std::slice::from_raw_parts(
+                    (style as *const _) as *const u8,
+                    std::mem::size_of::<imgui::Style>(),
+                )
+            }
+            .to_vec(),
+        );
+    }
+    pub fn style(&self) -> Option<imgui::Style> {
+        self.style
+            .as_ref()
+            .map(|style| unsafe { std::ptr::read(style.as_ptr() as *const _) })
     }
 }

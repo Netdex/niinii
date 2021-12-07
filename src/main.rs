@@ -1,7 +1,7 @@
 use niinii::{
     app::App,
-    backend::{d3d11::D3D11Renderer, renderer::Renderer},
-    view::settings::SettingsView,
+    backend::{d3d11::D3D11Renderer, glow::GlowRenderer, renderer::Renderer},
+    view::settings::{SettingsView, SupportedRenderer},
 };
 use std::{
     fs::File,
@@ -19,10 +19,11 @@ fn main() {
         .and_then(|x| serde_json::from_reader(x).ok())
         .unwrap_or_default();
 
-    let _active_renderer = settings.active_renderer();
-
+    let mut renderer: Box<dyn Renderer> = match settings.active_renderer() {
+        SupportedRenderer::Glow => Box::new(GlowRenderer::new(&settings)),
+        SupportedRenderer::Direct3D11 => Box::new(D3D11Renderer::new(&settings)),
+    };
     let mut app = App::new(settings);
-    let mut renderer = D3D11Renderer::new(app.settings());
     renderer.main_loop(&mut app);
 
     let writer = BufWriter::new(File::create(STATE_PATH).unwrap());
