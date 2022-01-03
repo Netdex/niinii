@@ -335,8 +335,6 @@ impl Renderer for D3D11Renderer {
                 }
             }
         });
-        let Inner { imgui, .. } = &mut *self.shared.inner.borrow_mut();
-        app.settings_mut().set_style(imgui.style());
     }
 }
 impl Drop for Inner {

@@ -40,7 +40,6 @@ pub trait Renderer {
     where
         Self: Sized,
     {
-        let transparent = settings.transparent || settings.overlay_mode;
         let on_top = settings.on_top || settings.overlay_mode;
         let maximized = settings.overlay_mode;
         let decorations = !settings.overlay_mode;
@@ -48,7 +47,7 @@ pub trait Renderer {
         window::WindowBuilder::new()
             .with_title("niinii")
             .with_inner_size(glutin::dpi::LogicalSize::new(768, 768))
-            .with_transparent(transparent)
+            .with_transparent(true)
             .with_drag_and_drop(false)
             .with_maximized(maximized)
             .with_decorations(decorations)

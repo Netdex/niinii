@@ -3,7 +3,7 @@ use imgui::{StyleColor, Ui};
 use crate::backend::renderer::{Env, TextStyle};
 
 pub fn help_marker(ui: &Ui, text: &str) {
-    ui.text_colored([0.7, 0.7, 0.7, 1.0], "[?]");
+    ui.text_colored(ui.style_color(StyleColor::TextDisabled), "[?]");
     if ui.is_item_hovered() {
         ui.tooltip_text(text);
     }

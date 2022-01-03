@@ -102,7 +102,6 @@ impl SettingsView {
                 "Turns the window into an overlay on top of all other windows (D3D11 only)",
             );
         }
-        ui.checkbox("Watch clipboard", &mut self.watch_clipboard);
 
         ui.separator();
 
@@ -124,16 +123,20 @@ impl SettingsView {
         DisplayRubyText::from_usize(self.ruby_text_type_idx).unwrap()
     }
 
-    pub fn set_style(&mut self, style: &imgui::Style) {
-        self.style = Some(
-            unsafe {
-                std::slice::from_raw_parts(
-                    (style as *const _) as *const u8,
-                    std::mem::size_of::<imgui::Style>(),
-                )
-            }
-            .to_vec(),
-        );
+    pub fn set_style(&mut self, style: Option<&imgui::Style>) {
+        if let Some(style) = style {
+            self.style = Some(
+                unsafe {
+                    std::slice::from_raw_parts(
+                        (style as *const _) as *const u8,
+                        std::mem::size_of::<imgui::Style>(),
+                    )
+                }
+                .to_vec(),
+            );
+        } else {
+            self.style = None;
+        }
     }
     pub fn style(&self) -> Option<imgui::Style> {
         self.style

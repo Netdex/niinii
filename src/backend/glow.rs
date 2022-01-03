@@ -94,7 +94,6 @@ impl Renderer for GlowRenderer {
                 platform.handle_event(imgui.io_mut(), window.window(), &event);
             }
         });
-        app.settings_mut().set_style(imgui.style());
     }
 }
 

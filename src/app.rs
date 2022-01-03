@@ -7,14 +7,14 @@ use imgui::*;
 
 use crate::{
     backend::renderer::Env,
-    view::{rikai::RikaiView, settings::SettingsView},
+    view::{mixins::help_marker, rikai::RikaiView, settings::SettingsView},
 };
 use ichiran::pgdaemon::PostgresDaemon;
 
 const ERROR_MODAL_TITLE: &str = "Error";
 
 #[derive(Debug)]
-struct IchiranAst {
+struct TextMeta {
     root: Root,
     kanji_info: HashMap<char, Kanji>,
     jmdict_data: JmDictData,
@@ -22,7 +22,7 @@ struct IchiranAst {
 
 #[derive(Debug)]
 enum Message {
-    Ichiran(Result<IchiranAst, IchiranError>),
+    Ichiran(Result<TextMeta, IchiranError>),
 }
 
 #[derive(Debug)]
@@ -102,13 +102,10 @@ impl App {
                 let root =
                     thread::spawn(enclose! { (ichiran, text) move || ichiran.romanize(&text, 5) });
                 let kanji_info = ichiran.kanji_from_str(&text)?;
+                let jmdict_data = ichiran.jmdict_data()?;
                 let root = root.join().unwrap()?;
 
-                Ok(IchiranAst {
-                    root,
-                    kanji_info,
-                    jmdict_data: ichiran.jmdict_data()?,
-                })
+                Ok(TextMeta { root, kanji_info, jmdict_data })
             })();
             let _ = channel_tx.send(Message::Ichiran(result));
         }});
@@ -124,7 +121,7 @@ impl App {
 
     fn poll(&mut self, ui: &Ui) {
         match self.channel_rx.try_recv() {
-            Ok(Message::Ichiran(Ok(IchiranAst {
+            Ok(Message::Ichiran(Ok(TextMeta {
                 root,
                 kanji_info,
                 jmdict_data,
@@ -201,13 +198,16 @@ impl App {
         let niinii = Window::new("niinii");
 
         let niinii = if self.settings().overlay_mode {
-            niinii.flags(WindowFlags::MENU_BAR | WindowFlags::NO_BACKGROUND)
+            niinii
+                .menu_bar(true)
+                .draw_background(!self.settings().transparent)
         } else {
             niinii
                 .position([0.0, 0.0], Condition::Always)
                 .size(io.display_size, Condition::Always)
-                .flags(WindowFlags::MENU_BAR | WindowFlags::NO_DECORATION)
-                .bring_to_front_on_focus(false)
+                .menu_bar(true)
+                .draw_background(!self.settings().transparent)
+                .no_decoration()
         };
 
         niinii.build(ui, || {
@@ -274,20 +274,31 @@ impl App {
         }
 
         if self.show_style_editor {
+            let mut show_style_editor = self.show_style_editor;
             Window::new("Style Editor")
-                .opened(&mut self.show_style_editor)
+                .opened(&mut show_style_editor)
+                .menu_bar(true)
                 .build(ui, || {
+                    ui.menu_bar(|| {
+                        if ui.button("Save") {
+                            self.settings_mut().set_style(Some(&ui.clone_style()));
+                        }
+                        if ui.button("Reset") {
+                            self.settings_mut().set_style(None);
+                        }
+                        if self.settings.style.is_some() {
+                            ui.menu_with_enabled("Style saved", false, || {});
+                            help_marker(ui, "Saved style will be restored on start-up. Reset will clear the stored style.");
+                        }
+                    });
                     ui.show_default_style_editor();
                 });
+            self.show_style_editor = show_style_editor;
         }
 
         if let Some(requested_text) = self.requested_text.clone() {
             match &self.state {
-                State::Displaying { .. } => {
-                    self.request_ast(ui, &requested_text);
-                    self.requested_text = None;
-                }
-                State::Error { .. } | State::None => {
+                State::Displaying { .. } | State::Error { .. } | State::None => {
                     self.request_ast(ui, &requested_text);
                     self.requested_text = None;
                 }
