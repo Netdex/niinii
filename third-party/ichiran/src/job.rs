@@ -60,6 +60,8 @@ mod imp {
     pub struct JobObject {
         job: Handle,
     }
+    unsafe impl Send for JobObject {}
+    unsafe impl Sync for JobObject {}
 
     pub struct Handle {
         inner: HANDLE,
