@@ -1,29 +1,26 @@
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use ichiran::{kanji::Kanji, romanize::*, JmDictData};
+use ichiran::romanize::*;
 use imgui::*;
 
+use super::deepl::DeepLView;
 use super::mixins::*;
 use super::settings::{DisplayRubyText, SettingsView};
 use crate::backend::renderer::Env;
+use crate::gloss::Gloss;
 use crate::view::{raw::RawView, term::TermView};
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug)]
 pub struct RikaiView {
-    root: Root,
-    kanji_info: HashMap<char, Kanji>,
-    jmdict_data: JmDictData,
+    gloss: Gloss,
     show_term_window: RefCell<HashSet<Romanized>>,
     selected_clause: RefCell<HashMap<Segment, i32>>,
 }
 impl RikaiView {
-    pub fn new(root: Root, kanji_info: HashMap<char, Kanji>, jmdict_data: JmDictData) -> Self {
+    pub fn new(gloss: Gloss) -> Self {
         Self {
-            root,
-            kanji_info,
-            jmdict_data,
+            gloss,
             show_term_window: RefCell::new(HashSet::new()),
             selected_clause: RefCell::new(HashMap::new()),
         }
@@ -43,16 +40,26 @@ impl RikaiView {
             .focus_on_appearing(true)
             .opened(&mut opened)
             .build(ui, || {
-                TermView::new(&self.jmdict_data, &self.kanji_info, romanized, 0.0)
-                    .ui(env, ui, settings);
+                TermView::new(
+                    &self.gloss.jmdict_data,
+                    &self.gloss.kanji_info,
+                    romanized,
+                    0.0,
+                )
+                .ui(env, ui, settings);
             });
         opened
     }
 
     fn term_tooltip(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, romanized: &Romanized) {
         ui.tooltip(|| {
-            TermView::new(&self.jmdict_data, &self.kanji_info, romanized, 30.0)
-                .ui(env, ui, settings)
+            TermView::new(
+                &self.gloss.jmdict_data,
+                &self.gloss.kanji_info,
+                romanized,
+                30.0,
+            )
+            .ui(env, ui, settings)
         });
     }
 
@@ -85,8 +92,11 @@ impl RikaiView {
 
         let fg_text = match ruby_text {
             DisplayRubyText::None => RubyTextMode::None,
-            DisplayRubyText::Furigana => RubyTextMode::Text(term.kana()),
+            DisplayRubyText::Furigana if term.text() != term.kana() => {
+                RubyTextMode::Text(term.kana())
+            }
             DisplayRubyText::Romaji => RubyTextMode::Text(romanized.romaji()),
+            _ => RubyTextMode::Pad,
         };
         let ul_hover = draw_kanji_text(
             ui,
@@ -176,13 +186,25 @@ impl RikaiView {
     }
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView, show_raw: &mut bool) {
-        self.add_root(env, ui, settings, &self.root);
+        // ui.text(format!("Time elapsed: {:?}", &self.gloss.elapsed));
+
+        if let Some(_) = &self.gloss.deepl_text {
+            if CollapsingHeader::new("DeepL").default_open(true).build(ui) {
+                DeepLView::new(&self.gloss.deepl_text, &self.gloss.deepl_usage).ui(ui);
+            }
+        }
+
+        if CollapsingHeader::new("Gloss").default_open(true).build(ui) {
+            ui.text(""); // hack to align line position
+            self.add_root(env, ui, settings, &self.gloss.root);
+        }
+
         if *show_raw {
             Window::new("Raw")
                 .size([300., 110.], Condition::FirstUseEver)
                 .opened(show_raw)
                 .build(ui, || {
-                    RawView::new(&self.root).ui(env, ui);
+                    RawView::new(&self.gloss.root).ui(env, ui);
                 });
         }
 

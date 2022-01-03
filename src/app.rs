@@ -1,34 +1,24 @@
-use std::collections::HashMap;
 use std::sync::mpsc;
-use std::thread;
 
-use ichiran::{kanji::Kanji, romanize::Root, Ichiran, IchiranError, JmDictData};
 use imgui::*;
 
 use crate::{
     backend::renderer::Env,
+    gloss::{Gloss, GlossError, Glossator},
     view::{mixins::help_marker, rikai::RikaiView, settings::SettingsView},
 };
-use ichiran::pgdaemon::PostgresDaemon;
 
 const ERROR_MODAL_TITLE: &str = "Error";
 
 #[derive(Debug)]
-struct TextMeta {
-    root: Root,
-    kanji_info: HashMap<char, Kanji>,
-    jmdict_data: JmDictData,
-}
-
-#[derive(Debug)]
 enum Message {
-    Ichiran(Result<TextMeta, IchiranError>),
+    Gloss(Result<Gloss, GlossError>),
 }
 
 #[derive(Debug)]
 enum State {
     Displaying { rikai: RikaiView },
-    Error { err: IchiranError },
+    Error { err: GlossError },
     Processing,
     None,
 }
@@ -47,31 +37,15 @@ pub struct App {
     show_metrics_window: bool,
     show_style_editor: bool,
 
-    ichiran: Ichiran,
     settings: SettingsView,
     state: State,
-    _pg_daemon: Option<PostgresDaemon>,
+    gloss_engine: Glossator,
 }
 
 impl App {
     pub fn new(settings: SettingsView) -> Self {
         let (channel_tx, channel_rx) = mpsc::channel();
-        let ichiran = Ichiran::new(settings.ichiran_path.clone());
-        let pg_daemon = match ichiran.conn_params() {
-            Ok(conn_params) => {
-                let pg_daemon = PostgresDaemon::new(
-                    &settings.postgres_path,
-                    &settings.db_path,
-                    conn_params,
-                    false,
-                );
-                Some(pg_daemon)
-            }
-            Err(_) => {
-                log::warn!("could not get db conn params from ichiran");
-                None
-            }
-        };
+        let gloss_engine = Glossator::new(&settings);
         App {
             channel_tx,
             channel_rx,
@@ -83,10 +57,9 @@ impl App {
             show_raw: false,
             show_metrics_window: false,
             show_style_editor: false,
-            ichiran,
             settings,
             state: State::None,
-            _pg_daemon: pg_daemon,
+            gloss_engine,
         }
     }
 
@@ -96,18 +69,11 @@ impl App {
 
         self.transition(ui, State::Processing);
 
-        let ichiran = &self.ichiran;
-        thread::spawn(enclose! { (ichiran) move || {
-            let result = (|| {
-                let root =
-                    thread::spawn(enclose! { (ichiran, text) move || ichiran.romanize(&text, 5) });
-                let kanji_info = ichiran.kanji_from_str(&text)?;
-                let jmdict_data = ichiran.jmdict_data()?;
-                let root = root.join().unwrap()?;
-
-                Ok(TextMeta { root, kanji_info, jmdict_data })
-            })();
-            let _ = channel_tx.send(Message::Ichiran(result));
+        let gloss_engine = &self.gloss_engine;
+        let use_deepl = self.settings.use_deepl;
+        rayon::spawn(enclose! { (gloss_engine) move || {
+            let gloss = gloss_engine.gloss(&text, use_deepl);
+            let _ = channel_tx.send(Message::Gloss(gloss));
         }});
     }
 
@@ -121,17 +87,13 @@ impl App {
 
     fn poll(&mut self, ui: &Ui) {
         match self.channel_rx.try_recv() {
-            Ok(Message::Ichiran(Ok(TextMeta {
-                root,
-                kanji_info,
-                jmdict_data,
-            }))) => self.transition(
+            Ok(Message::Gloss(Ok(gloss))) => self.transition(
                 ui,
                 State::Displaying {
-                    rikai: RikaiView::new(root, kanji_info, jmdict_data),
+                    rikai: RikaiView::new(gloss),
                 },
             ),
-            Ok(Message::Ichiran(Err(err))) => {
+            Ok(Message::Gloss(Err(err))) => {
                 self.transition(ui, State::Error { err });
             }
             Err(mpsc::TryRecvError::Empty) => {}
@@ -142,7 +104,7 @@ impl App {
     }
 
     fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui, run: &mut bool) {
-        ui.menu_bar(|| {
+        if let Some(_token) = ui.begin_menu_bar() {
             if let Some(_menu) = ui.begin_menu("File") {
                 if MenuItem::new("Quit").build(ui) {
                     *run = false;
@@ -174,7 +136,7 @@ impl App {
                     self.show_imgui_demo = true;
                 }
             }
-        });
+        }
     }
 
     fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
@@ -214,21 +176,24 @@ impl App {
             self.show_main_menu(env, ui, run);
 
             if self.settings.show_manual_input {
-                let _token = ui.begin_disabled(matches!(self.state, State::Processing));
-                let trunc = str_from_u8_nul_utf8_unchecked(self.input_text.as_bytes()).to_owned();
-                if ui
-                    .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
-                    .enter_returns_true(true)
-                    .build()
+                if CollapsingHeader::new("Manual input")
+                    .default_open(true)
+                    .build(ui)
                 {
-                    self.requested_text.replace(trunc.clone());
+                    let _token = ui.begin_disabled(matches!(self.state, State::Processing));
+                    if ui
+                        .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
+                        .enter_returns_true(true)
+                        .build()
+                    {
+                        self.requested_text.replace(self.input_text.clone());
+                    }
+                    if ui.button_with_size("Go", [120.0, 0.0]) {
+                        self.requested_text.replace(self.input_text.clone());
+                    }
+                    ui.same_line();
+                    ui.checkbox("Enable DeepL integration", &mut self.settings.use_deepl);
                 }
-                if ui.button_with_size("Go", [120.0, 0.0]) {
-                    self.requested_text.replace(trunc);
-                }
-                ui.separator();
-            } else {
-                ui.new_line();
             }
 
             if self.settings.watch_clipboard {
@@ -313,12 +278,4 @@ impl App {
     pub fn settings_mut(&mut self) -> &mut SettingsView {
         &mut self.settings
     }
-}
-
-fn str_from_u8_nul_utf8_unchecked(utf8_src: &[u8]) -> &str {
-    let nul_range_end = utf8_src
-        .iter()
-        .position(|&c| c == b'\0')
-        .unwrap_or(utf8_src.len()); // default to length if no `\0` present
-    ::std::str::from_utf8(&utf8_src[0..nul_range_end]).unwrap()
 }

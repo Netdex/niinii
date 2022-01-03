@@ -135,7 +135,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                 ..
             } = &mut *inner;
 
-            let hwnd = if let RawWindowHandle::Windows(handle) = window.raw_window_handle() {
+            let hwnd = if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
                 handle.hwnd
             } else {
                 unreachable!()
@@ -211,7 +211,7 @@ impl D3D11Renderer {
             .build(&event_loop)
             .unwrap();
 
-        let hwnd = if let RawWindowHandle::Windows(handle) = window.raw_window_handle() {
+        let hwnd = if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
             handle.hwnd
         } else {
             unreachable!()

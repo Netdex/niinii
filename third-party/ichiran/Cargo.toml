@@ -17,8 +17,8 @@ thiserror = "1"
 csv = "1.1"
 regex = "1"
 lazy_static = "1.4.0"
-strum = "0.21"
-strum_macros = "0.21"
+strum = "0.23"
+strum_macros = "0.23"
 
 winapi = { version = "0.3", features = [
 	"minwindef",

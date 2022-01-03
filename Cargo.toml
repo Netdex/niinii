@@ -22,33 +22,37 @@ imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
 # imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
 
 [dependencies]
-imgui = { version = "0.8", features = ["tables-api"] }
-imgui-winit-support = "0.8"
+imgui = { version = "0.8.2", features = ["tables-api"] }
+imgui-winit-support = { version = "0.8.2", features = ["winit-26"] }
 clipboard = "0.5"
-imgui-glow-renderer = "0.8"
+imgui-glow-renderer = "0.8.2"
 glow = "0.10.0"
-glutin = "0.27.0"
+glutin = "0.28.0"
 
 # imgui-dx9-renderer = "0.8"
 imgui-dx11-renderer = "0.8"
 
 winapi = { version = "0.3" }
 wio = "0.2"
-raw-window-handle = "0.3"
-winit = "0.25"
+raw-window-handle = "0.4.2"
+winit = "0.26"
 # detour = { version = "0.8", default-features = false }
 
 log = "0.4"
-env_logger = "0.8.4"
+env_logger = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 lazy_static = "1.4.0"
 num-traits = "0.2"
 num-derive = "0.3"
-strum = "0.21"
-strum_macros = "0.21"
+strum = "0.23"
+strum_macros = "0.23"
+thiserror = "1"
+num-format = "0.4.0"
 
 flate2 = { version = "1.0" }
+rayon = "1.5.1"
+deepl-api = "0.2.1"
 
 ichiran = { path = "third-party/ichiran" }
 imgui-win32-sys = { path = "third-party/imgui-win32-sys" }

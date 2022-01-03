@@ -25,94 +25,121 @@ pub enum DisplayRubyText {
 #[serde(default)]
 pub struct SettingsView {
     pub ichiran_path: String,
-    pub transparent: bool,
-    pub on_top: bool,
     pub postgres_path: String,
     pub db_path: String,
-    renderer_type_idx: usize,
 
+    renderer_type_idx: usize,
+    pub transparent: bool,
+    pub on_top: bool,
     #[cfg(windows)]
     pub overlay_mode: bool,
 
-    pub show_manual_input: bool,
     ruby_text_type_idx: usize,
+    pub show_manual_input: bool,
     pub show_variant_switcher: bool,
-    pub watch_clipboard: bool,
     pub stroke_text: bool,
+
+    pub use_deepl: bool,
+    pub deepl_api_key: String,
+
+    pub watch_clipboard: bool,
     pub style: Option<Vec<u8>>,
 }
 impl Default for SettingsView {
     fn default() -> Self {
         Self {
             ichiran_path: Default::default(),
-            transparent: Default::default(),
-            on_top: false,
             postgres_path: Default::default(),
             db_path: Default::default(),
+
             renderer_type_idx: Default::default(),
+            transparent: Default::default(),
+            on_top: false,
             overlay_mode: false,
-            show_manual_input: false,
+
             ruby_text_type_idx: DisplayRubyText::None as usize,
+            show_manual_input: false,
             show_variant_switcher: true,
-            watch_clipboard: true,
             stroke_text: true,
+
+            use_deepl: false,
+            deepl_api_key: Default::default(),
+
+            watch_clipboard: true,
             style: None,
         }
     }
 }
 impl SettingsView {
     pub fn ui(&mut self, ui: &mut Ui) {
-        ui.input_text("ichiran-cli*", &mut self.ichiran_path)
-            .build();
-        ui.same_line();
-        mixins::help_marker(ui, "Path of ichiran-cli executable");
-
-        ui.input_text("postgres*", &mut self.postgres_path).build();
-        ui.same_line();
-        mixins::help_marker(ui, "Path of postgres 'bin' directory");
-
-        ui.input_text("db*", &mut self.db_path).build();
-        ui.same_line();
-        mixins::help_marker(ui, "Path of postgres database directory");
-
-        ui.separator();
-
-        ui.combo_simple_string(
-            "Renderer*",
-            &mut self.renderer_type_idx,
-            SupportedRenderer::VARIANTS,
-        );
-        ui.checkbox("Transparent*", &mut self.transparent);
-        ui.same_line();
-        mixins::help_marker(ui, "Whether to make the window transparent or not");
-
-        ui.checkbox("Always on-top*", &mut self.on_top);
-        ui.same_line();
-        mixins::help_marker(
-            ui,
-            "Whether to always put the window on top of others or not",
-        );
-
-        #[cfg(windows)]
+        if CollapsingHeader::new("Ichiran")
+            .default_open(true)
+            .build(ui)
         {
-            ui.checkbox("Overlay mode*", &mut self.overlay_mode);
+            ui.input_text("ichiran-cli*", &mut self.ichiran_path)
+                .build();
+            ui.same_line();
+            mixins::help_marker(ui, "Path of ichiran-cli executable");
+
+            ui.input_text("postgres*", &mut self.postgres_path).build();
+            ui.same_line();
+            mixins::help_marker(ui, "Path of postgres 'bin' directory");
+
+            ui.input_text("db*", &mut self.db_path).build();
+            ui.same_line();
+            mixins::help_marker(ui, "Path of postgres database directory");
+        }
+
+        if CollapsingHeader::new("Rendering")
+            .default_open(true)
+            .build(ui)
+        {
+            ui.combo_simple_string(
+                "Renderer*",
+                &mut self.renderer_type_idx,
+                SupportedRenderer::VARIANTS,
+            );
+            ui.checkbox("Transparent*", &mut self.transparent);
+            ui.same_line();
+            mixins::help_marker(ui, "Whether to make the window transparent or not");
+
+            ui.checkbox("Always on-top*", &mut self.on_top);
             ui.same_line();
             mixins::help_marker(
                 ui,
-                "Turns the window into an overlay on top of all other windows (D3D11 only)",
+                "Whether to always put the window on top of others or not",
             );
+
+            #[cfg(windows)]
+            {
+                ui.checkbox("Overlay mode*", &mut self.overlay_mode);
+                ui.same_line();
+                mixins::help_marker(
+                    ui,
+                    "Turns the window into an overlay on top of all other windows (D3D11 only)",
+                );
+            }
         }
 
-        ui.separator();
-
-        ui.combo_simple_string(
-            "Ruby text",
-            &mut self.ruby_text_type_idx,
-            DisplayRubyText::VARIANTS,
-        );
-        ui.checkbox("Show manual input", &mut self.show_manual_input);
-        ui.checkbox("Show variant switcher", &mut self.show_variant_switcher);
-        ui.checkbox("Stroke text", &mut self.stroke_text);
+        if CollapsingHeader::new("Interface")
+            .default_open(true)
+            .build(ui)
+        {
+            ui.combo_simple_string(
+                "Ruby text",
+                &mut self.ruby_text_type_idx,
+                DisplayRubyText::VARIANTS,
+            );
+            ui.checkbox("Show manual input", &mut self.show_manual_input);
+            ui.checkbox("Show variant switcher", &mut self.show_variant_switcher);
+            ui.checkbox("Stroke text", &mut self.stroke_text);
+        }
+        if CollapsingHeader::new("DeepL").default_open(true).build(ui) {
+            ui.checkbox("Enable DeepL integration", &mut self.use_deepl);
+            ui.input_text("DeepL api key", &mut self.deepl_api_key)
+                .password(true)
+                .build();
+        }
     }
 
     pub fn active_renderer(&self) -> SupportedRenderer {
