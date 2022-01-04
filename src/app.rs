@@ -17,7 +17,7 @@ enum Message {
 
 #[derive(Debug)]
 enum State {
-    Displaying { rikai: RikaiView },
+    Displaying { rikai: Box<RikaiView> },
     Error { err: GlossError },
     Processing,
     None,
@@ -39,13 +39,13 @@ pub struct App {
 
     settings: SettingsView,
     state: State,
-    gloss_engine: Glossator,
+    glossator: Glossator,
 }
 
 impl App {
     pub fn new(settings: SettingsView) -> Self {
         let (channel_tx, channel_rx) = mpsc::channel();
-        let gloss_engine = Glossator::new(&settings);
+        let glossator = Glossator::new(&settings);
         App {
             channel_tx,
             channel_rx,
@@ -59,20 +59,25 @@ impl App {
             show_style_editor: false,
             settings,
             state: State::None,
-            gloss_engine,
+            glossator,
         }
     }
 
     fn request_ast(&mut self, ui: &Ui, text: &str) {
-        let text = text.to_owned();
         let channel_tx = self.channel_tx.clone();
 
         self.transition(ui, State::Processing);
 
-        let gloss_engine = &self.gloss_engine;
-        let use_deepl = self.settings.use_deepl;
-        rayon::spawn(enclose! { (gloss_engine) move || {
-            let gloss = gloss_engine.gloss(&text, use_deepl);
+        let glossator = &self.glossator;
+        let text = text.to_owned();
+        let deepl_api_key = if self.settings.use_deepl {
+            Some(self.settings.deepl_api_key.clone())
+        } else {
+            None
+        };
+        let variants = if self.settings.more_variants { 5 } else { 1 };
+        rayon::spawn(enclose! { (glossator) move || {
+            let gloss = glossator.gloss(&text, deepl_api_key, variants);
             let _ = channel_tx.send(Message::Gloss(gloss));
         }});
     }
@@ -90,7 +95,7 @@ impl App {
             Ok(Message::Gloss(Ok(gloss))) => self.transition(
                 ui,
                 State::Displaying {
-                    rikai: RikaiView::new(gloss),
+                    rikai: Box::new(RikaiView::new(gloss)),
                 },
             ),
             Ok(Message::Gloss(Err(err))) => {
@@ -175,25 +180,23 @@ impl App {
         niinii.build(ui, || {
             self.show_main_menu(env, ui, run);
 
-            if self.settings.show_manual_input {
-                if CollapsingHeader::new("Manual input")
-                    .default_open(true)
-                    .build(ui)
+            if CollapsingHeader::new("Manual input")
+                .default_open(true)
+                .build(ui)
+            {
+                let _token = ui.begin_disabled(matches!(self.state, State::Processing));
+                if ui
+                    .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
+                    .enter_returns_true(true)
+                    .build()
                 {
-                    let _token = ui.begin_disabled(matches!(self.state, State::Processing));
-                    if ui
-                        .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
-                        .enter_returns_true(true)
-                        .build()
-                    {
-                        self.requested_text.replace(self.input_text.clone());
-                    }
-                    if ui.button_with_size("Go", [120.0, 0.0]) {
-                        self.requested_text.replace(self.input_text.clone());
-                    }
-                    ui.same_line();
-                    ui.checkbox("Enable DeepL integration", &mut self.settings.use_deepl);
+                    self.requested_text.replace(self.input_text.clone());
                 }
+                if ui.button_with_size("Go", [120.0, 0.0]) {
+                    self.requested_text.replace(self.input_text.clone());
+                }
+                ui.same_line();
+                ui.checkbox("Enable DeepL integration", &mut self.settings.use_deepl);
             }
 
             if self.settings.watch_clipboard {

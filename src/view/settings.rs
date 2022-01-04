@@ -35,8 +35,7 @@ pub struct SettingsView {
     pub overlay_mode: bool,
 
     ruby_text_type_idx: usize,
-    pub show_manual_input: bool,
-    pub show_variant_switcher: bool,
+    pub more_variants: bool,
     pub stroke_text: bool,
 
     pub use_deepl: bool,
@@ -58,8 +57,7 @@ impl Default for SettingsView {
             overlay_mode: false,
 
             ruby_text_type_idx: DisplayRubyText::None as usize,
-            show_manual_input: false,
-            show_variant_switcher: true,
+            more_variants: true,
             stroke_text: true,
 
             use_deepl: false,
@@ -130,13 +128,14 @@ impl SettingsView {
                 &mut self.ruby_text_type_idx,
                 DisplayRubyText::VARIANTS,
             );
-            ui.checkbox("Show manual input", &mut self.show_manual_input);
-            ui.checkbox("Show variant switcher", &mut self.show_variant_switcher);
+            ui.checkbox("Alternate interpretations", &mut self.more_variants);
+            ui.same_line();
+            mixins::help_marker(ui, "Search for different ways to interpret a phrase");
             ui.checkbox("Stroke text", &mut self.stroke_text);
         }
         if CollapsingHeader::new("DeepL").default_open(true).build(ui) {
             ui.checkbox("Enable DeepL integration", &mut self.use_deepl);
-            ui.input_text("DeepL api key", &mut self.deepl_api_key)
+            ui.input_text("DeepL API key", &mut self.deepl_api_key)
                 .password(true)
                 .build();
         }

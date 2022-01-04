@@ -217,6 +217,17 @@ impl D3D11Renderer {
             unreachable!()
         };
 
+        let (swapchain, device, context) = unsafe { create_device(hwnd.cast()) }.unwrap();
+        let main_rtv = unsafe { create_render_target(&swapchain, &device) };
+
+        let mut imgui = Self::create_imgui(settings);
+        let platform = Self::create_platform(&mut imgui, &window);
+        let mut env = Env::default();
+        Self::create_fonts(&mut imgui, &mut env, &platform);
+
+        let renderer =
+            unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
+
         let mut mousellhook: Option<HHOOK> = None;
         if settings.overlay_mode {
             unsafe {
@@ -234,17 +245,6 @@ impl D3D11Renderer {
                 ));
             }
         }
-
-        let (swapchain, device, context) = unsafe { create_device(hwnd.cast()) }.unwrap();
-        let main_rtv = unsafe { create_render_target(&swapchain, &device) };
-
-        let mut imgui = Self::create_imgui(settings);
-        let platform = Self::create_platform(&mut imgui, &window);
-        let mut env = Env::default();
-        Self::create_fonts(&mut imgui, &mut env, &platform);
-
-        let renderer =
-            unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
 
         let d3d11_renderer = Self {
             shared: Rc::new(Shared {

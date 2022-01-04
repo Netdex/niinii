@@ -19,11 +19,11 @@ fn main() {
         .and_then(|x| serde_json::from_reader(x).ok())
         .unwrap_or_default();
 
-    let mut renderer: Box<dyn Renderer> = match settings.active_renderer() {
-        SupportedRenderer::Glow => Box::new(GlowRenderer::new(&settings)),
-        SupportedRenderer::Direct3D11 => Box::new(D3D11Renderer::new(&settings)),
-    };
     let mut app = App::new(settings);
+    let mut renderer: Box<dyn Renderer> = match app.settings().active_renderer() {
+        SupportedRenderer::Glow => Box::new(GlowRenderer::new(app.settings())),
+        SupportedRenderer::Direct3D11 => Box::new(D3D11Renderer::new(app.settings())),
+    };
     renderer.main_loop(&mut app);
 
     let writer = BufWriter::new(File::create(STATE_PATH).unwrap());

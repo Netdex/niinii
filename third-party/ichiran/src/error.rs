@@ -1,4 +1,3 @@
-use super::MAX_TEXT_LENGTH;
 use std::{io, process::ExitStatus};
 
 use thiserror::Error;
@@ -11,8 +10,6 @@ pub enum IchiranError {
     Serde(#[from] serde_json::Error),
     #[error("ichiran-cli exited w/ {status}\n{stderr}")]
     Failure { status: ExitStatus, stderr: String },
-    #[error("Text too long ({length}/{MAX_TEXT_LENGTH} chars)")]
-    TextTooLong { length: usize },
     #[error("Parse Error:\n{0}")]
     Parsing(String),
     #[error("CSV Error: {0}")]

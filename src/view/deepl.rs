@@ -1,12 +1,14 @@
-use deepl_api::UsageInformation;
 use imgui::*;
 
 pub struct DeepLView<'a> {
     deepl_text: &'a Option<String>,
-    deepl_usage: &'a Option<UsageInformation>,
+    deepl_usage: &'a Option<deepl_api::UsageInformation>,
 }
 impl<'a> DeepLView<'a> {
-    pub fn new(deepl_text: &'a Option<String>, deepl_usage: &'a Option<UsageInformation>) -> Self {
+    pub fn new(
+        deepl_text: &'a Option<String>,
+        deepl_usage: &'a Option<deepl_api::UsageInformation>,
+    ) -> Self {
         DeepLView {
             deepl_text,
             deepl_usage,
@@ -18,8 +20,10 @@ impl<'a> DeepLView<'a> {
             let fraction = deepl_usage.character_count as f32 / deepl_usage.character_limit as f32;
             ProgressBar::new(fraction)
                 .overlay_text(format!(
-                    "DeepL API Usage: {}/{} ({:.2}%)",
-                    deepl_usage.character_count, deepl_usage.character_limit,fraction*100.0
+                    "DeepL API usage: {}/{} ({:.2}%)",
+                    deepl_usage.character_count,
+                    deepl_usage.character_limit,
+                    fraction * 100.0
                 ))
                 .build(ui);
         }

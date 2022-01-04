@@ -12,6 +12,8 @@ use thiserror::Error;
 
 use crate::view::settings::SettingsView;
 
+const MAX_TEXT_LENGTH: usize = 512;
+
 #[derive(Debug)]
 pub struct Gloss {
     pub elapsed: Duration,
@@ -30,6 +32,8 @@ pub enum GlossError {
     Ichiran(#[from] IchiranError),
     #[error(transparent)]
     DeepL(#[from] deepl_api::Error),
+    #[error("Text too long ({length}/{MAX_TEXT_LENGTH} chars)")]
+    TextTooLong { length: usize },
 }
 
 #[derive(Clone)]
@@ -39,7 +43,6 @@ pub struct Glossator {
 struct Shared {
     ichiran: Ichiran,
     _pg_daemon: Option<PostgresDaemon>,
-    deepl: DeepL,
 }
 impl Glossator {
     pub fn new(settings: &SettingsView) -> Self {
@@ -63,11 +66,18 @@ impl Glossator {
             shared: Arc::new(Shared {
                 ichiran,
                 _pg_daemon: pg_daemon,
-                deepl: DeepL::new(settings.deepl_api_key.clone()),
             }),
         }
     }
-    pub fn gloss(&self, text: &str, use_deepl: bool) -> Result<Gloss, GlossError> {
+    pub fn gloss(
+        &self,
+        text: &str,
+        deepl_api_key: Option<String>,
+        variants: u32,
+    ) -> Result<Gloss, GlossError> {
+        if text.len() > MAX_TEXT_LENGTH {
+            return Err(GlossError::TextTooLong { length: text.len() });
+        }
         let ichiran = &self.shared.ichiran;
 
         let mut root = None;
@@ -78,23 +88,27 @@ impl Glossator {
 
         let start = Instant::now();
         rayon::scope(|s| {
-            s.spawn(|_| root = Some(ichiran.romanize(&text, 5)));
+            s.spawn(|_| {
+                let romanized = ichiran.romanize(&text, variants);
+
+                if let Some(deepl_api_key) = deepl_api_key {
+                    if let Ok(root) = &romanized {
+                        let deepl = DeepL::new(deepl_api_key);
+                        deepl_text = Some(deepl.translate(
+                            None,
+                            TranslatableTextList {
+                                source_language: Some("JA".into()),
+                                target_language: "EN-US".into(),
+                                texts: vec![root.text_flatten()],
+                            },
+                        ));
+                        deepl_usage = Some(deepl.usage_information());
+                    }
+                }
+                root = Some(romanized);
+            });
             s.spawn(|_| kanji_info = Some(ichiran.kanji_from_str(&text)));
             s.spawn(|_| jmdict_data = Some(ichiran.jmdict_data()));
-
-            if use_deepl {
-                s.spawn(|_| {
-                    deepl_text = Some(self.shared.deepl.translate(
-                        None,
-                        TranslatableTextList {
-                            source_language: Some("JA".into()),
-                            target_language: "EN-US".into(),
-                            texts: vec![text.to_string()],
-                        },
-                    ))
-                });
-                s.spawn(|_| deepl_usage = Some(self.shared.deepl.usage_information()));
-            }
         });
         let elapsed = start.elapsed();
 

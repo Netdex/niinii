@@ -140,10 +140,10 @@ impl RikaiView {
                             settings,
                             rz,
                             settings.display_ruby_text(),
-                            match settings.show_variant_switcher {
-                                true if idx == romanized.len() - 1 => UnderlineMode::Normal,
-                                true => UnderlineMode::Pad,
-                                false => UnderlineMode::None,
+                            if idx == romanized.len() - 1 {
+                                UnderlineMode::Normal
+                            } else {
+                                UnderlineMode::Pad
                             },
                         );
                         if ul_hover {
@@ -155,7 +155,7 @@ impl RikaiView {
                             }
                             ui.tooltip(|| {
                                 ui.text(format!(
-                                    "Variant #{}/{} score={} (scroll to cycle)",
+                                    "Alternate #{}/{} score={} (scroll to cycle)",
                                     clause_idx + 1,
                                     clauses.len(),
                                     clause.score()
@@ -186,9 +186,7 @@ impl RikaiView {
     }
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView, show_raw: &mut bool) {
-        // ui.text(format!("Time elapsed: {:?}", &self.gloss.elapsed));
-
-        if let Some(_) = &self.gloss.deepl_text {
+        if self.gloss.deepl_text.is_some() {
             if CollapsingHeader::new("DeepL").default_open(true).build(ui) {
                 DeepLView::new(&self.gloss.deepl_text, &self.gloss.deepl_usage).ui(ui);
             }
@@ -198,6 +196,12 @@ impl RikaiView {
             ui.text(""); // hack to align line position
             self.add_root(env, ui, settings, &self.gloss.root);
         }
+
+        ui.new_line();
+        ui.text_colored(
+            ui.style_color(StyleColor::TextDisabled),
+            format!("(elapsed: {:?})", &self.gloss.elapsed),
+        );
 
         if *show_raw {
             Window::new("Raw")

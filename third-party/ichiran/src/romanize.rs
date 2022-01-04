@@ -17,6 +17,36 @@ impl Root {
     pub fn segments(&self) -> &[Segment] {
         &self.0
     }
+
+    /// Flatten text tree into a string, effectively normalized text.
+    pub fn text_flatten(&self) -> String {
+        fn visit_romanized(romanized: &Romanized) -> String {
+            romanized.term().text().to_string()
+        }
+        fn visit_clause(clause: &Clause) -> String {
+            clause
+                .romanized()
+                .iter()
+                .map(visit_romanized)
+                .collect::<Vec<String>>()
+                .join("")
+        }
+        fn visit_segment(segment: &Segment) -> String {
+            match segment {
+                Segment::Skipped(s) => s.to_string(),
+                Segment::Clauses(clauses) => clauses
+                    .iter()
+                    .map(visit_clause)
+                    .collect::<Vec<String>>()
+                    .join(""),
+            }
+        }
+        self.segments()
+            .iter()
+            .map(visit_segment)
+            .collect::<Vec<String>>()
+            .join("")
+    }
 }
 
 /// A segment, representing either a skipped string or a list of candidate clauses.

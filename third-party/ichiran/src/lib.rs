@@ -27,7 +27,6 @@ use kanji::{is_kanji, Kanji};
 use lisp::*;
 use romanize::Root;
 
-const MAX_TEXT_LENGTH: usize = 512;
 
 #[derive(Debug)]
 pub struct ConnParams {
@@ -57,7 +56,7 @@ impl Ichiran {
             shared: Arc::new(Shared {
                 path: path.into(),
                 state: Mutex::new(State {
-                    kanji_cache: LruCache::new(MAX_TEXT_LENGTH),
+                    kanji_cache: LruCache::new(512),
                     jmdict: None,
                 }),
             }),
@@ -68,9 +67,6 @@ impl Ichiran {
         assert!(limit > 0);
         let text = text.as_ref();
 
-        if text.len() > MAX_TEXT_LENGTH {
-            return Err(IchiranError::TextTooLong { length: text.len() });
-        }
         let working_dir = self.working_dir()?;
         let output = Command::new(&self.shared.path)
             .current_dir(working_dir)
@@ -97,11 +93,6 @@ impl Ichiran {
     }
 
     pub fn kanji(&self, chars: &[char]) -> Result<HashMap<char, Kanji>, IchiranError> {
-        if chars.len() > MAX_TEXT_LENGTH {
-            return Err(IchiranError::TextTooLong {
-                length: chars.len(),
-            });
-        }
         let mut state = self.shared.state.lock().unwrap();
 
         let mut kanji_info: HashMap<char, Kanji> = HashMap::new();
@@ -146,9 +137,6 @@ impl Ichiran {
         text: T,
     ) -> Result<HashMap<char, Kanji>, IchiranError> {
         let text = text.as_ref();
-        if text.len() > MAX_TEXT_LENGTH {
-            return Err(IchiranError::TextTooLong { length: text.len() });
-        }
         let mut uniq: Vec<char> = text.chars().filter(is_kanji).collect();
         uniq.sort_unstable();
         uniq.dedup();
