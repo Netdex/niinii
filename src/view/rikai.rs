@@ -9,21 +9,38 @@ use super::mixins::*;
 use super::settings::{DisplayRubyText, SettingsView};
 use crate::backend::renderer::Env;
 use crate::gloss::Gloss;
+use crate::translation::Translation;
 use crate::view::{raw::RawView, term::TermView};
 
 #[derive(Debug)]
 pub struct RikaiView {
-    gloss: Gloss,
+    gloss: Option<Gloss>,
+    translation: Option<Translation>,
     show_term_window: RefCell<HashSet<Romanized>>,
     selected_clause: RefCell<HashMap<Segment, i32>>,
 }
 impl RikaiView {
-    pub fn new(gloss: Gloss) -> Self {
+    pub fn new() -> Self {
         Self {
-            gloss,
+            gloss: None,
+            translation: None,
             show_term_window: RefCell::new(HashSet::new()),
             selected_clause: RefCell::new(HashMap::new()),
         }
+    }
+
+    pub fn set_gloss(&mut self, gloss: Option<Gloss>) {
+        self.gloss = gloss;
+    }
+    pub fn gloss(&self) -> &Option<Gloss> {
+        &self.gloss
+    }
+
+    pub fn set_translation(&mut self, translation: Option<Translation>) {
+        self.translation = translation;
+    }
+    pub fn translation(&self) -> &Option<Translation> {
+        &self.translation
     }
 
     fn term_window(
@@ -40,26 +57,20 @@ impl RikaiView {
             .focus_on_appearing(true)
             .opened(&mut opened)
             .build(ui, || {
-                TermView::new(
-                    &self.gloss.jmdict_data,
-                    &self.gloss.kanji_info,
-                    romanized,
-                    0.0,
-                )
-                .ui(env, ui, settings);
+                if let Some(gloss) = &self.gloss {
+                    TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 0.0)
+                        .ui(env, ui, settings);
+                }
             });
         opened
     }
 
     fn term_tooltip(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, romanized: &Romanized) {
         ui.tooltip(|| {
-            TermView::new(
-                &self.gloss.jmdict_data,
-                &self.gloss.kanji_info,
-                romanized,
-                30.0,
-            )
-            .ui(env, ui, settings)
+            if let Some(gloss) = &self.gloss {
+                TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 30.0)
+                    .ui(env, ui, settings)
+            }
         });
     }
 
@@ -186,30 +197,23 @@ impl RikaiView {
     }
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView, show_raw: &mut bool) {
-        if self.gloss.deepl_text.is_some() {
-            if CollapsingHeader::new("DeepL").default_open(true).build(ui) {
-                DeepLView::new(&self.gloss.deepl_text, &self.gloss.deepl_usage).ui(ui);
-            }
+        if let Some(translation) = &self.translation {
+            DeepLView::new(&translation).ui(ui);
+            ui.separator();
         }
 
-        if CollapsingHeader::new("Gloss").default_open(true).build(ui) {
+        if let Some(gloss) = &self.gloss {
             ui.text(""); // hack to align line position
-            self.add_root(env, ui, settings, &self.gloss.root);
-        }
+            self.add_root(env, ui, settings, &gloss.root);
 
-        ui.new_line();
-        ui.text_colored(
-            ui.style_color(StyleColor::TextDisabled),
-            format!("(elapsed: {:?})", &self.gloss.elapsed),
-        );
-
-        if *show_raw {
-            Window::new("Raw")
-                .size([300., 110.], Condition::FirstUseEver)
-                .opened(show_raw)
-                .build(ui, || {
-                    RawView::new(&self.gloss.root).ui(env, ui);
-                });
+            if *show_raw {
+                Window::new("Raw")
+                    .size([300., 110.], Condition::FirstUseEver)
+                    .opened(show_raw)
+                    .build(ui, || {
+                        RawView::new(&gloss.root).ui(env, ui);
+                    });
+            }
         }
 
         // show all term windows, close if requested (this is actually witchcraft)

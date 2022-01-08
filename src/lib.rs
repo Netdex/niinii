@@ -7,4 +7,4 @@ pub mod backend;
 pub mod clipboard;
 pub mod view;
 pub mod gloss;
-
+pub mod translation;

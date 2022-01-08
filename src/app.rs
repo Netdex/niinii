@@ -5,20 +5,29 @@ use imgui::*;
 use crate::{
     backend::renderer::Env,
     gloss::{Gloss, GlossError, Glossator},
+    translation::{self, Translation},
     view::{mixins::help_marker, rikai::RikaiView, settings::SettingsView},
 };
 
 const ERROR_MODAL_TITLE: &str = "Error";
 
+#[derive(thiserror::Error, Debug)]
+enum Error {
+    #[error(transparent)]
+    Gloss(#[from] GlossError),
+    #[error(transparent)]
+    DeepL(#[from] deepl_api::Error),
+}
+
 #[derive(Debug)]
 enum Message {
     Gloss(Result<Gloss, GlossError>),
+    Translation(Result<Translation, deepl_api::Error>),
 }
 
 #[derive(Debug)]
 enum State {
-    Displaying { rikai: Box<RikaiView> },
-    Error { err: GlossError },
+    Error(Error),
     Processing,
     None,
 }
@@ -29,7 +38,8 @@ pub struct App {
 
     input_text: String,
     last_clipboard: String,
-    requested_text: Option<String>,
+    request_gloss_text: Option<String>,
+    request_translate_text: bool,
 
     show_imgui_demo: bool,
     show_settings: bool,
@@ -40,6 +50,7 @@ pub struct App {
     settings: SettingsView,
     state: State,
     glossator: Glossator,
+    rikai: RikaiView,
 }
 
 impl App {
@@ -49,9 +60,10 @@ impl App {
         App {
             channel_tx,
             channel_rx,
-            requested_text: None,
             input_text: "".into(),
             last_clipboard: "".into(),
+            request_gloss_text: None,
+            request_translate_text: false,
             show_imgui_demo: false,
             show_settings: false,
             show_raw: false,
@@ -60,30 +72,33 @@ impl App {
             settings,
             state: State::None,
             glossator,
+            rikai: RikaiView::new(),
         }
     }
 
-    fn request_ast(&mut self, ui: &Ui, text: &str) {
+    fn request_gloss(&self, text: &str) {
         let channel_tx = self.channel_tx.clone();
-
-        self.transition(ui, State::Processing);
-
         let glossator = &self.glossator;
         let text = text.to_owned();
-        let deepl_api_key = if self.settings.use_deepl {
-            Some(self.settings.deepl_api_key.clone())
-        } else {
-            None
-        };
         let variants = if self.settings.more_variants { 5 } else { 1 };
         rayon::spawn(enclose! { (glossator) move || {
-            let gloss = glossator.gloss(&text, deepl_api_key, variants);
+            let gloss = glossator.gloss(&text, variants);
             let _ = channel_tx.send(Message::Gloss(gloss));
         }});
     }
 
+    fn request_translation(&self, text: &str) {
+        let channel_tx = self.channel_tx.clone();
+        let text = text.to_owned();
+        let deepl_api_key = self.settings.deepl_api_key.clone();
+        rayon::spawn(move || {
+            let translation = translation::translate(&deepl_api_key, &text);
+            let _ = channel_tx.send(Message::Translation(translation));
+        });
+    }
+
     fn transition(&mut self, ui: &Ui, state: State) {
-        if let State::Error { err } = &state {
+        if let State::Error(err) = &state {
             log::error!("{}", err);
             ui.open_popup(ERROR_MODAL_TITLE);
         }
@@ -92,14 +107,20 @@ impl App {
 
     fn poll(&mut self, ui: &Ui) {
         match self.channel_rx.try_recv() {
-            Ok(Message::Gloss(Ok(gloss))) => self.transition(
-                ui,
-                State::Displaying {
-                    rikai: Box::new(RikaiView::new(gloss)),
-                },
-            ),
+            Ok(Message::Gloss(Ok(gloss))) => {
+                self.rikai.set_gloss(Some(gloss));
+                self.rikai.set_translation(None);
+                self.transition(ui, State::None)
+            }
+            Ok(Message::Translation(Ok(translation))) => {
+                self.rikai.set_translation(Some(translation));
+                self.transition(ui, State::None)
+            }
             Ok(Message::Gloss(Err(err))) => {
-                self.transition(ui, State::Error { err });
+                self.transition(ui, State::Error(err.into()));
+            }
+            Ok(Message::Translation(Err(err))) => {
+                self.transition(ui, State::Error(err.into()));
             }
             Err(mpsc::TryRecvError::Empty) => {}
             x => {
@@ -128,6 +149,13 @@ impl App {
                 }
             }
             if let Some(_menu) = ui.begin_menu("View") {
+                if MenuItem::new("Show input")
+                    .selected(self.settings.show_manual_input)
+                    .build(ui)
+                {
+                    self.settings.show_manual_input = !self.settings.show_manual_input;
+                }
+                ui.separator();
                 if MenuItem::new("Raw").build(ui) {
                     self.show_raw = true;
                 }
@@ -145,7 +173,7 @@ impl App {
     }
 
     fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
-        if let State::Error { err } = &self.state {
+        if let State::Error(err) = &self.state {
             PopupModal::new(ERROR_MODAL_TITLE)
                 .always_auto_resize(true)
                 .build(ui, || {
@@ -180,41 +208,35 @@ impl App {
         niinii.build(ui, || {
             self.show_main_menu(env, ui, run);
 
-            if CollapsingHeader::new("Manual input")
-                .default_open(true)
-                .build(ui)
-            {
-                let _token = ui.begin_disabled(matches!(self.state, State::Processing));
+            let _disable_input = ui.begin_disabled(matches!(self.state, State::Processing));
+            if self.settings().show_manual_input {
                 if ui
                     .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
                     .enter_returns_true(true)
                     .build()
                 {
-                    self.requested_text.replace(self.input_text.clone());
+                    self.request_gloss_text = Some(self.input_text.clone());
                 }
-                if ui.button_with_size("Go", [120.0, 0.0]) {
-                    self.requested_text.replace(self.input_text.clone());
+                if ui.button_with_size("Gloss", [120.0, 0.0]) {
+                    self.request_gloss_text = Some(self.input_text.clone());
                 }
                 ui.same_line();
-                ui.checkbox("Enable DeepL integration", &mut self.settings.use_deepl);
+
+                let mut _disable_tl = ui.begin_disabled(
+                    self.rikai.gloss().is_none() || self.rikai.translation().is_some(),
+                );
+                if ui.button_with_size("Translate", [120.0, 0.0]) {
+                    self.request_translate_text = true;
+                }
+                ui.separator();
             }
 
-            if self.settings.watch_clipboard {
-                if let Some(clipboard) = ui.clipboard_text() {
-                    if clipboard != self.last_clipboard {
-                        self.input_text = clipboard.clone();
-                        self.last_clipboard = clipboard.clone();
-                        self.requested_text.replace(clipboard);
-                    }
+            {
+                let _disable_ready = ui.begin_disabled(!matches!(self.state, State::None));
+                self.rikai.ui(env, ui, &self.settings, &mut self.show_raw);
+                if let State::Processing = &self.state {
+                    ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
                 }
-            }
-
-            match &mut self.state {
-                State::Displaying { rikai, .. } => {
-                    rikai.ui(env, ui, &self.settings, &mut self.show_raw);
-                }
-                State::Processing => ui.set_mouse_cursor(Some(MouseCursor::NotAllowed)),
-                _ => (),
             }
 
             self.show_error_modal(env, ui);
@@ -264,15 +286,41 @@ impl App {
             self.show_style_editor = show_style_editor;
         }
 
-        if let Some(requested_text) = self.requested_text.clone() {
-            match &self.state {
-                State::Displaying { .. } | State::Error { .. } | State::None => {
-                    self.request_ast(ui, &requested_text);
-                    self.requested_text = None;
+        if self.settings.watch_clipboard {
+            if let Some(clipboard) = ui.clipboard_text() {
+                if clipboard != self.last_clipboard {
+                    self.input_text = clipboard.clone();
+                    self.last_clipboard = clipboard.clone();
+                    self.request_gloss_text = Some(clipboard.clone());
+                    if self.settings.tl_clipboard {
+                        self.request_translate_text = true;
+                    }
                 }
-                _ => (),
-            };
+            }
         }
+
+        match &self.state {
+            State::Error(_) | State::None => {
+                if let Some(request_gloss_text) = self.request_gloss_text.clone() {
+                    self.request_gloss_text = None;
+                    self.transition(ui, State::Processing);
+                    self.request_gloss(&request_gloss_text);
+                }
+            }
+            _ => (),
+        };
+        match &self.state {
+            State::Error(_) | State::None => {
+                if self.request_translate_text {
+                    self.request_translate_text = false;
+                    self.transition(ui, State::Processing);
+                    if let Some(gloss) = self.rikai.gloss() {
+                        self.request_translation(&gloss.root.text_flatten());
+                    }
+                }
+            }
+            _ => (),
+        };
     }
 
     pub fn settings(&self) -> &SettingsView {

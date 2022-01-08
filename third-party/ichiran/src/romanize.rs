@@ -216,6 +216,7 @@ impl Compound {
 pub struct Meta {
     reading: String,
     text: String,
+    #[serde(deserialize_with = "no_zwnj::deserialize")]
     kana: String,
     score: u32,
 }

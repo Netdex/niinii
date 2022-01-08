@@ -38,10 +38,11 @@ pub struct SettingsView {
     pub more_variants: bool,
     pub stroke_text: bool,
 
-    pub use_deepl: bool,
+    pub tl_clipboard: bool,
     pub deepl_api_key: String,
 
     pub watch_clipboard: bool,
+    pub show_manual_input: bool,
     pub style: Option<Vec<u8>>,
 }
 impl Default for SettingsView {
@@ -60,10 +61,11 @@ impl Default for SettingsView {
             more_variants: true,
             stroke_text: true,
 
-            use_deepl: false,
+            tl_clipboard: false,
             deepl_api_key: Default::default(),
 
             watch_clipboard: true,
+            show_manual_input: true,
             style: None,
         }
     }
@@ -134,7 +136,7 @@ impl SettingsView {
             ui.checkbox("Stroke text", &mut self.stroke_text);
         }
         if CollapsingHeader::new("DeepL").default_open(true).build(ui) {
-            ui.checkbox("Enable DeepL integration", &mut self.use_deepl);
+            ui.checkbox("Auto-translate clipboard", &mut self.tl_clipboard);
             ui.input_text("DeepL API key", &mut self.deepl_api_key)
                 .password(true)
                 .build();
