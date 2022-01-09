@@ -47,6 +47,12 @@ impl Root {
             .collect::<Vec<String>>()
             .join("")
     }
+
+    /// Whether all segments are skipped, which will basically be true when the
+    /// sentence isn't in Japanese.
+    pub fn is_flat(&self) -> bool {
+        self.0.iter().all(|x| matches!(x, Segment::Skipped(_)))
+    }
 }
 
 /// A segment, representing either a skipped string or a list of candidate clauses.

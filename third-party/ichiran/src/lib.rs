@@ -1,3 +1,4 @@
+pub mod charset;
 mod coerce;
 pub mod error;
 pub mod jmdict_data;
@@ -21,12 +22,12 @@ use std::{
 
 use lru::LruCache;
 
+use charset::is_kanji;
 pub use error::IchiranError;
 pub use jmdict_data::JmDictData;
-use kanji::{is_kanji, Kanji};
+use kanji::Kanji;
 use lisp::*;
 use romanize::Root;
-
 
 #[derive(Debug)]
 pub struct ConnParams {

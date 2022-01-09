@@ -39,7 +39,6 @@ pub struct App {
     input_text: String,
     last_clipboard: String,
     request_gloss_text: Option<String>,
-    request_translate_text: bool,
 
     show_imgui_demo: bool,
     show_settings: bool,
@@ -63,7 +62,6 @@ impl App {
             input_text: "".into(),
             last_clipboard: "".into(),
             request_gloss_text: None,
-            request_translate_text: false,
             show_imgui_demo: false,
             show_settings: false,
             show_raw: false,
@@ -108,9 +106,14 @@ impl App {
     fn poll(&mut self, ui: &Ui) {
         match self.channel_rx.try_recv() {
             Ok(Message::Gloss(Ok(gloss))) => {
+                let should_translate = !gloss.root.is_flat();
+                if self.settings.auto_translate && should_translate {
+                    self.request_translation(&gloss.root.text_flatten());
+                } else {
+                    self.transition(ui, State::None);
+                    self.rikai.set_translation(None);
+                }
                 self.rikai.set_gloss(Some(gloss));
-                self.rikai.set_translation(None);
-                self.transition(ui, State::None)
             }
             Ok(Message::Translation(Ok(translation))) => {
                 self.rikai.set_translation(Some(translation));
@@ -127,15 +130,31 @@ impl App {
                 log::error!("unhandled message: {:?}", x);
             }
         }
-    }
 
-    fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui, run: &mut bool) {
-        if let Some(_token) = ui.begin_menu_bar() {
-            if let Some(_menu) = ui.begin_menu("File") {
-                if MenuItem::new("Quit").build(ui) {
-                    *run = false;
+        match &self.state {
+            State::Error(_) | State::None => {
+                if let Some(request_gloss_text) = self.request_gloss_text.clone() {
+                    self.request_gloss_text = None;
+                    self.transition(ui, State::Processing);
+                    self.request_gloss(&request_gloss_text);
                 }
             }
+            _ => (),
+        };
+
+        if self.settings.watch_clipboard {
+            if let Some(clipboard) = ui.clipboard_text() {
+                if clipboard != self.last_clipboard {
+                    self.input_text = clipboard.clone();
+                    self.last_clipboard = clipboard.clone();
+                    self.request_gloss_text = Some(clipboard);
+                }
+            }
+        }
+    }
+
+    fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui) {
+        if let Some(_token) = ui.begin_menu_bar() {
             if let Some(_menu) = ui.begin_menu("Options") {
                 if MenuItem::new("Watch clipboard")
                     .selected(self.settings.watch_clipboard)
@@ -187,29 +206,40 @@ impl App {
         }
     }
 
+    fn show_deepl_usage(&self, ui: &Ui) {
+        if let Some(Translation::DeepL { deepl_usage, .. }) = self.rikai.translation() {
+            ui.same_line();
+            let fraction = deepl_usage.character_count as f32 / deepl_usage.character_limit as f32;
+            ProgressBar::new(fraction)
+                .overlay_text(format!(
+                    "DeepL API usage: {}/{} ({:.2}%)",
+                    deepl_usage.character_count,
+                    deepl_usage.character_limit,
+                    fraction * 100.0
+                ))
+                .size([350.0, 0.0])
+                .build(ui);
+        }
+    }
+
     pub fn ui(&mut self, env: &mut Env, ui: &mut Ui, run: &mut bool) {
         let io = ui.io();
 
-        let niinii = Window::new("niinii");
-
-        let niinii = if self.settings().overlay_mode {
-            niinii
-                .menu_bar(true)
-                .draw_background(!self.settings().transparent)
-        } else {
-            niinii
+        let mut niinii = Window::new("niinii")
+            .opened(run)
+            .menu_bar(true)
+            .draw_background(!self.settings().transparent);
+        if !self.settings().overlay_mode {
+            niinii = niinii
                 .position([0.0, 0.0], Condition::Always)
                 .size(io.display_size, Condition::Always)
-                .menu_bar(true)
-                .draw_background(!self.settings().transparent)
                 .no_decoration()
         };
-
         niinii.build(ui, || {
-            self.show_main_menu(env, ui, run);
+            self.show_main_menu(env, ui);
 
-            let _disable_input = ui.begin_disabled(matches!(self.state, State::Processing));
             if self.settings().show_manual_input {
+                let _disable_input = ui.begin_disabled(matches!(self.state, State::Processing));
                 if ui
                     .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
                     .enter_returns_true(true)
@@ -222,15 +252,27 @@ impl App {
                 }
                 ui.same_line();
 
-                let mut _disable_tl = ui.begin_disabled(
-                    self.rikai.gloss().is_none() || self.rikai.translation().is_some(),
-                );
-                if ui.button_with_size("Translate", [120.0, 0.0]) {
-                    self.request_translate_text = true;
+                let should_translate = self
+                    .rikai
+                    .gloss()
+                    .map_or_else(|| false, |x| !x.root.is_flat());
+                {
+                    let mut _disable_tl =
+                        ui.begin_disabled(!should_translate || self.rikai.translation().is_some());
+                    if ui.button_with_size("Translate", [120.0, 0.0]) {
+                        self.transition(ui, State::Processing);
+                        if let Some(gloss) = self.rikai.gloss() {
+                            self.request_translation(&gloss.root.text_flatten());
+                        }
+                    }
                 }
-                ui.separator();
+                if !should_translate
+                    && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED)
+                {
+                    ui.tooltip(|| ui.text("Text does not require translation"));
+                }
             }
-
+            self.show_deepl_usage(ui);
             {
                 let _disable_ready = ui.begin_disabled(!matches!(self.state, State::None));
                 self.rikai.ui(env, ui, &self.settings, &mut self.show_raw);
@@ -238,7 +280,6 @@ impl App {
                     ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
                 }
             }
-
             self.show_error_modal(env, ui);
             self.poll(ui);
         });
@@ -285,42 +326,6 @@ impl App {
                 });
             self.show_style_editor = show_style_editor;
         }
-
-        if self.settings.watch_clipboard {
-            if let Some(clipboard) = ui.clipboard_text() {
-                if clipboard != self.last_clipboard {
-                    self.input_text = clipboard.clone();
-                    self.last_clipboard = clipboard.clone();
-                    self.request_gloss_text = Some(clipboard.clone());
-                    if self.settings.tl_clipboard {
-                        self.request_translate_text = true;
-                    }
-                }
-            }
-        }
-
-        match &self.state {
-            State::Error(_) | State::None => {
-                if let Some(request_gloss_text) = self.request_gloss_text.clone() {
-                    self.request_gloss_text = None;
-                    self.transition(ui, State::Processing);
-                    self.request_gloss(&request_gloss_text);
-                }
-            }
-            _ => (),
-        };
-        match &self.state {
-            State::Error(_) | State::None => {
-                if self.request_translate_text {
-                    self.request_translate_text = false;
-                    self.transition(ui, State::Processing);
-                    if let Some(gloss) = self.rikai.gloss() {
-                        self.request_translation(&gloss.root.text_flatten());
-                    }
-                }
-            }
-            _ => (),
-        };
     }
 
     pub fn settings(&self) -> &SettingsView {

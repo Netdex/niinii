@@ -1743,6 +1743,7 @@ dependencies = [
  "num-traits",
  "raw-window-handle 0.4.2",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "strum",

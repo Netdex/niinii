@@ -134,9 +134,6 @@ pub enum ReadingType {
     JaOnkun,
 }
 
-pub fn is_kanji(c: &char) -> bool {
-    (*c >= '\u{4e00}' && *c <= '\u{9ffc}') || (*c >= '\u{f900}' && *c <= '\u{faff}')
-}
 
 #[cfg(test)]
 mod tests {

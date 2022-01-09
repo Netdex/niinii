@@ -32,15 +32,15 @@ impl RikaiView {
     pub fn set_gloss(&mut self, gloss: Option<Gloss>) {
         self.gloss = gloss;
     }
-    pub fn gloss(&self) -> &Option<Gloss> {
-        &self.gloss
+    pub fn gloss(&self) -> Option<&Gloss> {
+        self.gloss.as_ref()
     }
 
     pub fn set_translation(&mut self, translation: Option<Translation>) {
         self.translation = translation;
     }
-    pub fn translation(&self) -> &Option<Translation> {
-        &self.translation
+    pub fn translation(&self) -> Option<&Translation> {
+        self.translation.as_ref()
     }
 
     fn term_window(
@@ -197,11 +197,6 @@ impl RikaiView {
     }
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView, show_raw: &mut bool) {
-        if let Some(translation) = &self.translation {
-            DeepLView::new(&translation).ui(ui);
-            ui.separator();
-        }
-
         if let Some(gloss) = &self.gloss {
             ui.text(""); // hack to align line position
             self.add_root(env, ui, settings, &gloss.root);
@@ -214,6 +209,12 @@ impl RikaiView {
                         RawView::new(&gloss.root).ui(env, ui);
                     });
             }
+        }
+
+        if let Some(translation) = &self.translation {
+            ui.separator();
+            DeepLView::new(translation).ui(ui);
+            ui.separator();
         }
 
         // show all term windows, close if requested (this is actually witchcraft)
