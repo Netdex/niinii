@@ -47,8 +47,15 @@ experience.
 TODO
 
 ## Known Issues
-- High CPU usage when out of focus
-- Missing characters when rendering (displays as <?>)
+### Missing characters when rendering (displays as <?>)
+ImGui uses a static font atlas for rendering text. niinii bakes an atlas with
+only ~3000 of the most common Japanese kanji, because any more and the texture
+will become too large. This means all hyōgai kanji will not render. In the
+future, we can dynamically rebuild the font atlas when encountering new kanji.
+
+### High CPU usage when out of focus
+Seems like a problem with winit. niinii is almost always used in the foreground
+anyways because of always on top, so I'm not going to bother fixing this.
 
 ## Troubleshooting
 TODO

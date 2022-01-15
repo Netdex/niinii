@@ -3,6 +3,7 @@ use deepl_api::{DeepL, TranslatableTextList};
 #[derive(Debug)]
 pub enum Translation {
     DeepL {
+        source_text: String,
         deepl_text: String,
         deepl_usage: deepl_api::UsageInformation,
     },
@@ -31,6 +32,7 @@ pub fn translate(deepl_api_key: &str, text: &str) -> Result<Translation, deepl_a
         .clone();
     let deepl_usage = deepl.usage_information()?;
     Ok(Translation::DeepL {
+        source_text: text.to_string(),
         deepl_text,
         deepl_usage,
     })

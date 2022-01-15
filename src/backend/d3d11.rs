@@ -32,7 +32,8 @@ use winit::{
 };
 use wio::com::ComPtr;
 
-use super::renderer::{Env, Renderer};
+use super::env::Env;
+use super::renderer::Renderer;
 use crate::{app::App, view::settings::SettingsView};
 
 unsafe fn create_device(
@@ -127,57 +128,66 @@ unsafe extern "system" fn low_level_mouse_proc(
     SYSTEM.with(|system| {
         let weak_d3d11_renderer = system.borrow_mut();
         if let Some(d3d11_renderer) = weak_d3d11_renderer.upgrade() {
-            let mut inner = d3d11_renderer.shared.inner.borrow_mut();
-            let Inner {
-                window,
-                platform,
-                imgui,
-                ..
-            } = &mut *inner;
-
-            let hwnd = if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
-                handle.hwnd
-            } else {
-                unreachable!()
-            };
-
-            use winit::event::ModifiersState;
-            let wparam = wparam as UINT;
-            if wparam == winuser::WM_MOUSEMOVE {
-                use winit::dpi::PhysicalPosition;
-
-                let mut client_pos = ms.pt;
-                assert_eq!(
-                    winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _),
-                    TRUE
-                );
-                let position = PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
-                platform.handle_event::<()>(
-                    imgui.io_mut(),
+            let inner = d3d11_renderer.shared.inner.try_borrow_mut();
+            if let Ok(mut inner) = inner {
+                let Inner {
                     window,
-                    &Event::WindowEvent {
-                        window_id: window.id(),
-                        event: WindowEvent::CursorMoved {
-                            device_id: DeviceId::dummy(),
-                            position,
-                            modifiers: ModifiersState::empty(),
+                    platform,
+                    imgui,
+                    ..
+                } = &mut *inner;
+
+                let hwnd = if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
+                    handle.hwnd
+                } else {
+                    unreachable!()
+                };
+
+                use winit::event::ModifiersState;
+                let wparam = wparam as UINT;
+                if wparam == winuser::WM_MOUSEMOVE {
+                    use winit::dpi::PhysicalPosition;
+
+                    let mut client_pos = ms.pt;
+                    assert_eq!(
+                        winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _),
+                        TRUE
+                    );
+                    let position = PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
+                    platform.handle_event::<()>(
+                        imgui.io_mut(),
+                        window,
+                        &Event::WindowEvent {
+                            window_id: window.id(),
+                            event: WindowEvent::CursorMoved {
+                                device_id: DeviceId::dummy(),
+                                position,
+                                modifiers: ModifiersState::empty(),
+                            },
                         },
-                    },
-                );
-            }
-            let io = imgui.io_mut();
-            let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
-            if io.want_capture_mouse {
-                winuser::SetWindowLongA(
-                    hwnd as *mut _,
-                    winuser::GWL_EXSTYLE,
-                    (style as u32 & (!winuser::WS_EX_TRANSPARENT)) as i32,
-                );
+                    );
+                }
+                let io = imgui.io_mut();
+                let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
+                if io.want_capture_mouse {
+                    winuser::SetWindowLongA(
+                        hwnd as *mut _,
+                        winuser::GWL_EXSTYLE,
+                        (style as u32 & (!winuser::WS_EX_TRANSPARENT)) as i32,
+                    );
+                } else {
+                    winuser::SetWindowLongA(
+                        hwnd as *mut _,
+                        winuser::GWL_EXSTYLE,
+                        (style as u32 | winuser::WS_EX_TRANSPARENT) as i32,
+                    );
+                }
             } else {
-                winuser::SetWindowLongA(
-                    hwnd as *mut _,
-                    winuser::GWL_EXSTYLE,
-                    (style as u32 | winuser::WS_EX_TRANSPARENT) as i32,
+                log::warn!(
+                    "failed to acquire ctx in hook ncode={} wparam={} lparam={}",
+                    ncode,
+                    wparam,
+                    lparam
                 );
             }
         }
@@ -222,8 +232,8 @@ impl D3D11Renderer {
 
         let mut imgui = Self::create_imgui(settings);
         let platform = Self::create_platform(&mut imgui, &window);
-        let mut env = Env::default();
-        Self::create_fonts(&mut imgui, &mut env, &platform);
+        let mut env = Env::new();
+        env.update_fonts(&mut imgui, &platform);
 
         let renderer =
             unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
@@ -303,6 +313,13 @@ impl Renderer for D3D11Renderer {
                     unsafe {
                         context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
                         context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
+                    }
+
+                    let now = std::time::Instant::now();
+                    if env.update_fonts(imgui, platform) {
+                        unsafe { renderer.rebuild_font_texture(&mut imgui.fonts()).unwrap() };
+                        let elapsed = now.elapsed();
+                        log::info!("rebuilt font atlas (took {:?})", elapsed);
                     }
                     let mut ui = imgui.frame();
                     let mut run = true;

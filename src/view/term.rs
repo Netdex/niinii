@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ichiran::{kanji::Kanji, romanize::*, JmDictData};
 use imgui::*;
 
-use crate::backend::renderer::Env;
+use crate::backend::env::Env;
 
 use super::kanji::KanjiView;
 use super::mixins::*;
@@ -84,32 +84,39 @@ impl<'a> TermView<'a> {
     ) {
         let meta = word.meta();
 
-        if show_kanji {
-            {
-                for chr in meta.text().chars() {
-                    let kanji = self.kanji_info.get(&chr);
-                    {
-                        let _style_token = ui.push_style_var(StyleVar::ItemSpacing([0.0, 4.0]));
-                        let text = format!("{}", chr);
-                        ui.same_line();
-                        draw_kanji_text(
-                            ui,
-                            env,
-                            &text,
-                            kanji != None,
-                            false,
-                            UnderlineMode::None,
-                            RubyTextMode::None,
-                        );
-                    }
+        if romaji == meta.text() {
+            // special case for hyogai kanji
+            if let Some(chr) = &meta.text().chars().nth(0) {
+                let kanji = self.kanji_info.get(chr);
+                if let Some(kanji) = kanji {
+                    KanjiView::new(kanji, 30.0).ui(env, ui)
+                }
+            }
+        } else if show_kanji {
+            for chr in meta.text().chars() {
+                let kanji = self.kanji_info.get(&chr);
+                {
+                    let _style_token = ui.push_style_var(StyleVar::ItemSpacing([0.0, 4.0]));
+                    let text = format!("{}", chr);
+                    ui.same_line();
+                    draw_kanji_text(
+                        ui,
+                        env,
+                        &text,
+                        kanji != None,
+                        false,
+                        UnderlineMode::None,
+                        RubyTextMode::None,
+                    );
+                }
 
-                    if let Some(kanji) = kanji {
-                        if ui.is_item_hovered() {
-                            self.kanji_tooltip(env, ui, kanji);
-                        }
+                if let Some(kanji) = kanji {
+                    if ui.is_item_hovered() {
+                        self.kanji_tooltip(env, ui, kanji);
                     }
                 }
             }
+
             if meta.kana() != meta.text() {
                 ui.text(format!("{}\u{ff0f}{}", meta.kana(), romaji));
             } else {

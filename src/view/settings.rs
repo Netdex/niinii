@@ -21,6 +21,7 @@ pub enum DisplayRubyText {
     Romaji = 2,
 }
 
+// TODO: make this ref-counted
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct SettingsView {

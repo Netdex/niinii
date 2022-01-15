@@ -1,6 +1,6 @@
 use imgui::{StyleColor, Ui};
 
-use crate::backend::renderer::{Env, TextStyle};
+use crate::backend::env::{Env, TextStyle};
 
 pub fn help_marker(ui: &Ui, text: &str) {
     ui.text_colored(ui.style_color(StyleColor::TextDisabled), "[?]");

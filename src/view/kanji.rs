@@ -1,7 +1,7 @@
 use ichiran::kanji::Kanji;
 use imgui::*;
 
-use crate::backend::renderer::{Env, TextStyle};
+use crate::backend::env::{Env, TextStyle};
 
 pub struct KanjiView<'a> {
     kanji: &'a Kanji,

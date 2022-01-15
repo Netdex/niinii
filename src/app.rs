@@ -3,7 +3,7 @@ use std::sync::mpsc;
 use imgui::*;
 
 use crate::{
-    backend::renderer::Env,
+    backend::env::Env,
     gloss::{Gloss, GlossError, Glossator},
     translation::{self, Translation},
     view::{mixins::help_marker, rikai::RikaiView, settings::SettingsView},
@@ -103,9 +103,10 @@ impl App {
         self.state = state;
     }
 
-    fn poll(&mut self, ui: &Ui) {
+    fn poll(&mut self, ui: &Ui, env: &mut Env) {
         match self.channel_rx.try_recv() {
             Ok(Message::Gloss(Ok(gloss))) => {
+                env.add_unknown_glyphs_from_root(&gloss.root);
                 let should_translate = !gloss.root.is_flat();
                 if self.settings.auto_translate && should_translate {
                     self.request_translation(&gloss.root.text_flatten());
@@ -224,7 +225,6 @@ impl App {
 
     pub fn ui(&mut self, env: &mut Env, ui: &mut Ui, run: &mut bool) {
         let io = ui.io();
-
         let mut niinii = Window::new("niinii")
             .opened(run)
             .menu_bar(true)
@@ -273,15 +273,17 @@ impl App {
                 }
             }
             self.show_deepl_usage(ui);
-            {
-                let _disable_ready = ui.begin_disabled(!matches!(self.state, State::None));
-                self.rikai.ui(env, ui, &self.settings, &mut self.show_raw);
-                if let State::Processing = &self.state {
-                    ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
-                }
+            self.rikai.ui(env, ui, &self.settings, &mut self.show_raw);
+            if let State::Processing = &self.state {
+                ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
             }
             self.show_error_modal(env, ui);
-            self.poll(ui);
+            self.poll(ui, env);
+
+            ui.new_line();
+            if env.font_atlas_dirty() {
+                ui.text_disabled("(rebuilding font atlas...)")
+            }
         });
 
         if self.show_imgui_demo {
@@ -289,24 +291,31 @@ impl App {
         }
 
         if self.show_settings {
-            if let Some(_token) = Window::new("Settings").always_auto_resize(true).begin(ui) {
-                self.settings.ui(ui);
-                ui.separator();
-                if ui.button_with_size("OK", [120.0, 0.0]) {
-                    self.show_settings = false;
-                }
-                ui.same_line();
-                ui.text("* Restart to apply these changes");
-            }
+            self.show_settings(ui);
         }
-
         if self.show_metrics_window {
             ui.show_metrics_window(&mut self.show_metrics_window);
         }
-
         if self.show_style_editor {
-            let mut show_style_editor = self.show_style_editor;
-            Window::new("Style Editor")
+            self.show_style_editor(ui);
+        }
+    }
+
+    fn show_settings(&mut self, ui: &mut Ui) {
+        if let Some(_token) = Window::new("Settings").always_auto_resize(true).begin(ui) {
+            self.settings.ui(ui);
+            ui.separator();
+            if ui.button_with_size("OK", [120.0, 0.0]) {
+                self.show_settings = false;
+            }
+            ui.same_line();
+            ui.text("* Restart to apply these changes");
+        }
+    }
+
+    fn show_style_editor(&mut self, ui: &Ui) {
+        let mut show_style_editor = self.show_style_editor;
+        Window::new("Style Editor")
                 .opened(&mut show_style_editor)
                 .menu_bar(true)
                 .build(ui, || {
@@ -324,8 +333,7 @@ impl App {
                     });
                     ui.show_default_style_editor();
                 });
-            self.show_style_editor = show_style_editor;
-        }
+        self.show_style_editor = show_style_editor;
     }
 
     pub fn settings(&self) -> &SettingsView {

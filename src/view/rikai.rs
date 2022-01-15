@@ -7,7 +7,7 @@ use imgui::*;
 use super::deepl::DeepLView;
 use super::mixins::*;
 use super::settings::{DisplayRubyText, SettingsView};
-use crate::backend::renderer::Env;
+use crate::backend::env::Env;
 use crate::gloss::Gloss;
 use crate::translation::Translation;
 use crate::view::{raw::RawView, term::TermView};
@@ -212,9 +212,8 @@ impl RikaiView {
         }
 
         if let Some(translation) = &self.translation {
-            ui.separator();
+            ui.new_line();
             DeepLView::new(translation).ui(ui);
-            ui.separator();
         }
 
         // show all term windows, close if requested (this is actually witchcraft)
