@@ -2,6 +2,8 @@ use imgui::*;
 
 use crate::translation::Translation;
 
+use super::mixins::stroke_text;
+
 pub struct DeepLView<'a>(&'a Translation);
 impl<'a> DeepLView<'a> {
     pub fn new(translation: &'a Translation) -> Self {
@@ -14,23 +16,33 @@ impl<'a> DeepLView<'a> {
             deepl_text,
             ..
         } = self.0;
-        ui.separator();
-        lang_marker(ui, "ja");
+
+        let draw_list = ui.get_window_draw_list();
+        lang_marker(ui, &draw_list, "ja");
         ui.same_line();
-        ui.text(source_text);
-        ui.separator();
-        lang_marker(ui, "en");
+        stroke_text(ui, &draw_list, source_text, ui.cursor_screen_pos(), 1.0);
+        ui.new_line();
+        lang_marker(ui, &draw_list, "en");
         ui.same_line();
-        ui.text(deepl_text);
-        ui.separator();
+        stroke_text(ui, &draw_list, deepl_text, ui.cursor_screen_pos(), 1.0);
+        ui.new_line();
     }
 }
 
-fn lang_marker<T: AsRef<str>>(ui: &Ui, lang: T) {
+fn lang_marker<T: AsRef<str>>(ui: &Ui, draw_list: &DrawListMut, lang: T) {
     let lang = lang.as_ref();
-    ui.text("[");
-    ui.same_line_with_spacing(0.0, 0.0);
-    ui.text_colored([0.0, 1.0, 1.0, 1.0], lang);
-    ui.same_line_with_spacing(0.0, 0.0);
-    ui.text("]");
+    let text = format!("[{}]", lang);
+    let p = ui.cursor_screen_pos();
+    let sz = ui.calc_text_size(&text);
+    draw_list
+        .add_rect(
+            p,
+            [p[0] + sz[0], p[1] + sz[1]],
+            ui.style_color(StyleColor::TextSelectedBg),
+        )
+        .filled(true)
+        .build();
+
+    stroke_text(ui, draw_list, &text, ui.cursor_screen_pos(), 1.0);
+    ui.dummy(sz);
 }

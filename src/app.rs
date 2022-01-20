@@ -107,9 +107,8 @@ impl App {
         match self.channel_rx.try_recv() {
             Ok(Message::Gloss(Ok(gloss))) => {
                 env.add_unknown_glyphs_from_root(&gloss.root);
-                let should_translate = !gloss.root.is_flat();
-                if self.settings.auto_translate && should_translate {
-                    self.request_translation(&gloss.root.text_flatten());
+                if self.settings.auto_translate && gloss.translatable {
+                    self.request_translation(&gloss.original_text);
                 } else {
                     self.transition(ui, State::None);
                     self.rikai.set_translation(None);
@@ -252,21 +251,18 @@ impl App {
                 }
                 ui.same_line();
 
-                let should_translate = self
-                    .rikai
-                    .gloss()
-                    .map_or_else(|| false, |x| !x.root.is_flat());
+                let enable_tl = self.rikai.gloss().map_or_else(|| false, |x| x.translatable);
                 {
                     let mut _disable_tl =
-                        ui.begin_disabled(!should_translate || self.rikai.translation().is_some());
+                        ui.begin_disabled(!enable_tl || self.rikai.translation().is_some());
                     if ui.button_with_size("Translate", [120.0, 0.0]) {
                         self.transition(ui, State::Processing);
                         if let Some(gloss) = self.rikai.gloss() {
-                            self.request_translation(&gloss.root.text_flatten());
+                            self.request_translation(&gloss.original_text);
                         }
                     }
                 }
-                if !should_translate
+                if !enable_tl
                     && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED)
                 {
                     ui.tooltip(|| ui.text("Text does not require translation"));

@@ -6,7 +6,7 @@ use std::{
 use flate2::bufread::GzDecoder;
 use ichiran::{
     charset,
-    romanize::{Clause, Conjugation, Meta, Romanized, Root, Segment, Term, Word},
+    romanize::{Clause, Conjugation, Meta, Root, Segment, Term, Word},
 };
 use imgui::*;
 use imgui_winit_support::WinitPlatform;
@@ -179,10 +179,6 @@ impl Env {
             code += *off as u32;
             self.add_font_glyph(code);
         }
-        log::info!(
-            "added {} common font glyph(s)",
-            JA_ACC_OFF_0X4_E00_UTF8.len()
-        );
     }
     fn add_font_glyph(&mut self, code: u32) {
         debug_assert!(!self.has_font_glyph(code));
@@ -229,7 +225,7 @@ impl Env {
                 let font_sources: Vec<_> = config
                     .iter()
                     .map(|config| FontSource::TtfData {
-                        data: &font_data,
+                        data: font_data,
                         size_pixels: (size_pt * hidpi_factor) as f32,
                         config: Some(FontConfig {
                             name: Some(name.to_string()),
@@ -278,7 +274,7 @@ impl Env {
                 match word {
                     Word::Plain(plain) => {
                         self.visit_meta(plain.meta());
-                        plain.conj().iter().for_each(|x|self.visit_conj(x));
+                        plain.conj().iter().for_each(|x| self.visit_conj(x));
                     }
                     Word::Compound(compound) => {
                         self.visit_meta(compound.meta());
@@ -308,9 +304,8 @@ impl Env {
                     .for_each(|x| self.visit_term(x));
             }
             fn visit_segment(&mut self, segment: &Segment) {
-                match segment {
-                    Segment::Clauses(clauses) => clauses.iter().for_each(|x| self.visit_clause(x)),
-                    _ => (),
+                if let Segment::Clauses(clauses) = &segment {
+                    clauses.iter().for_each(|x| self.visit_clause(x))
                 }
             }
             pub fn visit_root(&mut self, root: &Root) {

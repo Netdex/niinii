@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     sync::Arc,
-    time::{Duration, Instant},
 };
 
 use ichiran::{
@@ -23,11 +22,11 @@ pub enum GlossError {
 
 #[derive(Debug)]
 pub struct Gloss {
-    pub elapsed: Duration,
-
+    pub original_text: String,
     pub root: Root,
     pub kanji_info: HashMap<char, Kanji>,
     pub jmdict_data: JmDictData,
+    pub translatable: bool,
 }
 
 #[derive(Clone)]
@@ -73,19 +72,23 @@ impl Glossator {
         let mut kanji_info = None;
         let mut jmdict_data = None;
 
-        let start = Instant::now();
         rayon::scope(|s| {
             s.spawn(|_| root = Some(ichiran.romanize(&text, variants)));
             s.spawn(|_| kanji_info = Some(ichiran.kanji_from_str(&text)));
             s.spawn(|_| jmdict_data = Some(ichiran.jmdict_data()));
         });
-        let elapsed = start.elapsed();
+
+        let root = root.unwrap()?;
+        let kanji_info = kanji_info.unwrap()?;
+        let jmdict_data = jmdict_data.unwrap()?;
+        let should_translate = root.is_flat();
 
         Ok(Gloss {
-            elapsed,
-            root: root.unwrap()?,
-            kanji_info: kanji_info.unwrap()?,
-            jmdict_data: jmdict_data.unwrap()?,
+            root,
+            kanji_info,
+            jmdict_data,
+            translatable: should_translate,
+            original_text: text.to_string(),
         })
     }
 }

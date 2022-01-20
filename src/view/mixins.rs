@@ -1,4 +1,4 @@
-use imgui::{StyleColor, Ui};
+use imgui::{DrawListMut, StyleColor, Ui};
 
 use crate::backend::env::{Env, TextStyle};
 
@@ -19,6 +19,26 @@ pub enum RubyTextMode<'a> {
     Text(&'a str),
     Pad,
     None,
+}
+
+pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, pos: [f32; 2], thick: f32) {
+    for off in [
+        [-1.0, -1.0],
+        [-1.0, 1.0],
+        [1.0, -1.0],
+        [1.0, 1.0],
+        [-1.0, 0.0],
+        [1.0, 0.0],
+        [0.0, -1.0],
+        [0.0, 1.0],
+    ] {
+        draw_list.add_text(
+            [pos[0] + off[0] * thick, pos[1] + off[1] * thick],
+            ui.style_color(StyleColor::TitleBg),
+            text,
+        );
+    }
+    draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
 }
 
 pub fn draw_kanji_text(
@@ -56,24 +76,10 @@ pub fn draw_kanji_text(
 
     let maybe_stroke_text = |text: &str, pos: [f32; 2], thick: f32| {
         if stroke {
-            for off in [
-                [-1.0, -1.0],
-                [-1.0, 1.0],
-                [1.0, -1.0],
-                [1.0, 1.0],
-                [-1.0, 0.0],
-                [1.0, 0.0],
-                [0.0, -1.0],
-                [0.0, 1.0],
-            ] {
-                draw_list.add_text(
-                    [pos[0] + off[0] * thick, pos[1] + off[1] * thick],
-                    ui.style_color(StyleColor::TitleBg),
-                    text,
-                );
-            }
+            stroke_text(ui, &draw_list, text, pos, thick);
+        } else {
+            draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
         }
-        draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
     };
 
     if let RubyTextMode::Text(text) = ruby_text {

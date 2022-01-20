@@ -86,7 +86,7 @@ impl<'a> TermView<'a> {
 
         if romaji == meta.text() {
             // special case for hyogai kanji
-            if let Some(chr) = &meta.text().chars().nth(0) {
+            if let Some(chr) = &meta.text().chars().next() {
                 let kanji = self.kanji_info.get(chr);
                 if let Some(kanji) = kanji {
                     KanjiView::new(kanji, 30.0).ui(env, ui)
