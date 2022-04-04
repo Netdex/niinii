@@ -17,7 +17,7 @@ impl Root {
     pub fn segments(&self) -> &[Segment] {
         &self.0
     }
-    
+
     /// Whether all segments are skipped, which will basically be true when the
     /// sentence isn't in Japanese.
     pub fn is_flat(&self) -> bool {

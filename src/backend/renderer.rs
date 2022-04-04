@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use glutin::{platform::windows::WindowBuilderExtWindows, window};
+use glutin::window;
 use imgui_winit_support::WinitPlatform;
 
 use crate::clipboard;
@@ -19,9 +19,9 @@ pub trait Renderer {
 
         window::WindowBuilder::new()
             .with_title("niinii")
-            .with_inner_size(glutin::dpi::LogicalSize::new(768, 768))
+            // .with_inner_size(glutin::dpi::LogicalSize::new(768, 768))
             .with_transparent(true)
-            .with_drag_and_drop(false)
+            // .with_drag_and_drop(false)
             .with_maximized(maximized)
             .with_decorations(decorations)
             .with_always_on_top(on_top)

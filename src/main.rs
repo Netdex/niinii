@@ -1,6 +1,8 @@
+#[cfg(windows)]
+use niinii::backend::d3d11::D3D11Renderer;
 use niinii::{
     app::App,
-    backend::{d3d11::D3D11Renderer, glow::GlowRenderer, renderer::Renderer},
+    backend::{glow::GlowRenderer, renderer::Renderer},
     view::settings::{SettingsView, SupportedRenderer},
 };
 use std::{
@@ -22,6 +24,7 @@ fn main() {
     let mut app = App::new(settings);
     let mut renderer: Box<dyn Renderer> = match app.settings().active_renderer() {
         SupportedRenderer::Glow => Box::new(GlowRenderer::new(app.settings())),
+        #[cfg(windows)]
         SupportedRenderer::Direct3D11 => Box::new(D3D11Renderer::new(app.settings())),
     };
     renderer.main_loop(&mut app);

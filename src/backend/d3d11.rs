@@ -134,6 +134,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                     window,
                     platform,
                     imgui,
+                    last_want_capture_mouse,
                     ..
                 } = &mut *inner;
 
@@ -149,7 +150,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                     use winit::dpi::PhysicalPosition;
 
                     let mut client_pos = ms.pt;
-                    assert_eq!(
+                    debug_assert_eq!(
                         winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _),
                         TRUE
                     );
@@ -168,19 +169,22 @@ unsafe extern "system" fn low_level_mouse_proc(
                     );
                 }
                 let io = imgui.io_mut();
-                let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
-                if io.want_capture_mouse {
-                    winuser::SetWindowLongA(
-                        hwnd as *mut _,
-                        winuser::GWL_EXSTYLE,
-                        (style as u32 & (!winuser::WS_EX_TRANSPARENT)) as i32,
-                    );
-                } else {
-                    winuser::SetWindowLongA(
-                        hwnd as *mut _,
-                        winuser::GWL_EXSTYLE,
-                        (style as u32 | winuser::WS_EX_TRANSPARENT) as i32,
-                    );
+                if *last_want_capture_mouse != io.want_capture_mouse {
+                    let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
+                    if io.want_capture_mouse {
+                        winuser::SetWindowLongA(
+                            hwnd as *mut _,
+                            winuser::GWL_EXSTYLE,
+                            (style as u32 & (!winuser::WS_EX_TRANSPARENT)) as i32,
+                        );
+                    } else {
+                        winuser::SetWindowLongA(
+                            hwnd as *mut _,
+                            winuser::GWL_EXSTYLE,
+                            (style as u32 | winuser::WS_EX_TRANSPARENT) as i32,
+                        );
+                    }
+                    *last_want_capture_mouse = io.want_capture_mouse;
                 }
             } else {
                 log::warn!(
@@ -213,6 +217,7 @@ struct Inner {
     swapchain: ComPtr<IDXGISwapChain>,
     device: ComPtr<ID3D11Device>,
     mousellhook: Option<HHOOK>,
+    last_want_capture_mouse: bool,
 }
 impl D3D11Renderer {
     pub fn new(settings: &SettingsView) -> Self {
@@ -269,6 +274,7 @@ impl D3D11Renderer {
                     swapchain,
                     device,
                     mousellhook,
+                    last_want_capture_mouse: false,
                 }),
                 event_loop: Cell::new(Some(event_loop)),
             }),

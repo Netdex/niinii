@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use ichiran::{
     kanji::Kanji, pgdaemon::PostgresDaemon, romanize::Root, Ichiran, IchiranError, JmDictData,
@@ -81,13 +78,13 @@ impl Glossator {
         let root = root.unwrap()?;
         let kanji_info = kanji_info.unwrap()?;
         let jmdict_data = jmdict_data.unwrap()?;
-        let should_translate = root.is_flat();
+        let translatable = !root.is_flat();
 
         Ok(Gloss {
             root,
             kanji_info,
             jmdict_data,
-            translatable: should_translate,
+            translatable,
             original_text: text.to_string(),
         })
     }

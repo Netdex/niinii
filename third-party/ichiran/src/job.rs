@@ -25,19 +25,9 @@ pub fn setup() -> Option<JobObject> {
 
 #[cfg(unix)]
 mod imp {
-    use libc;
-    use std::env;
+    pub type JobObject = ();
 
-    pub type Setup = ();
-
-    pub unsafe fn setup() -> Option<()> {
-        // There's a test case for the behavior of
-        // when-cargo-is-killed-subprocesses-are-also-killed, but that requires
-        // one cargo spawned to become its own session leader, so we do that
-        // here.
-        if env::var("__CARGO_TEST_SETSID_PLEASE_DONT_USE_ELSEWHERE").is_ok() {
-            libc::setsid();
-        }
+    pub unsafe fn setup() -> Option<JobObject> {
         Some(())
     }
 }

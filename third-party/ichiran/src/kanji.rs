@@ -134,7 +134,6 @@ pub enum ReadingType {
     JaOnkun,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

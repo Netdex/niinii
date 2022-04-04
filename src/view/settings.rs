@@ -21,7 +21,6 @@ pub enum DisplayRubyText {
     Romaji = 2,
 }
 
-// TODO: make this ref-counted
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct SettingsView {
@@ -32,7 +31,6 @@ pub struct SettingsView {
     renderer_type_idx: usize,
     pub transparent: bool,
     pub on_top: bool,
-    #[cfg(windows)]
     pub overlay_mode: bool,
 
     ruby_text_type_idx: usize,

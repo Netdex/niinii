@@ -17,7 +17,7 @@ build = "build.rs"
 # imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
 # imgui-glow-renderer = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
 # imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
-imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
+# imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
 # imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
 # imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
 
@@ -26,17 +26,10 @@ imgui = { version = "0.8.2", features = ["tables-api"] }
 imgui-winit-support = { version = "0.8.2", features = ["winit-26"] }
 clipboard = "0.5"
 imgui-glow-renderer = "0.8.2"
-glow = "0.10.0"
+glow = "0.10"
 glutin = "0.28.0"
-
-# imgui-dx9-renderer = "0.8"
-imgui-dx11-renderer = "0.8"
-
-winapi = { version = "0.3" }
-wio = "0.2"
 raw-window-handle = "0.4.2"
 winit = "0.26"
-# detour = { version = "0.8", default-features = false }
 
 log = "0.4"
 env_logger = "0.9"
@@ -46,20 +39,28 @@ lazy_static = "1.4.0"
 regex = "1"
 num-traits = "0.2"
 num-derive = "0.3"
-strum = "0.23"
-strum_macros = "0.23"
+strum = "0.24"
+strum_macros = "0.24"
 thiserror = "1"
 num-format = "0.4.0"
 
 flate2 = { version = "1.0" }
 rayon = "1.5.1"
-deepl-api = "0.2.1"
+deepl-api = "0.3.1"
 
 ichiran = { path = "third-party/ichiran" }
-imgui-win32-sys = { path = "third-party/imgui-win32-sys" }
+
+[target.'cfg(windows)'.dependencies]
+# imgui-dx9-renderer = "0.8"
+# imgui-dx11-renderer = "0.8"
+imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
+
+winapi = { version = "0.3" }
+wio = "0.2"
+# detour = { version = "0.8", default-features = false }
 
 [workspace]
-members = ["third-party/ichiran", "third-party/imgui-win32-sys"]
+members = ["third-party/ichiran"]
 
 # flate2 is slow in debug mode
 [profile.dev.package.flate2]
