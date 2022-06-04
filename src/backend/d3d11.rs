@@ -150,10 +150,8 @@ unsafe extern "system" fn low_level_mouse_proc(
                     use winit::dpi::PhysicalPosition;
 
                     let mut client_pos = ms.pt;
-                    debug_assert_eq!(
-                        winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _),
-                        TRUE
-                    );
+                    let r = winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _);
+                    debug_assert_eq!(r, TRUE);
                     let position = PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
                     platform.handle_event::<()>(
                         imgui.io_mut(),
