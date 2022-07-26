@@ -44,15 +44,32 @@ There are some features I'd like to experiment with to improve the glossing
 experience.
 
 ## Build
-TODO
+Prepackaged builds are available in the
+[Releases](https://github.com/Netdex/niinii/releases) section of this
+repository.
+
+The only target that is properly maintained is `x86_64-pc-windows-msvc`. There's
+nothing stopping it from working on other targets (e.g. Linux), but additional
+work may be required.
+
+To build the application from source:
+```
+git clone https://github.com/Netdex/niinii.git
+cd niinii
+cargo build --release
+```
+
+For Japanese language support, the following additional components are required:
+- ichiran-cli ([Ichiran](https://github.com/tshatrov/ichiran))
+- PostgreSQL installation with Ichiran database
+
+You must provide the location of these additional components in the Settings
+pane of the application.
+
+Given that the process of building these components for use with niinii is quite
+involved, prebuilt versions are included with the prepackaged builds.
 
 ## Known Issues
-### Missing characters when rendering (displays as <?>)
-ImGui uses a static font atlas for rendering text. niinii bakes an atlas with
-only ~3000 of the most common Japanese kanji, because any more and the texture
-will become too large. This means all hyōgai kanji will not render. In the
-future, we can dynamically rebuild the font atlas when encountering new kanji.
-
 ### High CPU usage when out of focus
 Seems like a problem with winit. niinii is almost always used in the foreground
 anyways because of always on top, so I'm not going to bother fixing this.
