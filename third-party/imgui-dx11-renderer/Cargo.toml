@@ -1,0 +1,34 @@
+[package]
+name = "imgui-dx11-renderer"
+version = "0.8.0"
+authors = ["Lukas Wirth <lukastw97@gmail.com>"]
+edition = "2018"
+description = "DirectX 11 renderer for the imgui crate"
+homepage = "https://github.com/Veykril/imgui-dx11-renderer"
+repository = "https://github.com/Veykril/imgui-dx11-renderer"
+license = "MIT"
+readme = "README.md"
+categories = ["gui", "rendering"]
+
+[dependencies]
+winapi = { version = "0.3", features = [
+    "d3d11",
+    "dxgitype",
+    "dxgiformat",
+    "dxgi",
+    "minwindef",
+    "winerror",
+] }
+wio = "0.2"
+imgui = "0.8"
+
+[build-dependencies]
+winapi = { version = "0.3", features = ["d3dcompiler", "d3dcommon"] }
+
+[dev-dependencies]
+imgui = "0.8"
+imgui-winit-support = "0.8"
+winit = "0.25"
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"

@@ -5,7 +5,6 @@ use std::time::Instant;
 use std::{ptr, rc::Weak};
 
 use imgui_winit_support::WinitPlatform;
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use winapi::{
     shared::{
         dxgi::*,
@@ -28,7 +27,7 @@ use winapi::{
 use winit::{
     event::{DeviceId, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
+    platform::{run_return::EventLoopExtRunReturn, windows::WindowExtWindows},
 };
 use wio::com::ComPtr;
 
@@ -138,11 +137,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                     ..
                 } = &mut *inner;
 
-                let hwnd = if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
-                    handle.hwnd
-                } else {
-                    unreachable!()
-                };
+                let hwnd = window.hwnd();
 
                 use winit::event::ModifiersState;
                 let wparam = wparam as UINT;
@@ -224,11 +219,7 @@ impl D3D11Renderer {
             .build(&event_loop)
             .unwrap();
 
-        let hwnd = if let RawWindowHandle::Win32(handle) = window.raw_window_handle() {
-            handle.hwnd
-        } else {
-            unreachable!()
-        };
+        let hwnd = window.hwnd();
 
         let (swapchain, device, context) = unsafe { create_device(hwnd.cast()) }.unwrap();
         let main_rtv = unsafe { create_render_target(&swapchain, &device) };

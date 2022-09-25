@@ -1,0 +1,5 @@
+edition = "2018"
+match_block_trailing_comma = true
+reorder_imports = true
+use_small_heuristics = "Max"
+wrap_comments = true
