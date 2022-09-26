@@ -18,6 +18,7 @@ enum View {
     Interpret {
         gloss: Gloss,
         translation: Option<Translation>,
+        translation_pending: bool,
     },
 }
 
@@ -44,6 +45,7 @@ impl RikaiView {
         self.view = Some(View::Interpret {
             gloss,
             translation: None,
+            translation_pending: false,
         });
     }
     pub fn gloss(&self) -> Option<&Gloss> {
@@ -54,6 +56,15 @@ impl RikaiView {
         }
     }
 
+    pub fn set_translation_pending(&mut self, pending: bool) {
+        if let Some(View::Interpret {
+            translation_pending,
+            ..
+        }) = &mut self.view
+        {
+            *translation_pending = pending;
+        }
+    }
     pub fn set_translation(&mut self, tl: Option<Translation>) {
         if let Some(View::Interpret { translation, .. }) = &mut self.view {
             *translation = tl;
@@ -104,15 +115,15 @@ impl RikaiView {
         ui: &Ui,
         settings: &SettingsView,
         skipped: &str,
-        disabled: bool,
+        preview: bool,
     ) {
         draw_kanji_text(
             ui,
             env,
             skipped,
             false,
-            !disabled,
-            disabled,
+            !preview,
+            preview,
             UnderlineMode::None,
             if settings.display_ruby_text() == DisplayRubyText::None {
                 RubyTextMode::None
@@ -232,7 +243,11 @@ impl RikaiView {
     pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView, show_raw: &mut bool) {
         ui.text(""); // hack to align line position
         match &self.view {
-            Some(View::Interpret { gloss, translation }) => {
+            Some(View::Interpret {
+                gloss,
+                translation,
+                translation_pending,
+            }) => {
                 self.add_root(env, ui, settings, &gloss.root);
 
                 if *show_raw {
@@ -246,7 +261,7 @@ impl RikaiView {
                 ui.new_line();
                 if let Some(translation) = translation {
                     DeepLView::new(translation).ui(ui);
-                } else if gloss.translatable {
+                } else if *translation_pending {
                     ui.text_disabled("(waiting for translation...)")
                 }
             }

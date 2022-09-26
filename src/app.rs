@@ -88,10 +88,13 @@ impl App {
         }});
     }
 
-    fn request_translation(&self, text: &str) {
+    fn request_translation(&mut self, text: &str) {
         let channel_tx = self.channel_tx.clone();
         let text = text.to_owned();
         let deepl_api_key = self.settings.deepl_api_key.clone();
+
+        self.rikai.set_translation_pending(true);
+
         rayon::spawn(move || {
             let translation = translation::translate(&deepl_api_key, &text);
             let _ = channel_tx.send(Message::Translation(translation));
@@ -262,7 +265,7 @@ impl App {
                     if ui.button_with_size("Translate", [120.0, 0.0]) {
                         self.transition(ui, State::Processing);
                         if let Some(gloss) = self.rikai.gloss() {
-                            self.request_translation(&gloss.original_text);
+                            self.request_translation(&gloss.original_text.clone());
                         }
                     }
                 }

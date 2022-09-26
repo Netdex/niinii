@@ -21,15 +21,35 @@ pub enum RubyTextMode<'a> {
     None,
 }
 
-pub fn stroke_text(
+pub fn stroke_text_with_offsets(
     ui: &Ui,
     draw_list: &DrawListMut,
     text: &str,
     pos: [f32; 2],
     thick: f32,
-    disabled: bool,
+    fore: StyleColor,
+    back: StyleColor,
+    offsets: &[[f32; 2]],
 ) {
-    for off in [
+    for off in offsets {
+        draw_list.add_text(
+            [pos[0] + off[0] * thick, pos[1] + off[1] * thick],
+            ui.style_color(back),
+            text,
+        );
+    }
+    draw_list.add_text(pos, ui.style_color(fore), text);
+}
+pub fn stroke_text_with_color(
+    ui: &Ui,
+    draw_list: &DrawListMut,
+    text: &str,
+    pos: [f32; 2],
+    thick: f32,
+    fore: StyleColor,
+    back: StyleColor,
+) {
+    let offsets = [
         [-1.0, -1.0],
         [-1.0, 1.0],
         [1.0, -1.0],
@@ -38,19 +58,19 @@ pub fn stroke_text(
         [1.0, 0.0],
         [0.0, -1.0],
         [0.0, 1.0],
-    ] {
-        draw_list.add_text(
-            [pos[0] + off[0] * thick, pos[1] + off[1] * thick],
-            ui.style_color(StyleColor::TitleBg),
-            text,
-        );
-    }
-    let text_color = if disabled {
-        StyleColor::TextDisabled
-    } else {
-        StyleColor::Text
-    };
-    draw_list.add_text(pos, ui.style_color(text_color), text);
+    ];
+    stroke_text_with_offsets(ui, draw_list, text, pos, thick, fore, back, &offsets);
+}
+pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, pos: [f32; 2], thick: f32) {
+    stroke_text_with_color(
+        ui,
+        draw_list,
+        text,
+        pos,
+        thick,
+        StyleColor::Text,
+        StyleColor::TitleBg,
+    )
 }
 
 pub fn draw_kanji_text(
@@ -59,7 +79,7 @@ pub fn draw_kanji_text(
     text: &str,
     highlight: bool,
     stroke: bool,
-    disabled: bool,
+    preview: bool,
     underline: UnderlineMode,
     ruby_text: RubyTextMode,
 ) -> bool {
@@ -89,14 +109,17 @@ pub fn draw_kanji_text(
 
     let maybe_stroke_text = |text: &str, pos: [f32; 2], thick: f32| {
         if stroke {
-            stroke_text(ui, &draw_list, text, pos, thick, disabled);
+            stroke_text_with_color(
+                ui,
+                &draw_list,
+                text,
+                pos,
+                thick,
+                StyleColor::Text,
+                StyleColor::TitleBg,
+            );
         } else {
-            let text_color = if disabled {
-                StyleColor::TextDisabled
-            } else {
-                StyleColor::Text
-            };
-            draw_list.add_text(pos, ui.style_color(text_color), text);
+            draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
         }
     };
 
@@ -137,7 +160,20 @@ pub fn draw_kanji_text(
         .build();
 
     let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
-    maybe_stroke_text(text, [cx, y], 1.5);
+    if preview {
+        stroke_text_with_offsets(
+            ui,
+            &draw_list,
+            text,
+            [cx, y],
+            2.0,
+            StyleColor::TextDisabled,
+            StyleColor::MenuBarBg,
+            &[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+        )
+    } else {
+        maybe_stroke_text(text, [cx, y], 1.5);
+    }
     drop(_kanji_font_token);
 
     ui.dummy([w, h]);
