@@ -216,7 +216,7 @@ impl Env {
         let ext_font_config = [FontConfig {
             rasterizer_multiply: 1.75,
             glyph_ranges: FontGlyphRanges::from_slice(unsafe { self.get_font_glyph_ranges() }),
-            oversample_h: 3,
+            oversample_h: 2,
             ..Default::default()
         }];
 

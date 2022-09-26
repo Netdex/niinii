@@ -21,7 +21,14 @@ pub enum RubyTextMode<'a> {
     None,
 }
 
-pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, pos: [f32; 2], thick: f32) {
+pub fn stroke_text(
+    ui: &Ui,
+    draw_list: &DrawListMut,
+    text: &str,
+    pos: [f32; 2],
+    thick: f32,
+    disabled: bool,
+) {
     for off in [
         [-1.0, -1.0],
         [-1.0, 1.0],
@@ -38,7 +45,12 @@ pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, pos: [f32; 2], 
             text,
         );
     }
-    draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
+    let text_color = if disabled {
+        StyleColor::TextDisabled
+    } else {
+        StyleColor::Text
+    };
+    draw_list.add_text(pos, ui.style_color(text_color), text);
 }
 
 pub fn draw_kanji_text(
@@ -47,6 +59,7 @@ pub fn draw_kanji_text(
     text: &str,
     highlight: bool,
     stroke: bool,
+    disabled: bool,
     underline: UnderlineMode,
     ruby_text: RubyTextMode,
 ) -> bool {
@@ -76,9 +89,14 @@ pub fn draw_kanji_text(
 
     let maybe_stroke_text = |text: &str, pos: [f32; 2], thick: f32| {
         if stroke {
-            stroke_text(ui, &draw_list, text, pos, thick);
+            stroke_text(ui, &draw_list, text, pos, thick, disabled);
         } else {
-            draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
+            let text_color = if disabled {
+                StyleColor::TextDisabled
+            } else {
+                StyleColor::Text
+            };
+            draw_list.add_text(pos, ui.style_color(text_color), text);
         }
     };
 
@@ -97,6 +115,7 @@ pub fn draw_kanji_text(
                 [cx + kanji_sz[0], y + kanji_sz[1]],
                 ui.style_color(StyleColor::TextSelectedBg),
             )
+            .rounding(5.0)
             .filled(true)
             .build();
     }
@@ -131,11 +150,13 @@ pub fn draw_kanji_text(
 }
 
 pub fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
-    let visible_x = ui.window_pos()[0] + ui.window_content_region_max()[0];
+    let max_width = ui.window_content_region_max()[0];
+    let visible_x = ui.window_pos()[0] + max_width;
     let last_x = ui.item_rect_max()[0];
     let style = ui.clone_style();
     let next_x = last_x + style.item_spacing[0] + expected_width;
-    if next_x < visible_x {
+    // don't wrap if it will fit on the current line, or if it won't even fit on an empty line
+    if next_x < visible_x || expected_width >= max_width {
         ui.same_line();
         false
     } else {

@@ -13,34 +13,58 @@ use crate::translation::Translation;
 use crate::view::{raw::RawView, term::TermView};
 
 #[derive(Debug)]
+enum View {
+    Text(String),
+    Interpret {
+        gloss: Gloss,
+        translation: Option<Translation>,
+    },
+}
+
+#[derive(Debug)]
 pub struct RikaiView {
-    gloss: Option<Gloss>,
-    translation: Option<Translation>,
+    view: Option<View>,
     show_term_window: RefCell<HashSet<Romanized>>,
     selected_clause: RefCell<HashMap<Segment, i32>>,
 }
 impl RikaiView {
     pub fn new() -> Self {
         Self {
-            gloss: None,
-            translation: None,
+            view: None,
             show_term_window: RefCell::new(HashSet::new()),
             selected_clause: RefCell::new(HashMap::new()),
         }
     }
 
-    pub fn set_gloss(&mut self, gloss: Option<Gloss>) {
-        self.gloss = gloss;
-    }
-    pub fn gloss(&self) -> Option<&Gloss> {
-        self.gloss.as_ref()
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        self.view = Some(View::Text(text.into()));
     }
 
-    pub fn set_translation(&mut self, translation: Option<Translation>) {
-        self.translation = translation;
+    pub fn set_gloss(&mut self, gloss: Gloss) {
+        self.view = Some(View::Interpret {
+            gloss,
+            translation: None,
+        });
+    }
+    pub fn gloss(&self) -> Option<&Gloss> {
+        if let Some(View::Interpret { gloss, .. }) = &self.view {
+            Some(gloss)
+        } else {
+            None
+        }
+    }
+
+    pub fn set_translation(&mut self, tl: Option<Translation>) {
+        if let Some(View::Interpret { translation, .. }) = &mut self.view {
+            *translation = tl;
+        }
     }
     pub fn translation(&self) -> Option<&Translation> {
-        self.translation.as_ref()
+        if let Some(View::Interpret { translation, .. }) = &self.view {
+            translation.as_ref()
+        } else {
+            None
+        }
     }
 
     fn term_window(
@@ -57,7 +81,7 @@ impl RikaiView {
             .focus_on_appearing(true)
             .opened(&mut opened)
             .build(ui, || {
-                if let Some(gloss) = &self.gloss {
+                if let Some(View::Interpret { gloss, .. }) = &self.view {
                     TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 0.0)
                         .ui(env, ui, settings);
                 }
@@ -67,20 +91,28 @@ impl RikaiView {
 
     fn term_tooltip(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, romanized: &Romanized) {
         ui.tooltip(|| {
-            if let Some(gloss) = &self.gloss {
+            if let Some(View::Interpret { gloss, .. }) = &self.view {
                 TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 30.0)
                     .ui(env, ui, settings)
             }
         });
     }
 
-    fn add_skipped(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, skipped: &str) {
+    fn add_skipped(
+        &self,
+        env: &mut Env,
+        ui: &Ui,
+        settings: &SettingsView,
+        skipped: &str,
+        disabled: bool,
+    ) {
         draw_kanji_text(
             ui,
             env,
             skipped,
             false,
-            true,
+            !disabled,
+            disabled,
             UnderlineMode::None,
             if settings.display_ruby_text() == DisplayRubyText::None {
                 RubyTextMode::None
@@ -115,6 +147,7 @@ impl RikaiView {
             term.text(),
             true,
             settings.stroke_text,
+            false,
             underline,
             fg_text,
         );
@@ -135,7 +168,7 @@ impl RikaiView {
     fn add_segment(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, segment: &Segment) {
         match segment {
             Segment::Skipped(skipped) => {
-                self.add_skipped(env, ui, settings, skipped);
+                self.add_skipped(env, ui, settings, skipped, false);
             }
             Segment::Clauses(clauses) => {
                 let mut selected_clause = self.selected_clause.borrow_mut();
@@ -197,23 +230,30 @@ impl RikaiView {
     }
 
     pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView, show_raw: &mut bool) {
-        if let Some(gloss) = &self.gloss {
-            ui.text(""); // hack to align line position
-            self.add_root(env, ui, settings, &gloss.root);
+        ui.text(""); // hack to align line position
+        match &self.view {
+            Some(View::Interpret { gloss, translation }) => {
+                self.add_root(env, ui, settings, &gloss.root);
 
-            if *show_raw {
-                Window::new("Raw")
-                    .size([300., 110.], Condition::FirstUseEver)
-                    .opened(show_raw)
-                    .build(ui, || {
-                        RawView::new(&gloss.root).ui(env, ui);
-                    });
+                if *show_raw {
+                    Window::new("Raw")
+                        .size([300., 110.], Condition::FirstUseEver)
+                        .opened(show_raw)
+                        .build(ui, || {
+                            RawView::new(&gloss.root).ui(env, ui);
+                        });
+                }
+                ui.new_line();
+                if let Some(translation) = translation {
+                    DeepLView::new(translation).ui(ui);
+                } else if gloss.translatable {
+                    ui.text_disabled("(waiting for translation...)")
+                }
             }
-        }
-
-        if let Some(translation) = &self.translation {
-            ui.new_line();
-            DeepLView::new(translation).ui(ui);
+            Some(View::Text(text)) => {
+                self.add_skipped(env, ui, settings, text, true);
+            }
+            _ => {}
         }
 
         // show all term windows, close if requested (this is actually witchcraft)

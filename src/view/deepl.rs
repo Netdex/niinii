@@ -20,11 +20,11 @@ impl<'a> DeepLView<'a> {
         let draw_list = ui.get_window_draw_list();
         lang_marker(ui, &draw_list, "ja");
         ui.same_line();
-        stroke_text(ui, &draw_list, source_text, ui.cursor_screen_pos(), 1.0);
+        stroke_text(ui, &draw_list, source_text, ui.cursor_screen_pos(), 1.0, false);
         ui.new_line();
         lang_marker(ui, &draw_list, "en");
         ui.same_line();
-        stroke_text(ui, &draw_list, deepl_text, ui.cursor_screen_pos(), 1.0);
+        stroke_text(ui, &draw_list, deepl_text, ui.cursor_screen_pos(), 1.0, false);
         ui.new_line();
     }
 }
@@ -43,6 +43,6 @@ fn lang_marker<T: AsRef<str>>(ui: &Ui, draw_list: &DrawListMut, lang: T) {
         .filled(true)
         .build();
 
-    stroke_text(ui, draw_list, &text, ui.cursor_screen_pos(), 1.0);
+    stroke_text(ui, draw_list, &text, ui.cursor_screen_pos(), 1.0, false);
     ui.dummy(sz);
 }

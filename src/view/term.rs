@@ -105,6 +105,7 @@ impl<'a> TermView<'a> {
                         &text,
                         kanji != None,
                         false,
+                        false,
                         UnderlineMode::None,
                         RubyTextMode::None,
                     );

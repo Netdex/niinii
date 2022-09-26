@@ -29,7 +29,7 @@ enum Message {
 enum State {
     Error(Error),
     Processing,
-    None,
+    Gloss,
 }
 
 pub struct App {
@@ -68,17 +68,20 @@ impl App {
             show_metrics_window: false,
             show_style_editor: false,
             settings,
-            state: State::None,
+            state: State::Gloss,
             glossator,
             rikai: RikaiView::new(),
         }
     }
 
-    fn request_gloss(&self, text: &str) {
+    fn request_gloss(&mut self, text: &str) {
         let channel_tx = self.channel_tx.clone();
         let glossator = &self.glossator;
         let text = text.to_owned();
         let variants = if self.settings.more_variants { 5 } else { 1 };
+
+        self.rikai.set_text(text.clone());
+
         rayon::spawn(enclose! { (glossator) move || {
             let gloss = glossator.gloss(&text, variants);
             let _ = channel_tx.send(Message::Gloss(gloss));
@@ -110,14 +113,14 @@ impl App {
                 if self.settings.auto_translate && gloss.translatable {
                     self.request_translation(&gloss.original_text);
                 } else {
-                    self.transition(ui, State::None);
+                    self.transition(ui, State::Gloss);
                     self.rikai.set_translation(None);
                 }
-                self.rikai.set_gloss(Some(gloss));
+                self.rikai.set_gloss(gloss);
             }
             Ok(Message::Translation(Ok(translation))) => {
                 self.rikai.set_translation(Some(translation));
-                self.transition(ui, State::None)
+                self.transition(ui, State::Gloss)
             }
             Ok(Message::Gloss(Err(err))) => {
                 self.transition(ui, State::Error(err.into()));
@@ -132,7 +135,7 @@ impl App {
         }
 
         match &self.state {
-            State::Error(_) | State::None => {
+            State::Error(_) | State::Gloss => {
                 if let Some(request_gloss_text) = self.request_gloss_text.clone() {
                     self.request_gloss_text = None;
                     self.transition(ui, State::Processing);
@@ -237,8 +240,9 @@ impl App {
         niinii.build(ui, || {
             self.show_main_menu(env, ui);
 
+            let disabled = matches!(self.state, State::Processing);
             if self.settings().show_manual_input {
-                let _disable_input = ui.begin_disabled(matches!(self.state, State::Processing));
+                let _disable_input = ui.begin_disabled(disabled);
                 if ui
                     .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
                     .enter_returns_true(true)
@@ -267,9 +271,11 @@ impl App {
                 {
                     ui.tooltip(|| ui.text("Text does not require translation"));
                 }
+                self.show_deepl_usage(ui);
             }
-            self.show_deepl_usage(ui);
+
             self.rikai.ui(env, ui, &self.settings, &mut self.show_raw);
+
             if let State::Processing = &self.state {
                 ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
             }
