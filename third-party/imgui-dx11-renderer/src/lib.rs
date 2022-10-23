@@ -74,7 +74,7 @@ struct VertexConstantBuffer {
 pub struct Renderer {
     device: ComPtr<ID3D11Device>,
     context: ComPtr<ID3D11DeviceContext>,
-    factory: ComPtr<IDXGIFactory>,
+    // factory: ComPtr<IDXGIFactory>,
     vertex_shader: ComPtr<ID3D11VertexShader>,
     pixel_shader: ComPtr<ID3D11PixelShader>,
     input_layout: ComPtr<ID3D11InputLayout>,
@@ -98,7 +98,7 @@ impl Renderer {
     ///
     /// [`ID3D11Device`]: https://docs.rs/winapi/0.3/x86_64-pc-windows-msvc/winapi/um/d3d11/struct.ID3D11Device.html
     pub unsafe fn new(im_ctx: &mut imgui::Context, device: ComPtr<ID3D11Device>) -> HResult<Self> {
-        Self::acquire_factory(&device).and_then(|factory| {
+        Self::acquire_factory(&device).and_then(|_factory| {
             let (vertex_shader, input_layout, constant_buffer) =
                 Self::create_vertex_shader(&device)?;
             let pixel_shader = Self::create_pixel_shader(&device)?;
@@ -121,7 +121,7 @@ impl Renderer {
             Ok(Renderer {
                 device,
                 context,
-                factory,
+                // factory,
                 vertex_shader,
                 pixel_shader,
                 input_layout,
@@ -257,11 +257,11 @@ impl Renderer {
                             vertex_offset as i32,
                         );
                         index_offset += count;
-                    }
+                    },
                     DrawCmd::ResetRenderState => self.setup_render_state(draw_data),
                     DrawCmd::RawCallback { callback, raw_cmd } => {
                         callback(draw_list.raw(), raw_cmd)
-                    }
+                    },
                 }
             }
             vertex_offset += draw_list.vtx_buffer().len();
@@ -414,10 +414,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub unsafe fn rebuild_font_texture(
-        &mut self,
-        fonts: &mut imgui::FontAtlas,
-    ) -> HResult<()> {
+    pub unsafe fn rebuild_font_texture(&mut self, fonts: &mut imgui::FontAtlas) -> HResult<()> {
         let (font_resource_view, font_sampler) = Self::create_font_texture(fonts, &self.device)?;
         self.font_resource_view = font_resource_view;
         self.font_sampler = font_sampler;

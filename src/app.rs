@@ -29,7 +29,7 @@ enum Message {
 enum State {
     Error(Error),
     Processing,
-    Gloss,
+    Completed,
 }
 
 pub struct App {
@@ -68,7 +68,7 @@ impl App {
             show_metrics_window: false,
             show_style_editor: false,
             settings,
-            state: State::Gloss,
+            state: State::Completed,
             glossator,
             rikai: RikaiView::new(),
         }
@@ -113,17 +113,19 @@ impl App {
         match self.channel_rx.try_recv() {
             Ok(Message::Gloss(Ok(gloss))) => {
                 env.add_unknown_glyphs_from_root(&gloss.root);
-                if self.settings.auto_translate && gloss.translatable {
-                    self.request_translation(&gloss.original_text);
+                let should_translate = self.settings.auto_translate && gloss.translatable;
+                let text = gloss.original_text.clone();
+                self.rikai.set_gloss(gloss);
+                if should_translate {
+                    self.request_translation(&text);
                 } else {
-                    self.transition(ui, State::Gloss);
+                    self.transition(ui, State::Completed);
                     self.rikai.set_translation(None);
                 }
-                self.rikai.set_gloss(gloss);
             }
             Ok(Message::Translation(Ok(translation))) => {
                 self.rikai.set_translation(Some(translation));
-                self.transition(ui, State::Gloss)
+                self.transition(ui, State::Completed)
             }
             Ok(Message::Gloss(Err(err))) => {
                 self.transition(ui, State::Error(err.into()));
@@ -138,7 +140,7 @@ impl App {
         }
 
         match &self.state {
-            State::Error(_) | State::Gloss => {
+            State::Error(_) | State::Completed => {
                 if let Some(request_gloss_text) = self.request_gloss_text.clone() {
                     self.request_gloss_text = None;
                     self.transition(ui, State::Processing);

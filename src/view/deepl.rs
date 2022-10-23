@@ -11,17 +11,9 @@ impl<'a> DeepLView<'a> {
     }
     pub fn ui(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
-        let Translation::DeepL {
-            source_text,
-            deepl_text,
-            ..
-        } = self.0;
+        let Translation::DeepL { deepl_text, .. } = self.0;
 
         let draw_list = ui.get_window_draw_list();
-        lang_marker(ui, &draw_list, "ja");
-        ui.same_line();
-        stroke_text(ui, &draw_list, source_text, ui.cursor_screen_pos(), 1.0);
-        ui.new_line();
         lang_marker(ui, &draw_list, "en");
         ui.same_line();
         stroke_text(ui, &draw_list, deepl_text, ui.cursor_screen_pos(), 1.0);
@@ -29,7 +21,7 @@ impl<'a> DeepLView<'a> {
     }
 }
 
-fn lang_marker<T: AsRef<str>>(ui: &Ui, draw_list: &DrawListMut, lang: T) {
+fn lang_marker(ui: &Ui, draw_list: &DrawListMut, lang: impl AsRef<str>) {
     let lang = lang.as_ref();
     let text = format!("[{}]", lang);
     let p = ui.cursor_screen_pos();
