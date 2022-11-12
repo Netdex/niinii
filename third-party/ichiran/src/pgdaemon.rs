@@ -1,4 +1,5 @@
 use std::{
+    os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -34,6 +35,8 @@ impl PostgresDaemon {
         let postgres_bin_path = Self::pg_bin_path(&pg_bin_dir, "postgres");
 
         let mut proc = Command::new(postgres_bin_path);
+        #[cfg(windows)]
+        proc.creation_flags(winapi::um::winbase::CREATE_NO_WINDOW);
         let mut proc = proc
             .args(["-p", &format!("{}", conn_params.port)])
             .arg("-D")

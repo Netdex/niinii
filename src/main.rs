@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 #[cfg(windows)]
 use niinii::backend::d3d11::D3D11Renderer;
 use niinii::{
@@ -5,20 +7,15 @@ use niinii::{
     backend::{glow::GlowRenderer, renderer::Renderer},
     view::settings::{SettingsView, SupportedRenderer},
 };
-use std::{
-    fs::File,
-    io::{BufReader, BufWriter},
-};
 
-const STATE_PATH: &str = "niinii.json";
+const STATE_PATH: &str = "niinii.toml";
 
-fn main() {
+fn main() -> std::io::Result<()> {
     env_logger::init();
 
-    let settings: SettingsView = File::open(STATE_PATH)
+    let settings: SettingsView = std::fs::read_to_string(STATE_PATH)
         .ok()
-        .map(BufReader::new)
-        .and_then(|x| serde_json::from_reader(x).ok())
+        .and_then(|x| toml::from_str(&x).ok())
         .unwrap_or_default();
 
     let mut app = App::new(settings);
@@ -29,6 +26,7 @@ fn main() {
     };
     renderer.main_loop(&mut app);
 
-    let writer = BufWriter::new(File::create(STATE_PATH).unwrap());
-    serde_json::to_writer(writer, &app.settings()).unwrap();
+    std::fs::write(STATE_PATH, toml::to_string(&app.settings()).unwrap())?;
+
+    Ok(())
 }
