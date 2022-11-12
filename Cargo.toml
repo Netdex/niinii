@@ -43,6 +43,7 @@ strum_macros = "0.24"
 thiserror = "1"
 num-format = "0.4.0"
 toml = "0.5"
+fancy-regex = "0.10"
 
 flate2 = { version = "1.0" }
 rayon = "1.5.1"

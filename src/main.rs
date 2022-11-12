@@ -1,5 +1,3 @@
-#![windows_subsystem = "windows"]
-
 #[cfg(windows)]
 use niinii::backend::d3d11::D3D11Renderer;
 use niinii::{

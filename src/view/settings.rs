@@ -43,6 +43,9 @@ pub struct SettingsView {
     pub watch_clipboard: bool,
     pub show_manual_input: bool,
     pub style: Option<Vec<u8>>,
+
+    pub regex_match: String,
+    pub regex_replace: String,
 }
 impl Default for SettingsView {
     fn default() -> Self {
@@ -66,6 +69,9 @@ impl Default for SettingsView {
             watch_clipboard: true,
             show_manual_input: true,
             style: None,
+
+            regex_match: Default::default(),
+            regex_replace: Default::default(),
         }
     }
 }
@@ -87,6 +93,14 @@ impl SettingsView {
             ui.input_text("db*", &mut self.db_path).build();
             ui.same_line();
             mixins::help_marker(ui, "Path of postgres database directory");
+        }
+
+        if CollapsingHeader::new("Processing")
+            .default_open(true)
+            .build(ui)
+        {
+            ui.input_text("Regex match", &mut self.regex_match).build();
+            ui.input_text("Regex replace", &mut self.regex_replace).build();
         }
 
         if CollapsingHeader::new("Rendering")

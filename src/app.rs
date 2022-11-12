@@ -1,6 +1,7 @@
 use std::sync::mpsc;
 
 use imgui::*;
+use fancy_regex::Regex;
 
 use crate::{
     backend::env::Env,
@@ -74,18 +75,28 @@ impl App {
         }
     }
 
-    fn request_gloss(&mut self, text: &str) {
+    fn request_gloss(&mut self, ui: &Ui, text: &str) {
         let channel_tx = self.channel_tx.clone();
         let glossator = &self.glossator;
-        let text = text.to_owned();
-        let variants = if self.settings.more_variants { 5 } else { 1 };
+        let regex = Regex::new(&self.settings.regex_match);
+        match regex {
+            Ok(regex) => {
+                let text = regex
+                    .replace(text, &self.settings.regex_replace)
+                    .into_owned();
+                let variants = if self.settings.more_variants { 5 } else { 1 };
 
-        self.rikai.set_text(text.clone());
+                self.rikai.set_text(text.clone());
 
-        rayon::spawn(enclose! { (glossator) move || {
-            let gloss = glossator.gloss(&text, variants);
-            let _ = channel_tx.send(Message::Gloss(gloss));
-        }});
+                rayon::spawn(enclose! { (glossator) move || {
+                    let gloss = glossator.gloss(&text, variants);
+                    let _ = channel_tx.send(Message::Gloss(gloss));
+                }});
+            }
+            Err(err) => {
+                self.transition(ui, State::Error(Error::Gloss(err.into())))
+            },
+        }
     }
 
     fn request_translation(&mut self, text: &str) {
@@ -144,7 +155,7 @@ impl App {
                 if let Some(request_gloss_text) = self.request_gloss_text.clone() {
                     self.request_gloss_text = None;
                     self.transition(ui, State::Processing);
-                    self.request_gloss(&request_gloss_text);
+                    self.request_gloss(ui, &request_gloss_text);
                 }
             }
             _ => (),

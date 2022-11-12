@@ -15,6 +15,8 @@ pub enum GlossError {
     Ichiran(#[from] IchiranError),
     #[error("Text too long ({length}/{MAX_TEXT_LENGTH} chars)")]
     TextTooLong { length: usize },
+    #[error(transparent)]
+    RegexError(#[from] fancy_regex::Error)
 }
 
 #[derive(Debug)]

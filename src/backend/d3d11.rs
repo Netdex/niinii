@@ -263,7 +263,7 @@ impl D3D11Renderer {
                     swapchain,
                     device,
                     mousellhook,
-                    last_want_capture_mouse: false,
+                    last_want_capture_mouse: true,
                 }),
                 event_loop: Cell::new(Some(event_loop)),
             }),
