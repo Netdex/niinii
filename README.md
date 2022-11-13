@@ -74,6 +74,25 @@ involved, prebuilt versions are included with the prepackaged builds.
 Seems like a problem with winit. niinii is almost always used in the foreground
 anyways because of always on top, so I'm not going to bother fixing this.
 
+### Hooking not working
+- Most visual novels are written in engines which use D3D9. This is not always
+  true though, you may need to adjust the hooking code as necessary.
+- There is limited recovery code for when frame buffers are resized, devices
+  are reset, contexts are changed etc. This may lead to breakages when
+  switching in and out full-screen mode, resizing the window, and switching to
+  another application.
+- Some visual novel engines will present only when necessary rather than at a
+  fixed framerate. In this case, niinii won't work properly since it expects a
+  fixed refresh rate.
+
+### Issues with Chromium-based browsers
+In overlay mode, niinii displays a transparent window which covers the entire
+screen. Newer Chromium-based browsers have a feature which suspends drawing
+when the window is fully occluded, for performance reasons. The window
+displayed by niinii counts as full occlusion despite being transparent, which
+causes Chromium-based browsers to suspend drawing. I suspect this could also
+happen with some Electron apps, but I haven't tested it.
+
 ## Troubleshooting
 TODO
 
