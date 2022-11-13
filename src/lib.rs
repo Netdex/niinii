@@ -10,16 +10,18 @@ pub mod view;
 
 use std::sync::Mutex;
 
+use hudhook::hooks::{dx9::ImguiDx9Hooks, ImguiRenderLoop, ImguiRenderLoopFlags};
+use hudhook::log::*;
+use hudhook::reexports::*;
+use hudhook::*;
+use imgui::*;
+
 use app::App;
 use backend::{
     env::{Env, EnvFlags},
     renderer::Renderer,
 };
-use hudhook::hooks::{dx9::ImguiDx9Hooks, ImguiRenderLoop, ImguiRenderLoopFlags};
-use imgui::*;
-use view::settings::SettingsView;
-
-const STATE_PATH: &str = "niinii.toml";
+use view::settings::Settings;
 
 struct State {
     env: Env,
@@ -33,12 +35,10 @@ struct HudHookRenderer {
 impl HudHookRenderer {
     fn new() -> Self {
         hudhook::utils::alloc_console();
-        env_logger::init();
+        hudhook::utils::simplelog();
+        // env_logger::init();
 
-        let settings: SettingsView = std::fs::read_to_string(STATE_PATH)
-            .ok()
-            .and_then(|x| toml::from_str(&x).ok())
-            .unwrap_or_default();
+        let settings = Settings::from_file();
         let env = Env::new(EnvFlags::SHARED_RENDER_CONTEXT);
         let app = App::new(settings);
         Self {
@@ -63,11 +63,33 @@ impl ImguiRenderLoop for HudHookRenderer {
     fn render(&mut self, ui: &mut Ui, _flags: &ImguiRenderLoopFlags) {
         let mut state = self.state.lock().unwrap();
         let State { env, app } = &mut *state;
-        let mut dummy = true;
-        app.ui(env, ui, &mut dummy);
+        let mut run = true;
+        app.ui(env, ui, &mut run);
+        if !run {
+            hudhook::lifecycle::eject();
+        }
     }
 }
 
 impl Renderer for HudHookRenderer {}
 
 hudhook::hudhook!(HudHookRenderer::new().into_hook::<ImguiDx9Hooks>());
+
+// #[no_mangle]
+// pub unsafe extern "stdcall" fn DllMain(hmodule: HINSTANCE, reason: u32, _: *mut std::ffi::c_void) {
+//     match reason {
+//         DLL_PROCESS_ATTACH => {
+//             hudhook::lifecycle::global_state::set_module(hmodule);
+
+//             trace!("DllMain()");
+//             std::thread::spawn(move || {
+//                 let hooks: Box<dyn hooks::Hooks> =
+//                     { HudHookRenderer::new().into_hook::<ImguiDx9Hooks>() };
+//                 hooks.hook();
+//                 hudhook::lifecycle::global_state::set_hooks(hooks);
+//             });
+//         }
+//         DLL_PROCESS_DETACH => {}
+//         _ => {}
+//     }
+// }

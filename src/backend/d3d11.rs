@@ -34,7 +34,7 @@ use wio::com::ComPtr;
 use super::env::Env;
 use super::env::EnvFlags;
 use super::renderer::Renderer;
-use crate::{app::App, view::settings::SettingsView};
+use crate::{app::App, view::settings::Settings};
 
 unsafe fn create_device(
     hwnd: HWND,
@@ -214,7 +214,7 @@ struct Inner {
     last_want_capture_mouse: bool,
 }
 impl D3D11Renderer {
-    pub fn new(settings: &SettingsView) -> Self {
+    pub fn new(settings: &Settings) -> Self {
         let event_loop = EventLoop::new();
         let window = Self::create_window_builder(settings)
             .build(&event_loop)

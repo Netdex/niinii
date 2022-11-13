@@ -1,6 +1,7 @@
 use std::ffi::c_void;
 
 pub mod deepl;
+pub mod inject;
 pub mod kanji;
 pub mod mixins;
 pub mod raw;

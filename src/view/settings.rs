@@ -25,7 +25,7 @@ pub enum DisplayRubyText {
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
-pub struct SettingsView {
+pub struct Settings {
     pub ichiran_path: String,
     pub postgres_path: String,
     pub db_path: String,
@@ -51,7 +51,7 @@ pub struct SettingsView {
 
     pub inject_proc_name: String,
 }
-impl Default for SettingsView {
+impl Default for Settings {
     fn default() -> Self {
         Self {
             ichiran_path: Default::default(),
@@ -81,7 +81,7 @@ impl Default for SettingsView {
         }
     }
 }
-impl SettingsView {
+impl Settings {
     pub fn ui(&mut self, env: &mut Env, ui: &mut Ui) {
         if CollapsingHeader::new("Ichiran")
             .default_open(true)
@@ -163,27 +163,6 @@ impl SettingsView {
             ui.same_line();
             mixins::help_marker(ui, "Whether to make the window transparent or not");
         }
-        if !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
-            if CollapsingHeader::new("Remote Hook")
-                .default_open(true)
-                .build(ui)
-            {
-                ui.input_text("Process name", &mut self.inject_proc_name)
-                    .build();
-                if ui.button_with_size("Inject (MAY CAUSE INSTABILITY)", [ui.window_content_region_width(), 0.0]) {
-                    let dll_path = std::env::current_exe()
-                        .ok()
-                        .and_then(|x| x.parent().map(|x| x.to_path_buf()))
-                        .unwrap()
-                        .join("libniinii.dll");
-                    log::info!("injecting dll {} into process {}", dll_path.display(),self.inject_proc_name);
-                    hudhook::inject::Process::by_name(&self.inject_proc_name)
-                        .unwrap()
-                        .inject(dll_path)
-                        .unwrap();
-                }
-            }
-        }
     }
 
     pub fn active_renderer(&self) -> SupportedRenderer {
@@ -213,5 +192,19 @@ impl SettingsView {
         self.style
             .as_ref()
             .map(|style| unsafe { std::ptr::read(style.as_ptr() as *const _) })
+    }
+
+    const CONFIG_FILE: &str = "niinii.toml";
+    pub fn from_file() -> Self {
+        let user_config = dirs::config_dir().map(|x| x.join("niinii").join(Self::CONFIG_FILE));
+        let settings: Settings = std::fs::read_to_string(Self::CONFIG_FILE)
+            .ok()
+            .or_else(|| user_config.and_then(|x| std::fs::read_to_string(x).ok()))
+            .and_then(|x| toml::from_str(&x).ok())
+            .unwrap_or_default();
+        settings
+    }
+    pub fn write_to_file(&self) -> std::io::Result<()> {
+        std::fs::write(Self::CONFIG_FILE, toml::to_string(self).unwrap())
     }
 }

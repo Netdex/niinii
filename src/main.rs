@@ -3,18 +3,13 @@ use libniinii::backend::d3d11::D3D11Renderer;
 use libniinii::{
     app::App,
     backend::{glow::GlowRenderer, renderer::Renderer},
-    view::settings::{SettingsView, SupportedRenderer},
+    view::settings::{Settings, SupportedRenderer},
 };
-
-const STATE_PATH: &str = "niinii.toml";
 
 fn main() -> std::io::Result<()> {
     env_logger::init();
 
-    let settings: SettingsView = std::fs::read_to_string(STATE_PATH)
-        .ok()
-        .and_then(|x| toml::from_str(&x).ok())
-        .unwrap_or_default();
+    let settings = Settings::from_file();
 
     let mut app = App::new(settings);
     let mut renderer: Box<dyn Renderer> = match app.settings().active_renderer() {
@@ -24,7 +19,7 @@ fn main() -> std::io::Result<()> {
     };
     renderer.main_loop(&mut app);
 
-    std::fs::write(STATE_PATH, toml::to_string(&app.settings()).unwrap())?;
+    app.settings().write_to_file()?;
 
     Ok(())
 }

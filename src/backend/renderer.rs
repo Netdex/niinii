@@ -4,12 +4,12 @@ use glutin::window;
 use imgui_winit_support::WinitPlatform;
 
 use crate::clipboard;
-use crate::{app::App, view::settings::SettingsView};
+use crate::{app::App, view::settings::Settings};
 
 pub trait Renderer {
     fn main_loop(&mut self, _app: &mut App) {}
 
-    fn create_window_builder(settings: &SettingsView) -> window::WindowBuilder
+    fn create_window_builder(settings: &Settings) -> window::WindowBuilder
     where
         Self: Sized,
     {
@@ -27,7 +27,7 @@ pub trait Renderer {
             .with_always_on_top(on_top)
     }
 
-    fn configure_imgui(imgui: &mut imgui::Context, settings: &SettingsView)
+    fn configure_imgui(imgui: &mut imgui::Context, settings: &Settings)
     where
         Self: Sized,
     {

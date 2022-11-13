@@ -5,7 +5,7 @@ use ichiran::{
 };
 use thiserror::Error;
 
-use crate::view::settings::SettingsView;
+use crate::view::settings::Settings;
 
 const MAX_TEXT_LENGTH: usize = 512;
 
@@ -37,7 +37,7 @@ struct Shared {
     _pg_daemon: Option<PostgresDaemon>,
 }
 impl Glossator {
-    pub fn new(settings: &SettingsView) -> Self {
+    pub fn new(settings: &Settings) -> Self {
         let ichiran = Ichiran::new(settings.ichiran_path.clone());
         let pg_daemon = match ichiran.conn_params() {
             Ok(conn_params) => {

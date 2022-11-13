@@ -7,7 +7,7 @@ use crate::{
     backend::env::{Env, EnvFlags},
     gloss::{Gloss, GlossError, Glossator},
     translation::{self, Translation},
-    view::{mixins::help_marker, rikai::RikaiView, settings::SettingsView},
+    view::{inject::InjectView, mixins::help_marker, rikai::RikaiView, settings::Settings},
 };
 
 const ERROR_MODAL_TITLE: &str = "Error";
@@ -46,15 +46,17 @@ pub struct App {
     show_raw: bool,
     show_metrics_window: bool,
     show_style_editor: bool,
+    show_inject: bool,
 
-    settings: SettingsView,
+    settings: Settings,
     state: State,
     glossator: Glossator,
     rikai: RikaiView,
+    inject: InjectView,
 }
 
 impl App {
-    pub fn new(settings: SettingsView) -> Self {
+    pub fn new(settings: Settings) -> Self {
         let (channel_tx, channel_rx) = mpsc::channel();
         let glossator = Glossator::new(&settings);
         App {
@@ -68,10 +70,12 @@ impl App {
             show_raw: false,
             show_metrics_window: false,
             show_style_editor: false,
+            show_inject: false,
             settings,
             state: State::Completed,
             glossator,
             rikai: RikaiView::new(),
+            inject: InjectView::new(),
         }
     }
 
@@ -172,7 +176,7 @@ impl App {
         }
     }
 
-    fn show_main_menu(&mut self, _env: &mut Env, ui: &Ui) {
+    fn show_main_menu(&mut self, env: &mut Env, ui: &Ui) {
         if let Some(_token) = ui.begin_menu_bar() {
             if let Some(_menu) = ui.begin_menu("Options") {
                 if MenuItem::new("Watch clipboard")
@@ -205,6 +209,11 @@ impl App {
                 }
                 if MenuItem::new("ImGui Demo").build(ui) {
                     self.show_imgui_demo = true;
+                }
+                if !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
+                    if MenuItem::new("Inject").build(ui) {
+                        self.show_inject = true;
+                    }
                 }
             }
         }
@@ -317,6 +326,9 @@ impl App {
         if self.show_style_editor {
             self.show_style_editor(ui);
         }
+        if self.show_inject {
+            self.show_inject(env, ui);
+        }
     }
 
     fn show_settings(&mut self, env: &mut Env, ui: &mut Ui) {
@@ -328,6 +340,16 @@ impl App {
             }
             ui.same_line();
             ui.text("* Restart to apply these changes");
+        }
+    }
+
+    fn show_inject(&mut self, env: &mut Env, ui: &mut Ui) {
+        if let Some(_token) = Window::new("Inject").always_auto_resize(true).begin(ui) {
+            self.inject.ui(env, ui, &mut self.settings);
+            ui.separator();
+            if ui.button_with_size("OK", [120.0, 0.0]) {
+                self.show_inject = false;
+            }
         }
     }
 
@@ -354,10 +376,10 @@ impl App {
         self.show_style_editor = show_style_editor;
     }
 
-    pub fn settings(&self) -> &SettingsView {
+    pub fn settings(&self) -> &Settings {
         &self.settings
     }
-    pub fn settings_mut(&mut self) -> &mut SettingsView {
+    pub fn settings_mut(&mut self) -> &mut Settings {
         &mut self.settings
     }
 }

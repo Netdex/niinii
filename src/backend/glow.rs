@@ -10,7 +10,7 @@ use imgui_winit_support::WinitPlatform;
 
 use super::env::{Env, EnvFlags};
 use super::renderer::Renderer;
-use crate::{app::App, view::settings::SettingsView};
+use crate::{app::App, view::settings::Settings};
 
 pub type Window = glutin::WindowedContext<glutin::PossiblyCurrent>;
 
@@ -23,7 +23,7 @@ pub struct GlowRenderer {
     renderer: AutoRenderer,
 }
 impl GlowRenderer {
-    pub fn new(settings: &SettingsView) -> Self {
+    pub fn new(settings: &Settings) -> Self {
         let (event_loop, window) = create_window(Self::create_window_builder(settings));
         let mut imgui = imgui::Context::create();
         Self::configure_imgui(&mut imgui, settings);

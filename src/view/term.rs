@@ -7,7 +7,7 @@ use crate::backend::env::Env;
 
 use super::kanji::KanjiView;
 use super::mixins::*;
-use super::settings::SettingsView;
+use super::settings::Settings;
 
 pub struct TermView<'a> {
     jmdict_data: &'a JmDictData,
@@ -77,7 +77,7 @@ impl<'a> TermView<'a> {
         &self,
         env: &mut Env,
         ui: &Ui,
-        settings: &SettingsView,
+        settings: &Settings,
         word: &Word,
         romaji: &str,
         show_kanji: bool,
@@ -165,7 +165,7 @@ impl<'a> TermView<'a> {
         &self,
         env: &mut Env,
         ui: &Ui,
-        settings: &SettingsView,
+        settings: &Settings,
         term: &Term,
         romaji: &str,
         show_kanji: bool,
@@ -235,7 +235,7 @@ impl<'a> TermView<'a> {
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView) {
+    pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &Settings) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_x);
         self.add_term(
             env,

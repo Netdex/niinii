@@ -6,7 +6,7 @@ use imgui::*;
 
 use super::deepl::DeepLView;
 use super::mixins::*;
-use super::settings::{DisplayRubyText, SettingsView};
+use super::settings::{DisplayRubyText, Settings};
 use crate::backend::env::Env;
 use crate::gloss::Gloss;
 use crate::translation::Translation;
@@ -82,7 +82,7 @@ impl RikaiView {
         &self,
         env: &mut Env,
         ui: &Ui,
-        settings: &SettingsView,
+        settings: &Settings,
         romanized: &Romanized,
     ) -> bool {
         let mut opened = true;
@@ -100,7 +100,7 @@ impl RikaiView {
         opened
     }
 
-    fn term_tooltip(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, romanized: &Romanized) {
+    fn term_tooltip(&self, env: &mut Env, ui: &Ui, settings: &Settings, romanized: &Romanized) {
         ui.tooltip(|| {
             if let Some(View::Interpret { gloss, .. }) = &self.view {
                 TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 30.0)
@@ -113,7 +113,7 @@ impl RikaiView {
         &self,
         env: &mut Env,
         ui: &Ui,
-        settings: &SettingsView,
+        settings: &Settings,
         skipped: &str,
         preview: bool,
     ) {
@@ -137,7 +137,7 @@ impl RikaiView {
         &self,
         env: &mut Env,
         ui: &Ui,
-        settings: &SettingsView,
+        settings: &Settings,
         romanized: &Romanized,
         ruby_text: DisplayRubyText,
         underline: UnderlineMode,
@@ -176,7 +176,7 @@ impl RikaiView {
         ul_hover
     }
 
-    fn add_segment(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, segment: &Segment) {
+    fn add_segment(&self, env: &mut Env, ui: &Ui, settings: &Settings, segment: &Segment) {
         match segment {
             Segment::Skipped(skipped) => {
                 self.add_skipped(env, ui, settings, skipped, false);
@@ -234,13 +234,13 @@ impl RikaiView {
         }
     }
 
-    fn add_root(&self, env: &mut Env, ui: &Ui, settings: &SettingsView, root: &Root) {
+    fn add_root(&self, env: &mut Env, ui: &Ui, settings: &Settings, root: &Root) {
         for segment in root.segments() {
             self.add_segment(env, ui, settings, segment);
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &SettingsView, show_raw: &mut bool) {
+    pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &Settings, show_raw: &mut bool) {
         ui.text(""); // hack to align line position
         match &self.view {
             Some(View::Interpret {
