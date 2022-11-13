@@ -1,5 +1,4 @@
 use std::{
-    os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };

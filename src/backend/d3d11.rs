@@ -32,6 +32,7 @@ use winit::{
 use wio::com::ComPtr;
 
 use super::env::Env;
+use super::env::EnvFlags;
 use super::renderer::Renderer;
 use crate::{app::App, view::settings::SettingsView};
 
@@ -224,10 +225,11 @@ impl D3D11Renderer {
         let (swapchain, device, context) = unsafe { create_device(hwnd.cast()) }.unwrap();
         let main_rtv = unsafe { create_render_target(&swapchain, &device) };
 
-        let mut imgui = Self::create_imgui(settings);
+        let mut imgui = imgui::Context::create();
+        Self::configure_imgui(&mut imgui, settings);
         let platform = Self::create_platform(&mut imgui, &window);
-        let mut env = Env::new();
-        env.update_fonts(&mut imgui, &platform);
+        let mut env = Env::new(EnvFlags::SUPPORTS_ATLAS_UPDATE);
+        env.update_fonts(&mut imgui, platform.hidpi_factor());
 
         let renderer =
             unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
@@ -311,7 +313,7 @@ impl Renderer for D3D11Renderer {
                     }
 
                     let now = std::time::Instant::now();
-                    if env.update_fonts(imgui, platform) {
+                    if env.update_fonts(imgui, platform.hidpi_factor()) {
                         unsafe { renderer.rebuild_font_texture(&mut imgui.fonts()).unwrap() };
                         let elapsed = now.elapsed();
                         log::info!("rebuilt font atlas (took {:?})", elapsed);

@@ -7,7 +7,7 @@ use crate::clipboard;
 use crate::{app::App, view::settings::SettingsView};
 
 pub trait Renderer {
-    fn main_loop(&mut self, app: &mut App);
+    fn main_loop(&mut self, _app: &mut App) {}
 
     fn create_window_builder(settings: &SettingsView) -> window::WindowBuilder
     where
@@ -27,11 +27,10 @@ pub trait Renderer {
             .with_always_on_top(on_top)
     }
 
-    fn create_imgui(settings: &SettingsView) -> imgui::Context
+    fn configure_imgui(imgui: &mut imgui::Context, settings: &SettingsView)
     where
         Self: Sized,
     {
-        let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(Some(PathBuf::from("imgui.ini")));
 
         if let Some(style) = settings.style() {
@@ -46,7 +45,6 @@ pub trait Renderer {
         } else {
             panic!("failed to initialize clipboard");
         }
-        imgui
     }
 
     fn create_platform(imgui: &mut imgui::Context, window: &winit::window::Window) -> WinitPlatform

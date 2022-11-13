@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
 
+use crate::backend::env::{Env, EnvFlags};
+
 use super::mixins;
 
 #[derive(FromPrimitive, EnumString, EnumVariantNames)]
@@ -46,6 +48,8 @@ pub struct SettingsView {
 
     pub regex_match: String,
     pub regex_replace: String,
+
+    pub inject_proc_name: String,
 }
 impl Default for SettingsView {
     fn default() -> Self {
@@ -72,11 +76,13 @@ impl Default for SettingsView {
 
             regex_match: Default::default(),
             regex_replace: Default::default(),
+
+            inject_proc_name: Default::default(),
         }
     }
 }
 impl SettingsView {
-    pub fn ui(&mut self, ui: &mut Ui) {
+    pub fn ui(&mut self, env: &mut Env, ui: &mut Ui) {
         if CollapsingHeader::new("Ichiran")
             .default_open(true)
             .build(ui)
@@ -95,43 +101,13 @@ impl SettingsView {
             mixins::help_marker(ui, "Path of postgres database directory");
         }
 
-        if CollapsingHeader::new("Processing")
+        if CollapsingHeader::new("Advanced")
             .default_open(true)
             .build(ui)
         {
             ui.input_text("Regex match", &mut self.regex_match).build();
-            ui.input_text("Regex replace", &mut self.regex_replace).build();
-        }
-
-        if CollapsingHeader::new("Rendering")
-            .default_open(true)
-            .build(ui)
-        {
-            ui.combo_simple_string(
-                "Renderer*",
-                &mut self.renderer_type_idx,
-                SupportedRenderer::VARIANTS,
-            );
-            ui.checkbox("Transparent*", &mut self.transparent);
-            ui.same_line();
-            mixins::help_marker(ui, "Whether to make the window transparent or not");
-
-            ui.checkbox("Always on-top*", &mut self.on_top);
-            ui.same_line();
-            mixins::help_marker(
-                ui,
-                "Whether to always put the window on top of others or not",
-            );
-
-            #[cfg(windows)]
-            {
-                ui.checkbox("Overlay mode*", &mut self.overlay_mode);
-                ui.same_line();
-                mixins::help_marker(
-                    ui,
-                    "Turns the window into an overlay on top of all other windows (D3D11 only)",
-                );
-            }
+            ui.input_text("Regex replace", &mut self.regex_replace)
+                .build();
         }
 
         if CollapsingHeader::new("Interface")
@@ -153,6 +129,60 @@ impl SettingsView {
             ui.input_text("DeepL API key", &mut self.deepl_api_key)
                 .password(true)
                 .build();
+        }
+
+        if CollapsingHeader::new("Rendering")
+            .default_open(true)
+            .build(ui)
+        {
+            if !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
+                ui.combo_simple_string(
+                    "Renderer*",
+                    &mut self.renderer_type_idx,
+                    SupportedRenderer::VARIANTS,
+                );
+
+                ui.checkbox("Always on-top*", &mut self.on_top);
+                ui.same_line();
+                mixins::help_marker(
+                    ui,
+                    "Whether to always put the window on top of others or not",
+                );
+
+                #[cfg(windows)]
+                {
+                    ui.checkbox("Overlay mode*", &mut self.overlay_mode);
+                    ui.same_line();
+                    mixins::help_marker(
+                        ui,
+                        "Turns the window into an overlay on top of all other windows (D3D11 only)",
+                    );
+                }
+            }
+            ui.checkbox("Transparent*", &mut self.transparent);
+            ui.same_line();
+            mixins::help_marker(ui, "Whether to make the window transparent or not");
+        }
+        if !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
+            if CollapsingHeader::new("Remote Hook")
+                .default_open(true)
+                .build(ui)
+            {
+                ui.input_text("Process name", &mut self.inject_proc_name)
+                    .build();
+                if ui.button_with_size("Inject (MAY CAUSE INSTABILITY)", [ui.window_content_region_width(), 0.0]) {
+                    let dll_path = std::env::current_exe()
+                        .ok()
+                        .and_then(|x| x.parent().map(|x| x.to_path_buf()))
+                        .unwrap()
+                        .join("libniinii.dll");
+                    log::info!("injecting dll {} into process {}", dll_path.display(),self.inject_proc_name);
+                    hudhook::inject::Process::by_name(&self.inject_proc_name)
+                        .unwrap()
+                        .inject(dll_path)
+                        .unwrap();
+                }
+            }
         }
     }
 

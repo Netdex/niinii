@@ -1,6 +1,6 @@
 #[cfg(windows)]
-use niinii::backend::d3d11::D3D11Renderer;
-use niinii::{
+use libniinii::backend::d3d11::D3D11Renderer;
+use libniinii::{
     app::App,
     backend::{glow::GlowRenderer, renderer::Renderer},
     view::settings::{SettingsView, SupportedRenderer},

@@ -1,10 +1,10 @@
 use std::sync::mpsc;
 
-use imgui::*;
 use fancy_regex::Regex;
+use imgui::*;
 
 use crate::{
-    backend::env::Env,
+    backend::env::{Env, EnvFlags},
     gloss::{Gloss, GlossError, Glossator},
     translation::{self, Translation},
     view::{mixins::help_marker, rikai::RikaiView, settings::SettingsView},
@@ -93,9 +93,7 @@ impl App {
                     let _ = channel_tx.send(Message::Gloss(gloss));
                 }});
             }
-            Err(err) => {
-                self.transition(ui, State::Error(Error::Gloss(err.into())))
-            },
+            Err(err) => self.transition(ui, State::Error(Error::Gloss(err.into()))),
         }
     }
 
@@ -123,7 +121,9 @@ impl App {
     fn poll(&mut self, ui: &Ui, env: &mut Env) {
         match self.channel_rx.try_recv() {
             Ok(Message::Gloss(Ok(gloss))) => {
-                env.add_unknown_glyphs_from_root(&gloss.root);
+                if env.flags().contains(EnvFlags::SUPPORTS_ATLAS_UPDATE) {
+                    env.add_unknown_glyphs_from_root(&gloss.root);
+                }
                 let should_translate = self.settings.auto_translate && gloss.translatable;
                 let text = gloss.original_text.clone();
                 self.rikai.set_gloss(gloss);
@@ -247,7 +247,7 @@ impl App {
             .opened(run)
             .menu_bar(true)
             .draw_background(!self.settings().transparent);
-        if !self.settings().overlay_mode {
+        if !self.settings().overlay_mode && !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
             niinii = niinii
                 .position([0.0, 0.0], Condition::Always)
                 .size(io.display_size, Condition::Always)
@@ -309,7 +309,7 @@ impl App {
         }
 
         if self.show_settings {
-            self.show_settings(ui);
+            self.show_settings(env, ui);
         }
         if self.show_metrics_window {
             ui.show_metrics_window(&mut self.show_metrics_window);
@@ -319,9 +319,9 @@ impl App {
         }
     }
 
-    fn show_settings(&mut self, ui: &mut Ui) {
+    fn show_settings(&mut self, env: &mut Env, ui: &mut Ui) {
         if let Some(_token) = Window::new("Settings").always_auto_resize(true).begin(ui) {
-            self.settings.ui(ui);
+            self.settings.ui(env, ui);
             ui.separator();
             if ui.button_with_size("OK", [120.0, 0.0]) {
                 self.show_settings = false;

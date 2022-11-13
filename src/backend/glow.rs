@@ -8,7 +8,7 @@ use glutin::{
 use imgui_glow_renderer::AutoRenderer;
 use imgui_winit_support::WinitPlatform;
 
-use super::env::Env;
+use super::env::{Env, EnvFlags};
 use super::renderer::Renderer;
 use crate::{app::App, view::settings::SettingsView};
 
@@ -25,10 +25,11 @@ pub struct GlowRenderer {
 impl GlowRenderer {
     pub fn new(settings: &SettingsView) -> Self {
         let (event_loop, window) = create_window(Self::create_window_builder(settings));
-        let mut imgui = Self::create_imgui(settings);
+        let mut imgui = imgui::Context::create();
+        Self::configure_imgui(&mut imgui, settings);
         let platform = Self::create_platform(&mut imgui, window.window());
-        let mut env = Env::new();
-        env.update_fonts(&mut imgui, &platform);
+        let mut env = Env::new(EnvFlags::empty());
+        env.update_fonts(&mut imgui, platform.hidpi_factor());
 
         let gl = glow_context(&window);
 
