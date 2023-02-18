@@ -222,7 +222,7 @@ impl D3D11Renderer {
 
         let hwnd = window.hwnd();
 
-        let (swapchain, device, context) = unsafe { create_device(hwnd.cast()) }.unwrap();
+        let (swapchain, device, context) = unsafe { create_device(hwnd as _) }.unwrap();
         let main_rtv = unsafe { create_render_target(&swapchain, &device) };
 
         let mut imgui = imgui::Context::create();
@@ -325,7 +325,8 @@ impl Renderer for D3D11Renderer {
                         *control_flow = ControlFlow::Exit;
                     }
                     platform.prepare_render(&ui, window);
-                    renderer.render(ui.render()).unwrap();
+                    let draw_data = imgui.render();
+                    renderer.render(draw_data).unwrap();
                     unsafe {
                         swapchain.Present(1, 0);
                     }

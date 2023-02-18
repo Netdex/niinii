@@ -83,7 +83,7 @@ impl Renderer for GlowRenderer {
                 }
 
                 platform.prepare_render(&ui, window.window());
-                let draw_data = ui.render();
+                let draw_data = imgui.render();
                 renderer.render(draw_data).unwrap();
 
                 window.swap_buffers().unwrap();

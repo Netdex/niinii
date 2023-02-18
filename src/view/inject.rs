@@ -39,9 +39,9 @@ impl InjectView {
             dll_path.display(),
             proc_name
         );
-        hudhook::inject::Process::by_name(proc_name)
-            .unwrap()
-            .inject(dll_path)
-            .unwrap();
+        // hudhook::inject::Process::by_name(proc_name)
+        //     .unwrap()
+        //     .inject(dll_path)
+        //     .unwrap();
     }
 }

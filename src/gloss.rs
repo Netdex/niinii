@@ -16,7 +16,7 @@ pub enum GlossError {
     #[error("Text too long ({length}/{MAX_TEXT_LENGTH} chars)")]
     TextTooLong { length: usize },
     #[error(transparent)]
-    RegexError(#[from] fancy_regex::Error)
+    RegexError(#[from] fancy_regex::Error),
 }
 
 #[derive(Debug)]

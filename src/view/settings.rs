@@ -82,7 +82,7 @@ impl Default for Settings {
     }
 }
 impl Settings {
-    pub fn ui(&mut self, env: &mut Env, ui: &mut Ui) {
+    pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
         if CollapsingHeader::new("Ichiran")
             .default_open(true)
             .build(ui)

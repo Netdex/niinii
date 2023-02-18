@@ -86,12 +86,12 @@ impl RikaiView {
         romanized: &Romanized,
     ) -> bool {
         let mut opened = true;
-        Window::new(&romanized.term().text().to_string())
+        ui.window(&romanized.term().text().to_string())
             .size_constraints([300.0, 100.0], [1000.0, 1000.0])
             .save_settings(false)
             .focus_on_appearing(true)
             .opened(&mut opened)
-            .build(ui, || {
+            .build(|| {
                 if let Some(View::Interpret { gloss, .. }) = &self.view {
                     TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 0.0)
                         .ui(env, ui, settings);
@@ -225,7 +225,6 @@ impl RikaiView {
                                     .collect::<Vec<&str>>()
                                     .join(" ");
                                 ui.text_wrapped(romaji);
-                                _wrap_token.pop(ui);
                             });
                         }
                     }
@@ -251,10 +250,10 @@ impl RikaiView {
                 self.add_root(env, ui, settings, &gloss.root);
 
                 if *show_raw {
-                    Window::new("Raw")
+                    ui.window("Raw")
                         .size([300., 110.], Condition::FirstUseEver)
                         .opened(show_raw)
-                        .build(ui, || {
+                        .build(|| {
                             RawView::new(&gloss.root).ui(env, ui);
                         });
                 }

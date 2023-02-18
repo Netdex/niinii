@@ -151,9 +151,9 @@ impl<'a> TermView<'a> {
             }
             Word::Compound(compound) => {
                 for component in compound.components() {
-                    TreeNode::new(&component.text().to_string())
+                    ui.tree_node_config(&component.text().to_string())
                         .default_open(true)
-                        .build(ui, || {
+                        .build(|| {
                             self.add_term(env, ui, settings, component, romaji, false);
                         });
                 }
@@ -228,7 +228,6 @@ impl<'a> TermView<'a> {
                             }
                         }
                     }
-                    _wrap_token.pop(ui);
                 }
                 self.add_glosses(env, ui, base.gloss());
             }

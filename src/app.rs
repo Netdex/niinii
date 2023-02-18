@@ -179,39 +179,41 @@ impl App {
     fn show_main_menu(&mut self, env: &mut Env, ui: &Ui) {
         if let Some(_token) = ui.begin_menu_bar() {
             if let Some(_menu) = ui.begin_menu("Options") {
-                if MenuItem::new("Watch clipboard")
+                if ui
+                    .menu_item_config("Watch clipboard")
                     .selected(self.settings.watch_clipboard)
-                    .build(ui)
+                    .build()
                 {
                     self.settings.watch_clipboard = !self.settings.watch_clipboard;
                 }
                 ui.separator();
-                if MenuItem::new("Settings").build(ui) {
+                if ui.menu_item("Settings") {
                     self.show_settings = true;
                 }
             }
             if let Some(_menu) = ui.begin_menu("View") {
-                if MenuItem::new("Show input")
+                if ui
+                    .menu_item_config("Show input")
                     .selected(self.settings.show_manual_input)
-                    .build(ui)
+                    .build()
                 {
                     self.settings.show_manual_input = !self.settings.show_manual_input;
                 }
                 ui.separator();
-                if MenuItem::new("Raw").build(ui) {
+                if ui.menu_item("Raw") {
                     self.show_raw = true;
                 }
-                if MenuItem::new("Style Editor").build(ui) {
+                if ui.menu_item("Style Editor") {
                     self.show_style_editor = true;
                 }
-                if MenuItem::new("Debugger").build(ui) {
+                if ui.menu_item("Debugger") {
                     self.show_metrics_window = true;
                 }
-                if MenuItem::new("ImGui Demo").build(ui) {
+                if ui.menu_item("ImGui Demo") {
                     self.show_imgui_demo = true;
                 }
                 if !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
-                    if MenuItem::new("Inject").build(ui) {
+                    if ui.menu_item("Inject") {
                         self.show_inject = true;
                     }
                 }
@@ -221,9 +223,9 @@ impl App {
 
     fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
         if let State::Error(err) = &self.state {
-            PopupModal::new(ERROR_MODAL_TITLE)
+            ui.modal_popup_config(ERROR_MODAL_TITLE)
                 .always_auto_resize(true)
-                .build(ui, || {
+                .build(|| {
                     let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
                     ui.text(err.to_string());
                     ui.separator();
@@ -252,7 +254,8 @@ impl App {
 
     pub fn ui(&mut self, env: &mut Env, ui: &mut Ui, run: &mut bool) {
         let io = ui.io();
-        let mut niinii = Window::new("niinii")
+        let mut niinii = ui
+            .window("niinii")
             .opened(run)
             .menu_bar(true)
             .draw_background(!self.settings().transparent);
@@ -262,14 +265,14 @@ impl App {
                 .size(io.display_size, Condition::Always)
                 .no_decoration()
         };
-        niinii.build(ui, || {
+        niinii.build(|| {
             self.show_main_menu(env, ui);
 
             let disabled = matches!(self.state, State::Processing);
             if self.settings().show_manual_input {
                 let _disable_input = ui.begin_disabled(disabled);
                 if ui
-                    .input_text_multiline("", &mut self.input_text, [0.0, 50.0])
+                    .input_text_multiline("##", &mut self.input_text, [0.0, 50.0])
                     .enter_returns_true(true)
                     .build()
                 {
@@ -332,7 +335,7 @@ impl App {
     }
 
     fn show_settings(&mut self, env: &mut Env, ui: &mut Ui) {
-        if let Some(_token) = Window::new("Settings").always_auto_resize(true).begin(ui) {
+        if let Some(_token) = ui.window("Settings").always_auto_resize(true).begin() {
             self.settings.ui(env, ui);
             ui.separator();
             if ui.button_with_size("OK", [120.0, 0.0]) {
@@ -344,7 +347,7 @@ impl App {
     }
 
     fn show_inject(&mut self, env: &mut Env, ui: &mut Ui) {
-        if let Some(_token) = Window::new("Inject").always_auto_resize(true).begin(ui) {
+        if let Some(_token) = ui.window("Inject").always_auto_resize(true).begin() {
             self.inject.ui(env, ui, &mut self.settings);
             ui.separator();
             if ui.button_with_size("OK", [120.0, 0.0]) {
@@ -355,10 +358,10 @@ impl App {
 
     fn show_style_editor(&mut self, ui: &Ui) {
         let mut show_style_editor = self.show_style_editor;
-        Window::new("Style Editor")
+        ui.window("Style Editor")
                 .opened(&mut show_style_editor)
                 .menu_bar(true)
-                .build(ui, || {
+                .build(|| {
                     ui.menu_bar(|| {
                         if ui.button("Save") {
                             self.settings_mut().set_style(Some(&ui.clone_style()));
