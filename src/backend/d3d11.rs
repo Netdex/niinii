@@ -31,8 +31,8 @@ use winit::{
 };
 use wio::com::ComPtr;
 
-use super::env::Env;
-use super::env::EnvFlags;
+use super::context::Context;
+use super::context::ContextFlags;
 use super::renderer::Renderer;
 use crate::{app::App, view::settings::Settings};
 
@@ -204,7 +204,7 @@ struct Inner {
     window: winit::window::Window,
     platform: WinitPlatform,
     imgui: imgui::Context,
-    env: Env,
+    ctx: Context,
     renderer: imgui_dx11_renderer::Renderer,
     context: ComPtr<ID3D11DeviceContext>,
     main_rtv: ComPtr<ID3D11RenderTargetView>,
@@ -228,8 +228,8 @@ impl D3D11Renderer {
         let mut imgui = imgui::Context::create();
         Self::configure_imgui(&mut imgui, settings);
         let platform = Self::create_platform(&mut imgui, &window);
-        let mut env = Env::new(EnvFlags::SUPPORTS_ATLAS_UPDATE);
-        env.update_fonts(&mut imgui, platform.hidpi_factor());
+        let mut ctx = Context::new(ContextFlags::SUPPORTS_ATLAS_UPDATE);
+        ctx.update_fonts(&mut imgui, platform.hidpi_factor());
 
         let renderer =
             unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
@@ -258,7 +258,7 @@ impl D3D11Renderer {
                     window,
                     platform,
                     imgui,
-                    env,
+                    ctx,
                     renderer,
                     context,
                     main_rtv,
@@ -285,7 +285,7 @@ impl Renderer for D3D11Renderer {
                 window,
                 platform,
                 imgui,
-                env,
+                ctx,
                 renderer,
                 context,
                 main_rtv,
@@ -313,14 +313,14 @@ impl Renderer for D3D11Renderer {
                     }
 
                     let now = std::time::Instant::now();
-                    if env.update_fonts(imgui, platform.hidpi_factor()) {
+                    if ctx.update_fonts(imgui, platform.hidpi_factor()) {
                         unsafe { renderer.rebuild_font_texture(&mut imgui.fonts()).unwrap() };
                         let elapsed = now.elapsed();
                         log::info!("rebuilt font atlas (took {:?})", elapsed);
                     }
                     let mut ui = imgui.frame();
                     let mut run = true;
-                    app.ui(env, &mut ui, &mut run);
+                    app.ui(ctx, &mut ui, &mut run);
                     if !run {
                         *control_flow = ControlFlow::Exit;
                     }

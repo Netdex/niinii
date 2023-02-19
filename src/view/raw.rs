@@ -1,7 +1,7 @@
 use ichiran::romanize::*;
 use imgui::*;
 
-use crate::backend::env::Env;
+use crate::backend::context::Context;
 
 use super::id;
 
@@ -17,7 +17,7 @@ impl<'a> RawView<'a> {
     pub fn new(root: &'a Root) -> Self {
         Self { root }
     }
-    pub fn ui(&mut self, _env: &mut Env, ui: &Ui) {
+    pub fn ui(&mut self, _ctx: &mut Context, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos();
         add_root(ui, self.root);
     }

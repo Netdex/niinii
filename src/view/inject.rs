@@ -1,7 +1,7 @@
 use imgui::*;
 
 use super::settings::Settings;
-use crate::backend::env::Env;
+use crate::backend::context::Context;
 
 #[derive(Debug)]
 pub struct InjectView;
@@ -10,17 +10,15 @@ impl InjectView {
         Self
     }
 
-    pub fn ui(&mut self, _env: &mut Env, ui: &Ui, settings: &mut Settings) {
+    pub fn ui(&mut self, _ctx: &mut Context, ui: &Ui, settings: &mut Settings) {
         if CollapsingHeader::new("Remote Hook")
             .default_open(true)
             .build(ui)
         {
             ui.input_text("Process name", &mut settings.inject_proc_name)
                 .build();
-            if ui.button_with_size(
-                "Inject (MAY CAUSE INSTABILITY)",
-                [ui.window_content_region_width(), 0.0],
-            ) {
+            let width = ui.window_content_region_max()[0] - ui.window_content_region_min()[0];
+            if ui.button_with_size("Inject (MAY CAUSE INSTABILITY)", [width, 0.0]) {
                 Self::inject_by_process_name(&settings.inject_proc_name);
             }
         }

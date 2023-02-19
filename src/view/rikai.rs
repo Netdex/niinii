@@ -7,7 +7,7 @@ use imgui::*;
 use super::deepl::DeepLView;
 use super::mixins::*;
 use super::settings::{DisplayRubyText, Settings};
-use crate::backend::env::Env;
+use crate::backend::context::Context;
 use crate::gloss::Gloss;
 use crate::translation::Translation;
 use crate::view::{raw::RawView, term::TermView};
@@ -80,7 +80,7 @@ impl RikaiView {
 
     fn term_window(
         &self,
-        env: &mut Env,
+        ctx: &mut Context,
         ui: &Ui,
         settings: &Settings,
         romanized: &Romanized,
@@ -94,24 +94,24 @@ impl RikaiView {
             .build(|| {
                 if let Some(View::Interpret { gloss, .. }) = &self.view {
                     TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 0.0)
-                        .ui(env, ui, settings);
+                        .ui(ctx, ui, settings);
                 }
             });
         opened
     }
 
-    fn term_tooltip(&self, env: &mut Env, ui: &Ui, settings: &Settings, romanized: &Romanized) {
+    fn term_tooltip(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, romanized: &Romanized) {
         ui.tooltip(|| {
             if let Some(View::Interpret { gloss, .. }) = &self.view {
                 TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 30.0)
-                    .ui(env, ui, settings)
+                    .ui(ctx, ui, settings)
             }
         });
     }
 
     fn add_skipped(
         &self,
-        env: &mut Env,
+        ctx: &mut Context,
         ui: &Ui,
         settings: &Settings,
         skipped: &str,
@@ -119,7 +119,7 @@ impl RikaiView {
     ) {
         draw_kanji_text(
             ui,
-            env,
+            ctx,
             skipped,
             false,
             !preview,
@@ -135,7 +135,7 @@ impl RikaiView {
 
     fn add_romanized(
         &self,
-        env: &mut Env,
+        ctx: &mut Context,
         ui: &Ui,
         settings: &Settings,
         romanized: &Romanized,
@@ -154,7 +154,7 @@ impl RikaiView {
         };
         let ul_hover = draw_kanji_text(
             ui,
-            env,
+            ctx,
             term.text(),
             true,
             settings.stroke_text,
@@ -165,7 +165,7 @@ impl RikaiView {
 
         if ui.is_item_hovered() {
             ui.set_mouse_cursor(Some(MouseCursor::Hand));
-            self.term_tooltip(env, ui, settings, romanized);
+            self.term_tooltip(ctx, ui, settings, romanized);
         }
 
         let mut show_term_window = self.show_term_window.borrow_mut();
@@ -176,10 +176,10 @@ impl RikaiView {
         ul_hover
     }
 
-    fn add_segment(&self, env: &mut Env, ui: &Ui, settings: &Settings, segment: &Segment) {
+    fn add_segment(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, segment: &Segment) {
         match segment {
             Segment::Skipped(skipped) => {
-                self.add_skipped(env, ui, settings, skipped, false);
+                self.add_skipped(ctx, ui, settings, skipped, false);
             }
             Segment::Clauses(clauses) => {
                 let mut selected_clause = self.selected_clause.borrow_mut();
@@ -190,7 +190,7 @@ impl RikaiView {
                     let romanized = clause.romanized();
                     for (idx, rz) in romanized.iter().enumerate() {
                         let ul_hover = self.add_romanized(
-                            env,
+                            ctx,
                             ui,
                             settings,
                             rz,
@@ -233,13 +233,13 @@ impl RikaiView {
         }
     }
 
-    fn add_root(&self, env: &mut Env, ui: &Ui, settings: &Settings, root: &Root) {
+    fn add_root(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, root: &Root) {
         for segment in root.segments() {
-            self.add_segment(env, ui, settings, segment);
+            self.add_segment(ctx, ui, settings, segment);
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &Settings, show_raw: &mut bool) {
+    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings, show_raw: &mut bool) {
         ui.text(""); // hack to align line position
         match &self.view {
             Some(View::Interpret {
@@ -247,14 +247,14 @@ impl RikaiView {
                 translation,
                 translation_pending,
             }) => {
-                self.add_root(env, ui, settings, &gloss.root);
+                self.add_root(ctx, ui, settings, &gloss.root);
 
                 if *show_raw {
                     ui.window("Raw")
                         .size([300., 110.], Condition::FirstUseEver)
                         .opened(show_raw)
                         .build(|| {
-                            RawView::new(&gloss.root).ui(env, ui);
+                            RawView::new(&gloss.root).ui(ctx, ui);
                         });
                 }
                 ui.new_line();
@@ -265,7 +265,7 @@ impl RikaiView {
                 }
             }
             Some(View::Text(text)) => {
-                self.add_skipped(env, ui, settings, text, true);
+                self.add_skipped(ctx, ui, settings, text, true);
             }
             _ => {}
         }
@@ -273,6 +273,6 @@ impl RikaiView {
         // show all term windows, close if requested (this is actually witchcraft)
         self.show_term_window
             .borrow_mut()
-            .retain(|romanized| self.term_window(env, ui, settings, romanized));
+            .retain(|romanized| self.term_window(ctx, ui, settings, romanized));
     }
 }

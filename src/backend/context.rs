@@ -39,7 +39,7 @@ pub enum TextStyle {
 }
 
 bitflags! {
-pub struct EnvFlags: u32 {
+pub struct ContextFlags: u32 {
     // Whether the renderer supports updating font atlases on the fly.
     const SUPPORTS_ATLAS_UPDATE = 1 << 0;
     // Whether we are sharing the renderer context with another application or not.
@@ -47,7 +47,7 @@ pub struct EnvFlags: u32 {
 }
 }
 
-pub struct Env {
+pub struct Context {
     font_data: Vec<u8>,
     fonts: HashMap<TextStyle, FontId>,
 
@@ -56,16 +56,16 @@ pub struct Env {
     font_glyph_range_size: usize,
     font_atlas_dirty: bool,
 
-    flags: EnvFlags,
+    flags: ContextFlags,
 }
-unsafe impl Send for Env {}
+unsafe impl Send for Context {}
 
-impl Env {
-    pub fn new(flags: EnvFlags) -> Self {
+impl Context {
+    pub fn new(flags: ContextFlags) -> Self {
         let mut font_glyph_ranges = vec![0; FONT_GLYPH_RANGE_BUFFER_SZ];
         font_glyph_ranges[0..BASIC_RANGES_UTF8.len()].copy_from_slice(BASIC_RANGES_UTF8);
 
-        let mut env = Env {
+        let mut ctx = Context {
             font_data: decompress_gzip_font(SARASA_MONO_J_REGULAR),
             fonts: HashMap::new(),
 
@@ -76,10 +76,10 @@ impl Env {
 
             flags,
         };
-        env.add_default_glyphs();
-        env
+        ctx.add_default_glyphs();
+        ctx
     }
-    pub fn flags(&self) -> &EnvFlags {
+    pub fn flags(&self) -> &ContextFlags {
         &self.flags
     }
     pub fn font_atlas_dirty(&self) -> bool {
@@ -171,7 +171,7 @@ impl Env {
         }
     }
     pub fn add_unknown_glyphs_from_root(&mut self, root: &Root) {
-        struct RootVisitor<'a>(&'a mut Env);
+        struct RootVisitor<'a>(&'a mut Context);
         impl<'a> RootVisitor<'a> {
             fn visit_conj(&mut self, conj: &Conjugation) {
                 if let Some(reading) = conj.reading() {

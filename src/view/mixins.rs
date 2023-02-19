@@ -1,6 +1,6 @@
 use imgui::{DrawListMut, StyleColor, Ui};
 
-use crate::backend::env::{Env, TextStyle};
+use crate::backend::context::{Context, TextStyle};
 
 pub fn help_marker(ui: &Ui, text: &str) {
     ui.text_colored(ui.style_color(StyleColor::TextDisabled), "[?]");
@@ -75,7 +75,7 @@ pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, pos: [f32; 2], 
 
 pub fn draw_kanji_text(
     ui: &Ui,
-    env: &Env,
+    ctx: &Context,
     text: &str,
     highlight: bool,
     stroke: bool,
@@ -89,7 +89,7 @@ pub fn draw_kanji_text(
         RubyTextMode::None => [0.0, 0.0],
     };
 
-    let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
+    let _kanji_font_token = ui.push_font(ctx.get_font(TextStyle::Kanji));
     let kanji_sz = ui.calc_text_size(text);
     drop(_kanji_font_token);
 
@@ -159,7 +159,7 @@ pub fn draw_kanji_text(
         .thickness(ul_thick)
         .build();
 
-    let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
+    let _kanji_font_token = ui.push_font(ctx.get_font(TextStyle::Kanji));
     if preview {
         stroke_text_with_offsets(
             ui,

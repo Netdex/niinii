@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
 
-use crate::backend::env::{Env, EnvFlags};
+use crate::backend::context::{Context, ContextFlags};
 
 use super::mixins;
 
@@ -82,7 +82,7 @@ impl Default for Settings {
     }
 }
 impl Settings {
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
+    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui) {
         if CollapsingHeader::new("Ichiran")
             .default_open(true)
             .build(ui)
@@ -135,7 +135,7 @@ impl Settings {
             .default_open(true)
             .build(ui)
         {
-            if !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
+            if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT) {
                 ui.combo_simple_string(
                     "Renderer*",
                     &mut self.renderer_type_idx,

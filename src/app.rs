@@ -4,7 +4,7 @@ use fancy_regex::Regex;
 use imgui::*;
 
 use crate::{
-    backend::env::{Env, EnvFlags},
+    backend::context::{Context, ContextFlags},
     gloss::{Gloss, GlossError, Glossator},
     translation::{self, Translation},
     view::{inject::InjectView, mixins::help_marker, rikai::RikaiView, settings::Settings},
@@ -122,11 +122,11 @@ impl App {
         self.state = state;
     }
 
-    fn poll(&mut self, ui: &Ui, env: &mut Env) {
+    fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
         match self.channel_rx.try_recv() {
             Ok(Message::Gloss(Ok(gloss))) => {
-                if env.flags().contains(EnvFlags::SUPPORTS_ATLAS_UPDATE) {
-                    env.add_unknown_glyphs_from_root(&gloss.root);
+                if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
+                    ctx.add_unknown_glyphs_from_root(&gloss.root);
                 }
                 let should_translate = self.settings.auto_translate && gloss.translatable;
                 let text = gloss.original_text.clone();
@@ -176,7 +176,7 @@ impl App {
         }
     }
 
-    fn show_main_menu(&mut self, env: &mut Env, ui: &Ui) {
+    fn show_main_menu(&mut self, ctx: &mut Context, ui: &Ui) {
         if let Some(_token) = ui.begin_menu_bar() {
             if let Some(_menu) = ui.begin_menu("Options") {
                 if ui
@@ -212,7 +212,7 @@ impl App {
                 if ui.menu_item("ImGui Demo") {
                     self.show_imgui_demo = true;
                 }
-                if !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
+                if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT) {
                     if ui.menu_item("Inject") {
                         self.show_inject = true;
                     }
@@ -221,7 +221,7 @@ impl App {
         }
     }
 
-    fn show_error_modal(&mut self, _env: &mut Env, ui: &Ui) {
+    fn show_error_modal(&mut self, _ctx: &mut Context, ui: &Ui) {
         if let State::Error(err) = &self.state {
             ui.modal_popup_config(ERROR_MODAL_TITLE)
                 .always_auto_resize(true)
@@ -252,21 +252,23 @@ impl App {
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &mut Ui, run: &mut bool) {
+    pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
         let io = ui.io();
         let mut niinii = ui
             .window("niinii")
             .opened(run)
             .menu_bar(true)
             .draw_background(!self.settings().transparent);
-        if !self.settings().overlay_mode && !env.flags().contains(EnvFlags::SHARED_RENDER_CONTEXT) {
+        if !self.settings().overlay_mode
+            && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
+        {
             niinii = niinii
                 .position([0.0, 0.0], Condition::Always)
                 .size(io.display_size, Condition::Always)
                 .no_decoration()
         };
         niinii.build(|| {
-            self.show_main_menu(env, ui);
+            self.show_main_menu(ctx, ui);
 
             let disabled = matches!(self.state, State::Processing);
             if self.settings().show_manual_input {
@@ -302,16 +304,16 @@ impl App {
                 self.show_deepl_usage(ui);
             }
 
-            self.rikai.ui(env, ui, &self.settings, &mut self.show_raw);
+            self.rikai.ui(ctx, ui, &self.settings, &mut self.show_raw);
 
             if let State::Processing = &self.state {
                 ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
             }
-            self.show_error_modal(env, ui);
-            self.poll(ui, env);
+            self.show_error_modal(ctx, ui);
+            self.poll(ui, ctx);
 
             ui.new_line();
-            if env.font_atlas_dirty() {
+            if ctx.font_atlas_dirty() {
                 ui.text_disabled("(rebuilding font atlas...)")
             }
         });
@@ -321,7 +323,7 @@ impl App {
         }
 
         if self.show_settings {
-            self.show_settings(env, ui);
+            self.show_settings(ctx, ui);
         }
         if self.show_metrics_window {
             ui.show_metrics_window(&mut self.show_metrics_window);
@@ -330,13 +332,13 @@ impl App {
             self.show_style_editor(ui);
         }
         if self.show_inject {
-            self.show_inject(env, ui);
+            self.show_inject(ctx, ui);
         }
     }
 
-    fn show_settings(&mut self, env: &mut Env, ui: &mut Ui) {
+    fn show_settings(&mut self, ctx: &mut Context, ui: &mut Ui) {
         if let Some(_token) = ui.window("Settings").always_auto_resize(true).begin() {
-            self.settings.ui(env, ui);
+            self.settings.ui(ctx, ui);
             ui.separator();
             if ui.button_with_size("OK", [120.0, 0.0]) {
                 self.show_settings = false;
@@ -346,9 +348,9 @@ impl App {
         }
     }
 
-    fn show_inject(&mut self, env: &mut Env, ui: &mut Ui) {
+    fn show_inject(&mut self, ctx: &mut Context, ui: &mut Ui) {
         if let Some(_token) = ui.window("Inject").always_auto_resize(true).begin() {
-            self.inject.ui(env, ui, &mut self.settings);
+            self.inject.ui(ctx, ui, &mut self.settings);
             ui.separator();
             if ui.button_with_size("OK", [120.0, 0.0]) {
                 self.show_inject = false;

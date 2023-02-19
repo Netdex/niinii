@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ichiran::{kanji::Kanji, romanize::*, JmDictData};
 use imgui::*;
 
-use crate::backend::env::Env;
+use crate::backend::context::Context;
 
 use super::kanji::KanjiView;
 use super::mixins::*;
@@ -30,7 +30,7 @@ impl<'a> TermView<'a> {
         }
     }
 
-    fn add_pos(&self, _env: &mut Env, ui: &Ui, pos: &str) {
+    fn add_pos(&self, _ctx: &mut Context, ui: &Ui, pos: &str) {
         ui.text_colored([0., 1., 1., 1.], pos);
         if ui.is_item_hovered() {
             if let Some(kwpos) = self.jmdict_data.kwpos_by_kw.get(pos) {
@@ -39,7 +39,7 @@ impl<'a> TermView<'a> {
         }
     }
 
-    fn add_glosses(&self, env: &mut Env, ui: &Ui, glosses: &[Gloss]) {
+    fn add_glosses(&self, ctx: &mut Context, ui: &Ui, glosses: &[Gloss]) {
         for (i, gloss) in glosses.iter().enumerate() {
             // index
             ui.text(format!("{}.", i + 1));
@@ -50,7 +50,7 @@ impl<'a> TermView<'a> {
                 ui.same_line_with_spacing(0.0, 0.0);
                 let pos_split = gloss.pos_split();
                 for (i, pos) in pos_split.iter().enumerate() {
-                    self.add_pos(env, ui, pos);
+                    self.add_pos(ctx, ui, pos);
                     ui.same_line_with_spacing(0.0, 0.0);
                     if i != pos_split.len() - 1 {
                         ui.text(",");
@@ -69,13 +69,13 @@ impl<'a> TermView<'a> {
         }
     }
 
-    fn kanji_tooltip(&self, env: &mut Env, ui: &Ui, kanji: &Kanji) {
-        ui.tooltip(|| KanjiView::new(kanji, 25.0).ui(env, ui));
+    fn kanji_tooltip(&self, ctx: &mut Context, ui: &Ui, kanji: &Kanji) {
+        ui.tooltip(|| KanjiView::new(kanji, 25.0).ui(ctx, ui));
     }
 
     fn add_word(
         &self,
-        env: &mut Env,
+        ctx: &mut Context,
         ui: &Ui,
         settings: &Settings,
         word: &Word,
@@ -89,7 +89,7 @@ impl<'a> TermView<'a> {
             if let Some(chr) = &meta.text().chars().next() {
                 let kanji = self.kanji_info.get(chr);
                 if let Some(kanji) = kanji {
-                    KanjiView::new(kanji, 30.0).ui(env, ui)
+                    KanjiView::new(kanji, 30.0).ui(ctx, ui)
                 }
             }
         } else if show_kanji {
@@ -101,7 +101,7 @@ impl<'a> TermView<'a> {
                     ui.same_line();
                     draw_kanji_text(
                         ui,
-                        env,
+                        ctx,
                         &text,
                         kanji != None,
                         false,
@@ -113,7 +113,7 @@ impl<'a> TermView<'a> {
 
                 if let Some(kanji) = kanji {
                     if ui.is_item_hovered() {
-                        self.kanji_tooltip(env, ui, kanji);
+                        self.kanji_tooltip(ctx, ui, kanji);
                     }
                 }
             }
@@ -136,9 +136,9 @@ impl<'a> TermView<'a> {
                     ui.text(suffix);
                 }
                 // there should be no glosses if there are conjugations
-                self.add_glosses(env, ui, plain.gloss());
+                self.add_glosses(ctx, ui, plain.gloss());
                 for conj in plain.conj() {
-                    self.add_conj(env, ui, conj);
+                    self.add_conj(ctx, ui, conj);
                 }
                 if let Some(counter) = plain.counter() {
                     ui.bullet();
@@ -154,7 +154,7 @@ impl<'a> TermView<'a> {
                     ui.tree_node_config(&component.text().to_string())
                         .default_open(true)
                         .build(|| {
-                            self.add_term(env, ui, settings, component, romaji, false);
+                            self.add_term(ctx, ui, settings, component, romaji, false);
                         });
                 }
             }
@@ -163,7 +163,7 @@ impl<'a> TermView<'a> {
 
     fn add_term(
         &self,
-        env: &mut Env,
+        ctx: &mut Context,
         ui: &Ui,
         settings: &Settings,
         term: &Term,
@@ -171,19 +171,19 @@ impl<'a> TermView<'a> {
         show_kanji: bool,
     ) {
         match term {
-            Term::Word(word) => self.add_word(env, ui, settings, word, romaji, show_kanji),
+            Term::Word(word) => self.add_word(ctx, ui, settings, word, romaji, show_kanji),
             Term::Alternative(alt) => {
                 for (idx, word) in alt.alts().iter().enumerate() {
                     if idx != 0 {
                         ui.separator();
                     }
-                    self.add_word(env, ui, settings, word, romaji, true);
+                    self.add_word(ctx, ui, settings, word, romaji, true);
                 }
             }
         }
     }
 
-    fn add_conj(&self, env: &mut Env, ui: &Ui, conj: &Conjugation) {
+    fn add_conj(&self, ctx: &mut Context, ui: &Ui, conj: &Conjugation) {
         for vias in conj.flatten() {
             let base = *vias.first().unwrap();
 
@@ -207,7 +207,7 @@ impl<'a> TermView<'a> {
                             }
                             ui.text("[");
                             ui.same_line_with_spacing(0.0, 0.0);
-                            self.add_pos(env, ui, prop.pos());
+                            self.add_pos(ctx, ui, prop.pos());
                             ui.same_line_with_spacing(0.0, 0.0);
                             ui.text("]");
                             ui.same_line();
@@ -229,15 +229,15 @@ impl<'a> TermView<'a> {
                         }
                     }
                 }
-                self.add_glosses(env, ui, base.gloss());
+                self.add_glosses(ctx, ui, base.gloss());
             }
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui, settings: &Settings) {
+    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_x);
         self.add_term(
-            env,
+            ctx,
             ui,
             settings,
             self.romaji.term(),

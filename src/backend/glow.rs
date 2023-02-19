@@ -8,7 +8,7 @@ use glutin::{
 use imgui_glow_renderer::AutoRenderer;
 use imgui_winit_support::WinitPlatform;
 
-use super::env::{Env, EnvFlags};
+use super::context::{Context, ContextFlags};
 use super::renderer::Renderer;
 use crate::{app::App, view::settings::Settings};
 
@@ -19,7 +19,7 @@ pub struct GlowRenderer {
     window: Window,
     platform: WinitPlatform,
     imgui: imgui::Context,
-    env: Env,
+    ctx: Context,
     renderer: AutoRenderer,
 }
 impl GlowRenderer {
@@ -28,8 +28,8 @@ impl GlowRenderer {
         let mut imgui = imgui::Context::create();
         Self::configure_imgui(&mut imgui, settings);
         let platform = Self::create_platform(&mut imgui, window.window());
-        let mut env = Env::new(EnvFlags::empty());
-        env.update_fonts(&mut imgui, platform.hidpi_factor());
+        let mut ctx = Context::new(ContextFlags::empty());
+        ctx.update_fonts(&mut imgui, platform.hidpi_factor());
 
         let gl = glow_context(&window);
 
@@ -41,7 +41,7 @@ impl GlowRenderer {
             window,
             platform,
             imgui,
-            env,
+            ctx,
             renderer,
         }
     }
@@ -53,7 +53,7 @@ impl Renderer for GlowRenderer {
             window,
             platform,
             imgui,
-            env,
+            ctx,
             renderer,
         } = self;
         let mut last_frame = Instant::now();
@@ -77,7 +77,7 @@ impl Renderer for GlowRenderer {
 
                 let mut ui = imgui.frame();
                 let mut run = true;
-                app.ui(env, &mut ui, &mut run);
+                app.ui(ctx, &mut ui, &mut run);
                 if !run {
                     *control_flow = ControlFlow::Exit;
                 }

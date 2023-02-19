@@ -1,7 +1,7 @@
 use ichiran::kanji::Kanji;
 use imgui::*;
 
-use crate::backend::env::{Env, TextStyle};
+use crate::backend::context::{Context, TextStyle};
 
 pub struct KanjiView<'a> {
     kanji: &'a Kanji,
@@ -12,9 +12,9 @@ impl<'a> KanjiView<'a> {
         KanjiView { kanji, wrap_x }
     }
 
-    fn add_kanji(&mut self, env: &mut Env, ui: &Ui, kanji: &Kanji) {
+    fn add_kanji(&mut self, ctx: &mut Context, ui: &Ui, kanji: &Kanji) {
         {
-            let _kanji_font_token = ui.push_font(env.get_font(TextStyle::Kanji));
+            let _kanji_font_token = ui.push_font(ctx.get_font(TextStyle::Kanji));
             ui.text(kanji.text());
         }
         ui.same_line();
@@ -87,8 +87,8 @@ impl<'a> KanjiView<'a> {
         }
     }
 
-    pub fn ui(&mut self, env: &mut Env, ui: &Ui) {
+    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_x);
-        self.add_kanji(env, ui, self.kanji);
+        self.add_kanji(ctx, ui, self.kanji);
     }
 }
