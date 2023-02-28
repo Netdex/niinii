@@ -71,10 +71,10 @@ impl Glossator {
         let mut kanji_info = None;
         let mut jmdict_data = None;
 
-        rayon::scope(|s| {
-            s.spawn(|_| root = Some(ichiran.romanize(&text, variants)));
-            s.spawn(|_| kanji_info = Some(ichiran.kanji_from_str(&text)));
-            s.spawn(|_| jmdict_data = Some(ichiran.jmdict_data()));
+        std::thread::scope(|s| {
+            s.spawn(|| root = Some(ichiran.romanize(&text, variants)));
+            s.spawn(|| kanji_info = Some(ichiran.kanji_from_str(&text)));
+            s.spawn(|| jmdict_data = Some(ichiran.jmdict_data()));
         });
 
         let root = root.unwrap()?;

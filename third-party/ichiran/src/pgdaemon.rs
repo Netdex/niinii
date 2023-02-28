@@ -16,9 +16,9 @@ pub struct PostgresDaemon {
     silent: bool,
 }
 impl PostgresDaemon {
-    pub fn new<N: Into<PathBuf>, M: Into<PathBuf>>(
-        pg_bin_dir: N,
-        data_path: M,
+    pub fn new(
+        pg_bin_dir: impl Into<PathBuf>,
+        data_path: impl Into<PathBuf>,
         conn_params: ConnParams,
         silent: bool,
     ) -> Self {
@@ -60,7 +60,7 @@ impl PostgresDaemon {
             silent,
         }
     }
-    fn pg_bin_path<N: AsRef<Path>, M: Into<PathBuf>>(pg_bin_dir: N, name: M) -> PathBuf {
+    fn pg_bin_path(pg_bin_dir: impl AsRef<Path>, name: impl Into<PathBuf>) -> PathBuf {
         let mut bin = name.into();
         bin.set_extension(std::env::consts::EXE_EXTENSION);
         pg_bin_dir.as_ref().join(bin)

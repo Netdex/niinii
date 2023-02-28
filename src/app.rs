@@ -92,7 +92,7 @@ impl App {
 
                 self.rikai.set_text(text.clone());
 
-                rayon::spawn(enclose! { (glossator) move || {
+                std::thread::spawn(enclose! { (glossator) move || {
                     let gloss = glossator.gloss(&text, variants);
                     let _ = channel_tx.send(Message::Gloss(gloss));
                 }});
@@ -108,7 +108,7 @@ impl App {
 
         self.rikai.set_translation_pending(true);
 
-        rayon::spawn(move || {
+        std::thread::spawn(move || {
             let translation = translation::translate(&deepl_api_key, &text);
             let _ = channel_tx.send(Message::Translation(translation));
         });

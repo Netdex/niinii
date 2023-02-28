@@ -11,7 +11,7 @@ where
     Ok(T::from_value(result).map_err(ketos::Error::ExecError)?)
 }
 
-pub fn lisp_escape_string<T: AsRef<str>>(text: T) -> String {
+pub fn lisp_escape_string(text: impl AsRef<str>) -> String {
     let text = text.as_ref();
     let mut output = String::with_capacity(text.len());
     for c in text.chars() {

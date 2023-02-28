@@ -52,7 +52,7 @@ struct State {
 }
 
 impl Ichiran {
-    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             shared: Arc::new(Shared {
                 path: path.into(),
@@ -64,7 +64,7 @@ impl Ichiran {
         }
     }
 
-    pub fn romanize<T: AsRef<str>>(&self, text: T, limit: u32) -> Result<Root, IchiranError> {
+    pub fn romanize(&self, text: impl AsRef<str>, limit: u32) -> Result<Root, IchiranError> {
         assert!(limit > 0);
         let text = text.as_ref();
 
@@ -133,9 +133,9 @@ impl Ichiran {
         Ok(kanji_info)
     }
 
-    pub fn kanji_from_str<T: AsRef<str>>(
+    pub fn kanji_from_str(
         &self,
-        text: T,
+        text: impl AsRef<str>,
     ) -> Result<HashMap<char, Kanji>, IchiranError> {
         let text = text.as_ref();
         let mut uniq: Vec<char> = text.chars().filter(is_kanji).collect();
@@ -199,7 +199,7 @@ impl Ichiran {
     }
 
     /// Evaluate the expression with ichiran and return the raw output.
-    fn ichiran_eval<E: AsRef<OsStr>>(&self, expr: E) -> Result<String, IchiranError> {
+    fn ichiran_eval(&self, expr: impl AsRef<OsStr>) -> Result<String, IchiranError> {
         let working_dir = self.working_dir()?;
         let output = Command::new(&self.shared.path)
             .current_dir(working_dir)

@@ -31,7 +31,8 @@ impl<'a> TermView<'a> {
     }
 
     fn add_pos(&self, _ctx: &mut Context, ui: &Ui, pos: &str) {
-        ui.text_colored([0., 1., 1., 1.], pos);
+        ui.text_colored(ui.style_color(StyleColor::NavHighlight), pos);
+        // ui.text_colored([0., 1., 1., 1.], pos);
         if ui.is_item_hovered() {
             if let Some(kwpos) = self.jmdict_data.kwpos_by_kw.get(pos) {
                 ui.tooltip_text(kwpos.descr.as_str());
@@ -125,10 +126,6 @@ impl<'a> TermView<'a> {
             }
         }
 
-        if let Word::Compound(compound) = word {
-            ui.text(format!("Compound {}", compound.compound().join(" + ")));
-        }
-
         match word {
             Word::Plain(plain) => {
                 if let Some(suffix) = plain.suffix() {
@@ -150,6 +147,7 @@ impl<'a> TermView<'a> {
                 }
             }
             Word::Compound(compound) => {
+                ui.text(format!("Compound {}", compound.compound().join(" + ")));
                 for component in compound.components() {
                     ui.tree_node_config(&component.text().to_string())
                         .default_open(true)
@@ -214,14 +212,17 @@ impl<'a> TermView<'a> {
                             ui.text(prop.kind());
                             if prop.neg() {
                                 ui.same_line();
-                                ui.text_colored([1., 0., 0., 1.], "neg");
+                                ui.text_colored(
+                                    ui.style_color(StyleColor::PlotLinesHovered),
+                                    "neg",
+                                );
                                 if ui.is_item_hovered() {
                                     ui.tooltip_text("negative");
                                 }
                             }
                             if prop.fml() {
                                 ui.same_line();
-                                ui.text_colored([1., 0., 1., 1.], "fml");
+                                ui.text_colored(ui.style_color(StyleColor::PlotHistogram), "fml");
                                 if ui.is_item_hovered() {
                                     ui.tooltip_text("formal");
                                 }

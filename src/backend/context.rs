@@ -40,9 +40,9 @@ pub enum TextStyle {
 
 bitflags! {
 pub struct ContextFlags: u32 {
-    // Whether the renderer supports updating font atlases on the fly.
+    /// Whether the renderer supports updating font atlases on the fly.
     const SUPPORTS_ATLAS_UPDATE = 1 << 0;
-    // Whether we are sharing the renderer context with another application or not.
+    /// Whether we are sharing the renderer context with another application or not.
     const SHARED_RENDER_CONTEXT = 1 << 1;
 }
 }
