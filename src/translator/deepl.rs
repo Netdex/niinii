@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use crate::settings::Settings;
 
 #[derive(Debug)]
@@ -9,10 +7,10 @@ pub struct DeepLTranslation {
     pub deepl_usage: deepl_api::UsageInformation,
 }
 
-pub struct DeepL {
+pub struct DeepLTranslator {
     deepl: deepl_api::DeepL,
 }
-impl DeepL {
+impl DeepLTranslator {
     pub fn new(settings: &Settings) -> Self {
         Self {
             deepl: deepl_api::DeepL::new(settings.deepl_api_key.to_string()),

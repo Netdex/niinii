@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tiktoken_rs::tiktoken::cl100k_base_singleton;
 
 #[derive(Error, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[error("{kind}: {message}")]
@@ -31,6 +32,13 @@ pub enum Role {
 pub struct Message {
     pub role: Role,
     pub content: String,
+}
+impl Message {
+    pub fn estimate_tokens(&self) -> u32 {
+        let bpe = cl100k_base_singleton();
+        let bpe = bpe.lock();
+        4 + bpe.encode_with_special_tokens(&self.content).len() as u32
+    }
 }
 
 #[serde_with::skip_serializing_none]

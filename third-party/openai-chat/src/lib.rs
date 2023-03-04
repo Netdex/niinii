@@ -55,30 +55,6 @@ impl Client {
             Response::Error { error } => Err(Error::Response(error)),
         }
     }
-    pub fn conversation(&self, state: Request) -> Conversation {
-        Conversation::new(self.clone(), state)
-    }
-}
-
-pub struct Conversation {
-    client: Client,
-    state: Request,
-}
-impl Conversation {
-    fn new(client: Client, state: Request) -> Self {
-        Self { client, state }
-    }
-    pub fn prompt(&mut self, content: impl Into<String>) -> Result<Completion, Error> {
-        let Self { client, state } = self;
-        state.messages.push(Message {
-            role: Role::User,
-            content: content.into(),
-        });
-        let completion = client.completions(state)?;
-        let response = &completion.choices.first().unwrap().message;
-        state.messages.push(response.clone());
-        Ok(completion)
-    }
 }
 
 #[cfg(test)]

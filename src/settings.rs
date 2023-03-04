@@ -1,10 +1,7 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
-use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
-
-use crate::renderer::context::{Context, ContextFlags};
 
 #[derive(FromPrimitive, EnumString, EnumVariantNames)]
 pub enum RendererType {

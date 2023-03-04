@@ -5,7 +5,7 @@ use ichiran::romanize::*;
 use imgui::*;
 
 use super::mixins::*;
-use super::translation::TranslationView;
+use super::translator::TranslationView;
 use crate::gloss::Gloss;
 use crate::renderer::context::Context;
 use crate::settings::{RubyTextType, Settings};
@@ -257,7 +257,7 @@ impl RikaiView {
                 }
                 ui.new_line();
                 if let Some(translation) = translation {
-                    TranslationView::new(translation).ui(ui);
+                    TranslationView(translation).ui(ui);
                 } else if *translation_pending {
                     ui.text_disabled("(waiting for translation...)")
                 }

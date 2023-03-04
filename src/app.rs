@@ -9,8 +9,11 @@ use crate::{
     settings::Settings,
     translator::{self, Translation, Translator},
     view::{
-        inject::InjectView, mixins::help_marker, rikai::RikaiView, settings::SettingsView,
-        translation::TranslationView,
+        inject::InjectView,
+        mixins::help_marker,
+        rikai::RikaiView,
+        settings::SettingsView,
+        translator::{TranslationView, TranslatorView},
     },
 };
 
@@ -51,13 +54,13 @@ pub struct App {
     show_metrics_window: bool,
     show_style_editor: bool,
     show_inject: bool,
+    show_translator: bool,
 
     settings: Settings,
     state: State,
     glossator: Glossator,
     translator: Translator,
     rikai: RikaiView,
-    inject: InjectView,
 }
 
 impl App {
@@ -77,12 +80,12 @@ impl App {
             show_metrics_window: false,
             show_style_editor: false,
             show_inject: false,
+            show_translator: false,
             settings,
             state: State::Completed,
             glossator,
             translator,
             rikai: RikaiView::new(),
-            inject: InjectView::new(),
         }
     }
 
@@ -224,6 +227,9 @@ impl App {
                 {
                     self.show_inject = true;
                 }
+                if ui.menu_item("Translator") {
+                    self.show_translator = true;
+                }
             }
         }
     }
@@ -293,7 +299,7 @@ impl App {
                     ui.tooltip(|| ui.text("Text does not require translation"));
                 }
                 if let Some(translation) = self.rikai.translation() {
-                    TranslationView::new(translation).show_usage(ui);
+                    TranslationView(translation).show_usage(ui);
                 }
             }
 
@@ -314,7 +320,6 @@ impl App {
         if self.show_imgui_demo {
             ui.show_demo_window(&mut self.show_imgui_demo);
         }
-
         if self.show_settings {
             self.show_settings(ctx, ui);
         }
@@ -326,6 +331,9 @@ impl App {
         }
         if self.show_inject {
             self.show_inject(ctx, ui);
+        }
+        if self.show_translator {
+            self.show_translator(ctx, ui);
         }
     }
 
@@ -343,11 +351,22 @@ impl App {
 
     fn show_inject(&mut self, ctx: &mut Context, ui: &mut Ui) {
         if let Some(_token) = ui.window("Inject").always_auto_resize(true).begin() {
-            self.inject.ui(ctx, ui, &mut self.settings);
+            InjectView.ui(ctx, ui, &mut self.settings);
             ui.separator();
             if ui.button_with_size("OK", [120.0, 0.0]) {
                 self.show_inject = false;
             }
+        }
+    }
+
+    fn show_translator(&mut self, ctx: &mut Context, ui: &mut Ui) {
+        if let Some(_token) = ui
+            .window("Translator")
+            .size_constraints([200.0, 100.0], [1000.0, 1000.0])
+            .opened(&mut self.show_translator)
+            .begin()
+        {
+            TranslatorView(&mut self.translator).ui(ui);
         }
     }
 

@@ -5,8 +5,8 @@ use thiserror::Error;
 use crate::settings::{Settings, TranslatorType};
 
 pub use self::{
-    chatgpt::{ChatGpt, ChatGptTranslation},
-    deepl::{DeepL, DeepLTranslation},
+    chatgpt::{ChatGptTranslation, ChatGptTranslator},
+    deepl::{DeepLTranslation, DeepLTranslator},
 };
 
 mod chatgpt;
@@ -22,22 +22,22 @@ pub enum Error {
 
 #[derive(Clone)]
 pub struct Translator {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
 }
-struct Shared {
-    state: Mutex<State>,
+pub(crate) struct Shared {
+    pub(crate) state: Mutex<State>,
 }
-enum State {
-    DeepL(DeepL),
-    ChatGpt(ChatGpt),
+pub(crate) enum State {
+    DeepL(DeepLTranslator),
+    ChatGpt(ChatGptTranslator),
 }
 impl Translator {
     pub fn new(settings: &Settings) -> Self {
         Self {
             shared: Arc::new(Shared {
                 state: Mutex::new(match settings.translator_type() {
-                    TranslatorType::DeepL => State::DeepL(DeepL::new(settings)),
-                    TranslatorType::ChatGpt => State::ChatGpt(ChatGpt::new(settings)),
+                    TranslatorType::DeepL => State::DeepL(DeepLTranslator::new(settings)),
+                    TranslatorType::ChatGpt => State::ChatGpt(ChatGptTranslator::new(settings)),
                 }),
             }),
         }

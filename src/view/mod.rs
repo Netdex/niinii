@@ -7,7 +7,7 @@ pub mod raw;
 pub mod rikai;
 pub mod settings;
 pub mod term;
-pub mod translation;
+pub mod translator;
 
 fn id<T>(x: &T) -> *const c_void {
     x as *const _ as *const _

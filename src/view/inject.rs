@@ -6,10 +6,6 @@ use crate::settings::Settings;
 #[derive(Debug)]
 pub struct InjectView;
 impl InjectView {
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn ui(&mut self, _ctx: &mut Context, ui: &Ui, settings: &mut Settings) {
         if CollapsingHeader::new("Remote Hook")
             .default_open(true)
