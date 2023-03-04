@@ -57,7 +57,7 @@ fn main() {
 unsafe fn write_blob(shader_name: &str, blob: &ID3DBlob) {
     let out_dir = env::var("OUT_DIR").unwrap();
     let data = slice::from_raw_parts(blob.GetBufferPointer().cast::<u8>(), blob.GetBufferSize());
-    let _ = fs::write(&format!("{}/{}", out_dir, shader_name), data)
+    let _ = fs::write(format!("{}/{}", out_dir, shader_name), data)
         .map_err(|e| panic!("Unable to write {} shader to out dir: {:?}", shader_name, e));
     blob.Release();
 }

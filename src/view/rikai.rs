@@ -4,12 +4,12 @@ use std::collections::{HashMap, HashSet};
 use ichiran::romanize::*;
 use imgui::*;
 
-use super::deepl::DeepLView;
 use super::mixins::*;
-use super::settings::{DisplayRubyText, Settings};
-use crate::backend::context::Context;
+use super::translation::TranslationView;
 use crate::gloss::Gloss;
-use crate::translation::Translation;
+use crate::renderer::context::Context;
+use crate::settings::{RubyTextType, Settings};
+use crate::translator::Translation;
 use crate::view::{raw::RawView, term::TermView};
 
 #[derive(Debug)]
@@ -125,7 +125,7 @@ impl RikaiView {
             !preview,
             preview,
             UnderlineMode::None,
-            if settings.display_ruby_text() == DisplayRubyText::None {
+            if settings.ruby_text_type() == RubyTextType::None {
                 RubyTextMode::None
             } else {
                 RubyTextMode::Pad
@@ -139,17 +139,15 @@ impl RikaiView {
         ui: &Ui,
         settings: &Settings,
         romanized: &Romanized,
-        ruby_text: DisplayRubyText,
+        ruby_text: RubyTextType,
         underline: UnderlineMode,
     ) -> bool {
         let term = romanized.term();
 
         let fg_text = match ruby_text {
-            DisplayRubyText::None => RubyTextMode::None,
-            DisplayRubyText::Furigana if term.text() != term.kana() => {
-                RubyTextMode::Text(term.kana())
-            }
-            DisplayRubyText::Romaji => RubyTextMode::Text(romanized.romaji()),
+            RubyTextType::None => RubyTextMode::None,
+            RubyTextType::Furigana if term.text() != term.kana() => RubyTextMode::Text(term.kana()),
+            RubyTextType::Romaji => RubyTextMode::Text(romanized.romaji()),
             _ => RubyTextMode::Pad,
         };
         let ul_hover = draw_kanji_text(
@@ -194,7 +192,7 @@ impl RikaiView {
                             ui,
                             settings,
                             rz,
-                            settings.display_ruby_text(),
+                            settings.ruby_text_type(),
                             if idx == romanized.len() - 1 {
                                 UnderlineMode::Normal
                             } else {
@@ -259,7 +257,7 @@ impl RikaiView {
                 }
                 ui.new_line();
                 if let Some(translation) = translation {
-                    DeepLView::new(translation).ui(ui);
+                    TranslationView::new(translation).ui(ui);
                 } else if *translation_pending {
                     ui.text_disabled("(waiting for translation...)")
                 }

@@ -8,9 +8,6 @@ mod lisp;
 pub mod pgdaemon;
 pub mod romanize;
 
-#[cfg(test)]
-mod fixture;
-
 use std::{
     collections::HashMap,
     ffi::OsStr,
@@ -225,4 +222,8 @@ impl Ichiran {
             )
         })
     }
+}
+#[cfg(test)]
+mod tests {
+    pub(crate) mod fixture;
 }

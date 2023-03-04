@@ -5,12 +5,12 @@ use ichiran::{
 };
 use thiserror::Error;
 
-use crate::view::settings::Settings;
+use crate::settings::Settings;
 
 const MAX_TEXT_LENGTH: usize = 512;
 
 #[derive(Error, Debug)]
-pub enum GlossError {
+pub enum Error {
     #[error(transparent)]
     Ichiran(#[from] IchiranError),
     #[error("Text too long ({length}/{MAX_TEXT_LENGTH} chars)")]
@@ -61,9 +61,9 @@ impl Glossator {
             }),
         }
     }
-    pub fn gloss(&self, text: &str, variants: u32) -> Result<Gloss, GlossError> {
+    pub fn gloss(&self, text: &str, variants: u32) -> Result<Gloss, Error> {
         if text.len() > MAX_TEXT_LENGTH {
-            return Err(GlossError::TextTooLong { length: text.len() });
+            return Err(Error::TextTooLong { length: text.len() });
         }
         let ichiran = &self.shared.ichiran;
 
@@ -72,8 +72,8 @@ impl Glossator {
         let mut jmdict_data = None;
 
         std::thread::scope(|s| {
-            s.spawn(|| root = Some(ichiran.romanize(&text, variants)));
-            s.spawn(|| kanji_info = Some(ichiran.kanji_from_str(&text)));
+            s.spawn(|| root = Some(ichiran.romanize(text, variants)));
+            s.spawn(|| kanji_info = Some(ichiran.kanji_from_str(text)));
             s.spawn(|| jmdict_data = Some(ichiran.jmdict_data()));
         });
 

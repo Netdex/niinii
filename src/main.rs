@@ -1,9 +1,9 @@
 #[cfg(windows)]
-use libniinii::backend::d3d11::D3D11Renderer;
+use libniinii::renderer::d3d11::D3D11Renderer;
 use libniinii::{
     app::App,
-    backend::{glow::GlowRenderer, renderer::Renderer},
-    view::settings::{Settings, SupportedRenderer},
+    renderer::{glow::GlowRenderer, Renderer},
+    settings::{RendererType, Settings},
 };
 
 fn main() -> std::io::Result<()> {
@@ -12,10 +12,10 @@ fn main() -> std::io::Result<()> {
     let settings = Settings::from_file();
 
     let mut app = App::new(settings);
-    let mut renderer: Box<dyn Renderer> = match app.settings().active_renderer() {
-        SupportedRenderer::Glow => Box::new(GlowRenderer::new(app.settings())),
+    let mut renderer: Box<dyn Renderer> = match app.settings().renderer_type() {
+        RendererType::Glow => Box::new(GlowRenderer::new(app.settings())),
         #[cfg(windows)]
-        SupportedRenderer::Direct3D11 => Box::new(D3D11Renderer::new(app.settings())),
+        RendererType::Direct3D11 => Box::new(D3D11Renderer::new(app.settings())),
     };
     renderer.main_loop(&mut app);
 

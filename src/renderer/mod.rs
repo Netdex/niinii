@@ -4,7 +4,12 @@ use glutin::window;
 use imgui_winit_support::WinitPlatform;
 
 use crate::clipboard;
-use crate::{app::App, view::settings::Settings};
+use crate::{app::App, settings::Settings};
+
+pub mod context;
+#[cfg(windows)]
+pub mod d3d11;
+pub mod glow;
 
 pub trait Renderer {
     fn main_loop(&mut self, _app: &mut App) {}

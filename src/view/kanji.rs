@@ -1,7 +1,7 @@
 use ichiran::kanji::Kanji;
 use imgui::*;
 
-use crate::backend::context::{Context, TextStyle};
+use crate::renderer::context::{Context, TextStyle};
 
 pub struct KanjiView<'a> {
     kanji: &'a Kanji,
@@ -22,7 +22,7 @@ impl<'a> KanjiView<'a> {
             if let Some(freq) = kanji.freq() {
                 ui.text(format!("#{}/2501 most common", freq));
             } else {
-                ui.text("Uncommon".to_string());
+                ui.text("Uncommon");
             }
             ui.same_line();
             ui.text(format!(

@@ -285,13 +285,13 @@ impl Conjugation {
     pub fn readok(&self) -> bool {
         self.readok
     }
-    /// Convert the via tree into a list of reverse root-to-leaf sequences,
+    /// Convert the via tree into a list of leaf-to-root sequences,
     /// representing all possible via paths to reach this conjugation.
     /// e.g.
     /// The tree with edges
     ///     [A -> B, B -> C, A -> D]
     /// is converted to the sequence
-    ///     [C -> B -> A, D -> a]
+    ///     [C -> B -> A, D -> A]
     pub fn flatten(&self) -> Vec<Vec<&Conjugation>> {
         fn chain<'a>(
             mut head: Vec<&'a Conjugation>,
@@ -368,8 +368,9 @@ impl Counter {
 
 #[cfg(test)]
 mod tests {
+    use crate::tests::fixture;
+
     use super::*;
-    use crate::fixture;
 
     #[test]
     fn test_pos_split() {

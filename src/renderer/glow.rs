@@ -9,8 +9,8 @@ use imgui_glow_renderer::AutoRenderer;
 use imgui_winit_support::WinitPlatform;
 
 use super::context::{Context, ContextFlags};
-use super::renderer::Renderer;
-use crate::{app::App, view::settings::Settings};
+use super::Renderer;
+use crate::{app::App, settings::Settings};
 
 pub type Window = glutin::WindowedContext<glutin::PossiblyCurrent>;
 
@@ -75,14 +75,14 @@ impl Renderer for GlowRenderer {
             glutin::event::Event::RedrawRequested(_) => {
                 unsafe { renderer.gl_context().clear(glow::COLOR_BUFFER_BIT) };
 
-                let mut ui = imgui.frame();
+                let ui = imgui.frame();
                 let mut run = true;
-                app.ui(ctx, &mut ui, &mut run);
+                app.ui(ctx, ui, &mut run);
                 if !run {
                     *control_flow = ControlFlow::Exit;
                 }
 
-                platform.prepare_render(&ui, window.window());
+                platform.prepare_render(ui, window.window());
                 let draw_data = imgui.render();
                 renderer.render(draw_data).unwrap();
 

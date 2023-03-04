@@ -1,7 +1,7 @@
 use imgui::*;
 
-use super::settings::Settings;
-use crate::backend::context::Context;
+use crate::renderer::context::Context;
+use crate::settings::Settings;
 
 #[derive(Debug)]
 pub struct InjectView;

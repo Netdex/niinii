@@ -3,11 +3,10 @@ use std::collections::HashMap;
 use ichiran::{kanji::Kanji, romanize::*, JmDictData};
 use imgui::*;
 
-use crate::backend::context::Context;
-
 use super::kanji::KanjiView;
 use super::mixins::*;
-use super::settings::Settings;
+use crate::renderer::context::Context;
+use crate::settings::Settings;
 
 pub struct TermView<'a> {
     jmdict_data: &'a JmDictData,
@@ -61,10 +60,10 @@ impl<'a> TermView<'a> {
                 ui.text("]");
                 ui.same_line();
                 // gloss
-                ui.text(&gloss.gloss().to_string());
+                ui.text(gloss.gloss());
                 // info
                 if let Some(info) = gloss.info() {
-                    ui.text(&format!("({})", info));
+                    ui.text(format!("({})", info));
                 }
             });
         }
@@ -104,7 +103,7 @@ impl<'a> TermView<'a> {
                         ui,
                         ctx,
                         &text,
-                        kanji != None,
+                        kanji.is_some(),
                         false,
                         false,
                         UnderlineMode::None,

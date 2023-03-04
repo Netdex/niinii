@@ -33,8 +33,8 @@ use wio::com::ComPtr;
 
 use super::context::Context;
 use super::context::ContextFlags;
-use super::renderer::Renderer;
-use crate::{app::App, view::settings::Settings};
+use super::Renderer;
+use crate::{app::App, settings::Settings};
 
 unsafe fn create_device(
     hwnd: HWND,
@@ -110,7 +110,7 @@ unsafe fn create_render_target(
         &mut back_buffer as *mut *mut _ as *mut *mut _,
     );
     device.CreateRenderTargetView(back_buffer.cast(), ptr::null_mut(), &mut main_rtv);
-    (&*back_buffer).Release();
+    (*back_buffer).Release();
     ComPtr::from_raw(main_rtv)
 }
 
@@ -314,17 +314,17 @@ impl Renderer for D3D11Renderer {
 
                     let now = std::time::Instant::now();
                     if ctx.update_fonts(imgui, platform.hidpi_factor()) {
-                        unsafe { renderer.rebuild_font_texture(&mut imgui.fonts()).unwrap() };
+                        unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
                         let elapsed = now.elapsed();
                         log::info!("rebuilt font atlas (took {:?})", elapsed);
                     }
-                    let mut ui = imgui.frame();
+                    let ui = imgui.frame();
                     let mut run = true;
-                    app.ui(ctx, &mut ui, &mut run);
+                    app.ui(ctx, ui, &mut run);
                     if !run {
                         *control_flow = ControlFlow::Exit;
                     }
-                    platform.prepare_render(&ui, window);
+                    platform.prepare_render(ui, window);
                     let draw_data = imgui.render();
                     renderer.render(draw_data).unwrap();
                     unsafe {

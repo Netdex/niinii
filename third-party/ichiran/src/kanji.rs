@@ -137,7 +137,7 @@ pub enum ReadingType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixture;
+    use crate::tests::fixture;
 
     #[test]
     fn test_match() {

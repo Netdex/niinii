@@ -4,10 +4,14 @@ use fancy_regex::Regex;
 use imgui::*;
 
 use crate::{
-    backend::context::{Context, ContextFlags},
-    gloss::{Gloss, GlossError, Glossator},
-    translation::{self, Translation},
-    view::{inject::InjectView, mixins::help_marker, rikai::RikaiView, settings::Settings},
+    gloss::{self, Gloss, Glossator},
+    renderer::context::{Context, ContextFlags},
+    settings::Settings,
+    translator::{self, Translation, Translator},
+    view::{
+        inject::InjectView, mixins::help_marker, rikai::RikaiView, settings::SettingsView,
+        translation::TranslationView,
+    },
 };
 
 const ERROR_MODAL_TITLE: &str = "Error";
@@ -15,15 +19,15 @@ const ERROR_MODAL_TITLE: &str = "Error";
 #[derive(thiserror::Error, Debug)]
 enum Error {
     #[error(transparent)]
-    Gloss(#[from] GlossError),
+    Gloss(#[from] gloss::Error),
     #[error(transparent)]
-    DeepL(#[from] deepl_api::Error),
+    Translation(#[from] translator::Error),
 }
 
 #[derive(Debug)]
 enum Message {
-    Gloss(Result<Gloss, GlossError>),
-    Translation(Result<Translation, deepl_api::Error>),
+    Gloss(Result<Gloss, gloss::Error>),
+    Translation(Result<Translation, translator::Error>),
 }
 
 #[derive(Debug)]
@@ -51,6 +55,7 @@ pub struct App {
     settings: Settings,
     state: State,
     glossator: Glossator,
+    translator: Translator,
     rikai: RikaiView,
     inject: InjectView,
 }
@@ -59,6 +64,7 @@ impl App {
     pub fn new(settings: Settings) -> Self {
         let (channel_tx, channel_rx) = mpsc::channel();
         let glossator = Glossator::new(&settings);
+        let translator = Translator::new(&settings);
         App {
             channel_tx,
             channel_rx,
@@ -74,6 +80,7 @@ impl App {
             settings,
             state: State::Completed,
             glossator,
+            translator,
             rikai: RikaiView::new(),
             inject: InjectView::new(),
         }
@@ -103,15 +110,15 @@ impl App {
 
     fn request_translation(&mut self, text: &str) {
         let channel_tx = self.channel_tx.clone();
+        let translator = &mut self.translator;
         let text = text.to_owned();
-        let deepl_api_key = self.settings.deepl_api_key.clone();
 
         self.rikai.set_translation_pending(true);
 
-        std::thread::spawn(move || {
-            let translation = translation::translate(&deepl_api_key, &text);
+        std::thread::spawn(enclose! { (translator) move || {
+            let translation = translator.translate(&text);
             let _ = channel_tx.send(Message::Translation(translation));
-        });
+        }});
     }
 
     fn transition(&mut self, ui: &Ui, state: State) {
@@ -212,10 +219,10 @@ impl App {
                 if ui.menu_item("ImGui Demo") {
                     self.show_imgui_demo = true;
                 }
-                if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT) {
-                    if ui.menu_item("Inject") {
-                        self.show_inject = true;
-                    }
+                if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
+                    && ui.menu_item("Inject")
+                {
+                    self.show_inject = true;
                 }
             }
         }
@@ -233,22 +240,6 @@ impl App {
                         ui.close_current_popup();
                     }
                 });
-        }
-    }
-
-    fn show_deepl_usage(&self, ui: &Ui) {
-        if let Some(Translation::DeepL { deepl_usage, .. }) = self.rikai.translation() {
-            ui.same_line();
-            let fraction = deepl_usage.character_count as f32 / deepl_usage.character_limit as f32;
-            ProgressBar::new(fraction)
-                .overlay_text(format!(
-                    "DeepL API usage: {}/{} ({:.2}%)",
-                    deepl_usage.character_count,
-                    deepl_usage.character_limit,
-                    fraction * 100.0
-                ))
-                .size([350.0, 0.0])
-                .build(ui);
         }
     }
 
@@ -301,7 +292,9 @@ impl App {
                 {
                     ui.tooltip(|| ui.text("Text does not require translation"));
                 }
-                self.show_deepl_usage(ui);
+                if let Some(translation) = self.rikai.translation() {
+                    TranslationView::new(translation).show_usage(ui);
+                }
             }
 
             self.rikai.ui(ctx, ui, &self.settings, &mut self.show_raw);
@@ -338,7 +331,7 @@ impl App {
 
     fn show_settings(&mut self, ctx: &mut Context, ui: &mut Ui) {
         if let Some(_token) = ui.window("Settings").always_auto_resize(true).begin() {
-            self.settings.ui(ctx, ui);
+            SettingsView(&mut self.settings).ui(ctx, ui);
             ui.separator();
             if ui.button_with_size("OK", [120.0, 0.0]) {
                 self.show_settings = false;

@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-use crate::pgdaemon::PostgresDaemon;
-
-use super::*;
+use crate::{pgdaemon::PostgresDaemon, Ichiran};
 
 pub fn ichiran() -> (Ichiran, PostgresDaemon) {
     let ichiran_path =

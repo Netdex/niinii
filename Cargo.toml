@@ -58,6 +58,7 @@ deepl-api = "0.3.1"
 dirs = "4.0.0"
 
 ichiran = { path = "third-party/ichiran" }
+openai-chat = { path = "third-party/openai-chat" }
 
 [target.'cfg(windows)'.dependencies]
 imgui-dx11-renderer = { path = "third-party/imgui-dx11-renderer" }
