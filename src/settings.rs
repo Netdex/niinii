@@ -43,6 +43,7 @@ pub struct Settings {
     pub auto_translate: bool,
     pub deepl_api_key: String,
     pub openai_api_key: String,
+    pub chatgpt_system_prompt: String,
 
     pub watch_clipboard: bool,
     pub show_manual_input: bool,
@@ -73,6 +74,8 @@ impl Default for Settings {
             auto_translate: false,
             deepl_api_key: Default::default(),
             openai_api_key: Default::default(),
+            chatgpt_system_prompt:
+                "You will translate the following visual novel script into English.".into(),
 
             watch_clipboard: true,
             show_manual_input: true,

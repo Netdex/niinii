@@ -1,5 +1,4 @@
-use std::sync::{Arc, Mutex};
-
+use enum_dispatch::enum_dispatch;
 use thiserror::Error;
 
 use crate::settings::{Settings, TranslatorType};
@@ -21,34 +20,27 @@ pub enum Error {
 }
 
 #[derive(Clone)]
-pub struct Translator {
-    pub(crate) shared: Arc<Shared>,
-}
-pub(crate) struct Shared {
-    pub(crate) state: Mutex<State>,
-}
-pub(crate) enum State {
+#[enum_dispatch]
+pub enum Translator {
     DeepL(DeepLTranslator),
     ChatGpt(ChatGptTranslator),
 }
 impl Translator {
     pub fn new(settings: &Settings) -> Self {
-        Self {
-            shared: Arc::new(Shared {
-                state: Mutex::new(match settings.translator_type() {
-                    TranslatorType::DeepL => State::DeepL(DeepLTranslator::new(settings)),
-                    TranslatorType::ChatGpt => State::ChatGpt(ChatGptTranslator::new(settings)),
-                }),
-            }),
+        match settings.translator_type() {
+            TranslatorType::DeepL => Translator::DeepL(DeepLTranslator::new(&settings)),
+            TranslatorType::ChatGpt => Translator::ChatGpt(ChatGptTranslator::new(&settings)),
         }
     }
-    pub fn translate(&self, text: &str) -> Result<Translation, Error> {
-        let mut state = self.shared.state.lock().unwrap();
-        match &mut *state {
-            State::DeepL(deepl) => Ok(Translation::DeepL(deepl.translate(text)?)),
-            State::ChatGpt(chatgpt) => Ok(Translation::ChatGpt(chatgpt.translate(text)?)),
-        }
-    }
+}
+
+#[enum_dispatch(Translator)]
+pub trait Translate {
+    fn translate(
+        &mut self,
+        settings: &Settings,
+        text: impl Into<String>,
+    ) -> Result<Translation, Error>;
 }
 
 #[derive(Debug)]

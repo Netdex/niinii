@@ -1,5 +1,6 @@
 use std::sync::mpsc;
 
+use enclose::enclose;
 use fancy_regex::Regex;
 use imgui::*;
 
@@ -7,7 +8,7 @@ use crate::{
     gloss::{self, Gloss, Glossator},
     renderer::context::{Context, ContextFlags},
     settings::Settings,
-    translator::{self, Translation, Translator},
+    translator::{self, Translate, Translation, Translator},
     view::{
         inject::InjectView,
         mixins::help_marker,
@@ -111,17 +112,24 @@ impl App {
         }
     }
 
-    fn request_translation(&mut self, text: &str) {
-        let channel_tx = self.channel_tx.clone();
-        let translator = &mut self.translator;
-        let text = text.to_owned();
+    fn request_translation(&mut self, text: impl Into<String>) {
+        let Self {
+            translator,
+            settings,
+            channel_tx,
+            ..
+        } = self;
 
         self.rikai.set_translation_pending(true);
 
-        std::thread::spawn(enclose! { (translator) move || {
-            let translation = translator.translate(&text);
-            let _ = channel_tx.send(Message::Translation(translation));
-        }});
+        let text = text.into();
+
+        std::thread::spawn(
+            enclose! { (mut translator, mut settings, channel_tx) move || {
+                let translation = translator.translate(&mut settings, text);
+                let _ = channel_tx.send(Message::Translation(translation));
+            }},
+        );
     }
 
     fn transition(&mut self, ui: &Ui, state: State) {
@@ -359,14 +367,14 @@ impl App {
         }
     }
 
-    fn show_translator(&mut self, ctx: &mut Context, ui: &mut Ui) {
+    fn show_translator(&mut self, _ctx: &mut Context, ui: &mut Ui) {
         if let Some(_token) = ui
             .window("Translator")
             .size_constraints([200.0, 100.0], [1000.0, 1000.0])
             .opened(&mut self.show_translator)
             .begin()
         {
-            TranslatorView(&mut self.translator).ui(ui);
+            TranslatorView(&mut self.translator, &mut self.settings).ui(ui);
         }
     }
 

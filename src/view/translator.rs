@@ -1,40 +1,61 @@
 use imgui::*;
 
-use crate::translator::{
-    ChatGptTranslation, ChatGptTranslator, DeepLTranslation, State, Translation, Translator,
+use crate::{
+    settings::Settings,
+    translator::{
+        ChatGptTranslation, ChatGptTranslator, DeepLTranslation, Translation, Translator,
+    },
 };
 
 use super::mixins::stroke_text;
 
-pub struct ChatGptTranslatorView<'a>(pub &'a mut ChatGptTranslator);
+pub struct ChatGptTranslatorView<'a>(pub &'a mut ChatGptTranslator, pub &'a mut Settings);
 impl<'a> ChatGptTranslatorView<'a> {
     pub fn ui(&mut self, ui: &Ui) {
-        let translator = &mut self.0;
-        if let Some(_t) = ui.begin_table_header_with_flags(
-            "context",
-            [
-                TableColumnSetup::new("Role"),
-                TableColumnSetup::new("Message"),
-            ],
-            TableFlags::SIZING_STRETCH_PROP,
-        ) {
-            for message in &translator.conversation.context {
+        let Self(translator, settings) = self;
+        let mut state = translator.shared.state.lock().unwrap();
+        if CollapsingHeader::new("ChatGPT")
+            .flags(TreeNodeFlags::LEAF)
+            .build(ui)
+        {
+            if ui.button("Clear context") {
+                state.context.clear();
+            }
+            if let Some(_t) = ui.begin_table_header_with_flags(
+                "context",
+                [
+                    TableColumnSetup::new("Role"),
+                    TableColumnSetup::new("Message"),
+                ],
+                TableFlags::SIZING_STRETCH_PROP,
+            ) {
                 ui.table_next_column();
-                ui.text(format!("{:?}", message.role));
+                ui.text("System");
                 ui.table_next_column();
-                ui.text_wrapped(format!("{}", message.content));
+                ui.input_text_multiline(
+                    "##",
+                    &mut settings.chatgpt_system_prompt,
+                    [ui.content_region_avail()[0], 75.0],
+                )
+                .build();
+                for message in &state.context {
+                    ui.table_next_column();
+                    ui.text(format!("{:?}", message.role));
+                    ui.table_next_column();
+                    ui.text_wrapped(format!("{}", message.content));
+                }
             }
         }
     }
 }
 
-pub struct TranslatorView<'a>(pub &'a mut Translator);
+pub struct TranslatorView<'a>(pub &'a mut Translator, pub &'a mut Settings);
 impl<'a> TranslatorView<'a> {
     pub fn ui(&mut self, ui: &Ui) {
-        let mut state = self.0.shared.state.lock().unwrap();
-        match &mut *state {
-            State::DeepL(_) => {}
-            State::ChatGpt(translator) => ChatGptTranslatorView(translator).ui(ui),
+        let Self(translator, settings) = self;
+        match translator {
+            Translator::DeepL(_) => {}
+            Translator::ChatGpt(translator) => ChatGptTranslatorView(translator, settings).ui(ui),
         }
     }
 }
