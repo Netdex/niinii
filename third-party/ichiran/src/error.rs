@@ -13,7 +13,7 @@ pub enum IchiranError {
     #[error("Parse Error:\n{0}")]
     Parsing(String),
     #[error("CSV Error: {0}")]
-    CsvError(#[from] csv::Error),
+    CsvError(#[from] csv_async::Error),
     #[error("Lisp Error:\n{0}")]
     KetosError(String),
 }

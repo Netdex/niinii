@@ -1,8 +1,9 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use thiserror::Error;
 
 pub use protocol::*;
+use tokio::sync::Mutex;
 
 mod protocol;
 
@@ -25,7 +26,7 @@ struct Shared {
     state: Mutex<State>,
 }
 struct State {
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
 }
 
 impl Client {
@@ -35,21 +36,23 @@ impl Client {
             shared: Arc::new(Shared {
                 token,
                 state: Mutex::new(State {
-                    client: reqwest::blocking::Client::new(),
+                    client: reqwest::Client::new(),
                 }),
             }),
         }
     }
-    pub fn completions(&self, request: &Request) -> Result<Completion, Error> {
+    pub async fn completions(&self, request: &Request) -> Result<Completion, Error> {
         assert!(!request.stream.unwrap_or(false), "streaming not supported");
         let Shared { token, state } = &*self.shared;
-        let State { client } = &mut *state.lock().unwrap();
+        let State { client } = &mut *state.lock().await;
         let response: Response = client
             .post("https://api.openai.com/v1/chat/completions")
             .bearer_auth(token)
             .json(request)
-            .send()?
-            .json()?;
+            .send()
+            .await?
+            .json()
+            .await?;
         match response {
             Response::Completion(completion) => Ok(completion),
             Response::Error { error } => Err(Error::Response(error)),
@@ -62,8 +65,8 @@ mod tests {
     mod fixture;
     use super::*;
 
-    #[test]
-    fn test_completions() {
+    #[tokio::test]
+    async fn test_completions() {
         let client = fixture::client();
         let request = Request {
             messages: vec![Message {
@@ -72,7 +75,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let response = client.completions(&request).unwrap();
+        let response = client.completions(&request).await.unwrap();
         let content = &response.choices.first().unwrap().message.content;
         assert!(content.contains("Ottawa"));
     }

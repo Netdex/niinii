@@ -1,6 +1,8 @@
 use super::IchiranError;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
+use tokio::fs::File;
+use tokio_stream::StreamExt;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KwPos {
@@ -15,13 +17,15 @@ pub struct JmDictData {
     pub kwpos_by_kw: HashMap<String, KwPos>,
 }
 impl JmDictData {
-    pub fn new(jmdict_path: &Path) -> Result<Self, IchiranError> {
+    pub async fn new(jmdict_path: &Path) -> Result<Self, IchiranError> {
         let mut kwpos_by_kw: HashMap<String, KwPos> = HashMap::new();
 
-        let mut kwpos_rdr = csv::ReaderBuilder::new()
+        let mut kwpos_rdr = csv_async::AsyncReaderBuilder::new()
             .delimiter(b'\t')
-            .from_path(jmdict_path.join("kwpos.csv"))?;
-        for result in kwpos_rdr.deserialize() {
+            .create_deserializer(File::open(jmdict_path.join("kwpos.csv")).await?);
+
+        let mut records = kwpos_rdr.deserialize::<KwPos>();
+        while let Some(result) = records.next().await {
             let record: KwPos = result?;
             kwpos_by_kw.insert(record.kw.clone(), record);
         }

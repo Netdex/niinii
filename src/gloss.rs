@@ -37,9 +37,9 @@ struct Shared {
     _pg_daemon: Option<PostgresDaemon>,
 }
 impl Glossator {
-    pub fn new(settings: &Settings) -> Self {
+    pub async fn new(settings: &Settings) -> Self {
         let ichiran = Ichiran::new(settings.ichiran_path.clone());
-        let pg_daemon = match ichiran.conn_params() {
+        let pg_daemon = match ichiran.conn_params().await {
             Ok(conn_params) => {
                 let pg_daemon = PostgresDaemon::new(
                     &settings.postgres_path,
@@ -61,25 +61,18 @@ impl Glossator {
             }),
         }
     }
-    pub fn gloss(&self, text: &str, variants: u32) -> Result<Gloss, Error> {
+    pub async fn gloss(&self, text: &str, variants: u32) -> Result<Gloss, Error> {
         if text.len() > MAX_TEXT_LENGTH {
             return Err(Error::TextTooLong { length: text.len() });
         }
         let ichiran = &self.shared.ichiran;
 
-        let mut root = None;
-        let mut kanji_info = None;
-        let mut jmdict_data = None;
+        let (root, kanji_info, jmdict_data) = tokio::try_join!(
+            ichiran.romanize(text, variants),
+            ichiran.kanji_from_str(text),
+            ichiran.jmdict_data()
+        )?;
 
-        std::thread::scope(|s| {
-            s.spawn(|| root = Some(ichiran.romanize(text, variants)));
-            s.spawn(|| kanji_info = Some(ichiran.kanji_from_str(text)));
-            s.spawn(|| jmdict_data = Some(ichiran.jmdict_data()));
-        });
-
-        let root = root.unwrap()?;
-        let kanji_info = kanji_info.unwrap()?;
-        let jmdict_data = jmdict_data.unwrap()?;
         let translatable = !root.is_flat();
 
         Ok(Gloss {

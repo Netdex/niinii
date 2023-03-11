@@ -105,7 +105,7 @@ impl Renderer {
             let (blend_state, rasterizer_state, depth_stencil_state) =
                 Self::create_device_objects(&device)?;
             let (font_resource_view, font_sampler) =
-                Self::create_font_texture(&mut im_ctx.fonts(), &device)?;
+                Self::create_font_texture(im_ctx.fonts(), &device)?;
             let vertex_buffer = Self::create_vertex_buffer(&device, 0)?;
             let index_buffer = Self::create_index_buffer(&device, 0)?;
             let context = {

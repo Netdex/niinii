@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
 use crate::settings::Settings;
 
 use super::{Error, Translate, Translation};
@@ -27,11 +29,12 @@ impl DeepLTranslator {
         }
     }
 }
+#[async_trait]
 impl Translate for DeepLTranslator {
-    fn translate(
+    async fn translate(
         &mut self,
         _settings: &Settings,
-        text: impl Into<String>,
+        text: impl 'async_trait + Into<String> + Send,
     ) -> Result<Translation, Error> {
         let deepl = &self.shared.deepl;
         let text = text.into();

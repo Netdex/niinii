@@ -1,9 +1,8 @@
-use std::{
-    collections::VecDeque,
-    sync::{Arc, Mutex, RwLock},
-};
+use std::{collections::VecDeque, sync::Arc};
+use tokio::sync::Mutex;
 
-use openai_chat::{Client, Completion, Message, Request, Role};
+use async_trait::async_trait;
+use openai_chat::{Client, Message, Request, Role};
 
 use crate::settings::Settings;
 
@@ -33,14 +32,15 @@ impl ChatGptTranslator {
         }
     }
 }
+#[async_trait]
 impl Translate for ChatGptTranslator {
-    fn translate(
+    async fn translate(
         &mut self,
         settings: &Settings,
-        text: impl Into<String>,
+        text: impl 'async_trait + Into<String> + Send,
     ) -> Result<Translation, Error> {
         let request = {
-            let State { context } = &mut *self.shared.state.lock().unwrap();
+            let State { context } = &mut *self.shared.state.lock().await;
             // TODO: experiment with summarizing context
             loop {
                 let estimated_tokens: u32 = context.iter().map(|m| m.estimate_tokens()).sum();
@@ -66,11 +66,11 @@ impl Translate for ChatGptTranslator {
             }
         };
 
-        // do not hold lock across blocking I/O
-        let completion = self.shared.client.completions(&request)?;
+        // do not hold lock across I/O
+        let completion = self.shared.client.completions(&request).await?;
         let response = &completion.choices.first().unwrap().message;
         {
-            let State { context, .. } = &mut *self.shared.state.lock().unwrap();
+            let State { context, .. } = &mut *self.shared.state.lock().await;
             context.push_back(response.clone());
         }
         let content = &completion.choices.first().unwrap().message.content;

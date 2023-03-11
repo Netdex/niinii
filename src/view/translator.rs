@@ -13,7 +13,7 @@ pub struct ChatGptTranslatorView<'a>(pub &'a mut ChatGptTranslator, pub &'a mut 
 impl<'a> ChatGptTranslatorView<'a> {
     pub fn ui(&mut self, ui: &Ui) {
         let Self(translator, settings) = self;
-        let mut state = translator.shared.state.lock().unwrap();
+        let mut state = translator.shared.state.blocking_lock();
         if ui.button("Clear context") {
             state.context.clear();
         }
@@ -38,7 +38,7 @@ impl<'a> ChatGptTranslatorView<'a> {
                 ui.table_next_column();
                 ui.text(format!("{:?}", message.role));
                 ui.table_next_column();
-                ui.text_wrapped(format!("{}", message.content));
+                ui.text_wrapped(&message.content);
             }
         }
     }

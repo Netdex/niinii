@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use thiserror::Error;
 
@@ -28,18 +29,19 @@ pub enum Translator {
 impl Translator {
     pub fn new(settings: &Settings) -> Self {
         match settings.translator_type() {
-            TranslatorType::DeepL => Translator::DeepL(DeepLTranslator::new(&settings)),
-            TranslatorType::ChatGpt => Translator::ChatGpt(ChatGptTranslator::new(&settings)),
+            TranslatorType::DeepL => Translator::DeepL(DeepLTranslator::new(settings)),
+            TranslatorType::ChatGpt => Translator::ChatGpt(ChatGptTranslator::new(settings)),
         }
     }
 }
 
+#[async_trait]
 #[enum_dispatch(Translator)]
 pub trait Translate {
-    fn translate(
+    async fn translate(
         &mut self,
         settings: &Settings,
-        text: impl Into<String>,
+        text: impl 'async_trait + Into<String> + Send,
     ) -> Result<Translation, Error>;
 }
 

@@ -13,8 +13,7 @@ use std::{
     ffi::OsStr,
     io::{self, ErrorKind},
     path::{Path, PathBuf},
-    process::Command,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use lru::LruCache;
@@ -25,6 +24,7 @@ pub use jmdict_data::JmDictData;
 use kanji::Kanji;
 use lisp::*;
 use romanize::Root;
+use tokio::{process::Command, sync::Mutex};
 
 #[derive(Debug)]
 pub struct ConnParams {
@@ -41,7 +41,7 @@ pub struct Ichiran {
 }
 struct Shared {
     path: PathBuf,
-    state: Mutex<State>,
+    state: Mutex<State>, // using async mutex because i'm lazy \(^o^)/
 }
 struct State {
     kanji_cache: LruCache<char, Kanji>,
@@ -61,37 +61,25 @@ impl Ichiran {
         }
     }
 
-    pub fn romanize(&self, text: impl AsRef<str>, limit: u32) -> Result<Root, IchiranError> {
+    pub async fn romanize(&self, text: impl AsRef<str>, limit: u32) -> Result<Root, IchiranError> {
         assert!(limit > 0);
         let text = text.as_ref();
 
-        let working_dir = self.working_dir()?;
-        let output = Command::new(&self.shared.path)
-            .current_dir(working_dir)
-            .arg("-e")
-            .arg(format!(
+        let output = self
+            .ichiran_eval(format!(
                 r#"(jsown:to-json (ichiran:romanize* "{}" :limit {}))"#,
                 lisp_escape_string(text),
                 limit
             ))
-            .output()?;
+            .await?;
 
-        if output.status.success() {
-            let output = String::from_utf8(output.stdout).unwrap();
-            let output = lisp_interpret::<String>(&output)?;
-            // log::trace!("{}", output);
-            let root: Root = serde_json::from_str(&output)?;
-            Ok(root)
-        } else {
-            Err(IchiranError::Failure {
-                status: output.status,
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            })
-        }
+        let output = lisp_interpret::<String>(&output)?;
+        let root: Root = serde_json::from_str(&output)?;
+        Ok(root)
     }
 
-    pub fn kanji(&self, chars: &[char]) -> Result<HashMap<char, Kanji>, IchiranError> {
-        let mut state = self.shared.state.lock().unwrap();
+    pub async fn kanji(&self, chars: &[char]) -> Result<HashMap<char, Kanji>, IchiranError> {
+        let mut state = self.shared.state.lock().await;
 
         let mut kanji_info: HashMap<char, Kanji> = HashMap::new();
         let mut commands: Vec<String> = vec![];
@@ -114,7 +102,7 @@ impl Ichiran {
         // this is what happens when you don't know lisp
         let expr = format!("(list {})", commands.join(" "));
 
-        let output = self.ichiran_eval(expr)?;
+        let output = self.ichiran_eval(expr).await?;
         let output = format!("'{}", output); // add an apostrophe to turn it into a list
         let output: Vec<String> = lisp_interpret(&output)?;
 
@@ -130,7 +118,7 @@ impl Ichiran {
         Ok(kanji_info)
     }
 
-    pub fn kanji_from_str(
+    pub async fn kanji_from_str(
         &self,
         text: impl AsRef<str>,
     ) -> Result<HashMap<char, Kanji>, IchiranError> {
@@ -138,25 +126,28 @@ impl Ichiran {
         let mut uniq: Vec<char> = text.chars().filter(is_kanji).collect();
         uniq.sort_unstable();
         uniq.dedup();
-        self.kanji(&uniq)
+        self.kanji(&uniq).await
     }
 
-    pub fn jmdict_data(&self) -> Result<JmDictData, IchiranError> {
-        let mut state = self.shared.state.lock().unwrap();
+    pub async fn jmdict_data(&self) -> Result<JmDictData, IchiranError> {
+        let mut state = self.shared.state.lock().await;
         if let Some(jmdict) = &state.jmdict {
             return Ok(jmdict.clone());
         }
 
-        let jmdict = JmDictData::new(&self.jmdict_path()?);
+        let jmdict_path = &self.jmdict_path().await?;
+        let jmdict = JmDictData::new(jmdict_path).await;
         if let Ok(jmdict) = &jmdict {
             state.jmdict.replace(jmdict.clone());
         }
         jmdict
     }
 
-    fn jmdict_path(&self) -> Result<PathBuf, IchiranError> {
+    async fn jmdict_path(&self) -> Result<PathBuf, IchiranError> {
         let working_dir = self.working_dir()?;
-        let jmdict_path = self.ichiran_eval(r#"(format t "~d" ichiran/dict::*jmdict-data*)"#)?;
+        let jmdict_path = self
+            .ichiran_eval(r#"(format t "~d" ichiran/dict::*jmdict-data*)"#)
+            .await?;
         let jmdict_path = jmdict_path
             .lines()
             .next()
@@ -164,9 +155,10 @@ impl Ichiran {
         Ok(working_dir.join(jmdict_path))
     }
 
-    pub fn conn_params(&self) -> Result<ConnParams, IchiranError> {
-        let conn_params =
-            self.ichiran_eval(r#"(format t "~{~a~^,~}" ichiran/conn::*connection*)"#)?;
+    pub async fn conn_params(&self) -> Result<ConnParams, IchiranError> {
+        let conn_params = self
+            .ichiran_eval(r#"(format t "~{~a~^,~}" ichiran/conn::*connection*)"#)
+            .await?;
         let parse_error = || IchiranError::Parsing(conn_params.clone());
 
         let mut conn_params = conn_params
@@ -196,13 +188,14 @@ impl Ichiran {
     }
 
     /// Evaluate the expression with ichiran and return the raw output.
-    fn ichiran_eval(&self, expr: impl AsRef<OsStr>) -> Result<String, IchiranError> {
+    async fn ichiran_eval(&self, expr: impl AsRef<OsStr>) -> Result<String, IchiranError> {
         let working_dir = self.working_dir()?;
         let output = Command::new(&self.shared.path)
             .current_dir(working_dir)
             .arg("-e")
             .arg(expr)
-            .output()?;
+            .output()
+            .await?;
 
         if output.status.success() {
             Ok(String::from_utf8(output.stdout).unwrap())

@@ -1,8 +1,7 @@
-use std::sync::mpsc;
-
 use enclose::enclose;
 use fancy_regex::Regex;
 use imgui::*;
+use tokio::sync::mpsc;
 
 use crate::{
     gloss::{self, Gloss, Glossator},
@@ -42,8 +41,9 @@ enum State {
 }
 
 pub struct App {
-    channel_tx: mpsc::Sender<Message>,
-    channel_rx: mpsc::Receiver<Message>,
+    runtime: tokio::runtime::Runtime,
+    channel_tx: mpsc::UnboundedSender<Message>,
+    channel_rx: mpsc::UnboundedReceiver<Message>,
 
     input_text: String,
     last_clipboard: String,
@@ -66,10 +66,17 @@ pub struct App {
 
 impl App {
     pub fn new(settings: Settings) -> Self {
-        let (channel_tx, channel_rx) = mpsc::channel();
-        let glossator = Glossator::new(&settings);
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let (channel_tx, channel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let glossator = runtime.block_on(Glossator::new(&settings));
         let translator = Translator::new(&settings);
+
         App {
+            runtime,
             channel_tx,
             channel_rx,
             input_text: "".into(),
@@ -91,8 +98,11 @@ impl App {
     }
 
     fn request_gloss(&mut self, ui: &Ui, text: &str) {
-        let channel_tx = self.channel_tx.clone();
-        let glossator = &self.glossator;
+        let Self {
+            channel_tx,
+            glossator,
+            ..
+        } = self;
         let regex = Regex::new(&self.settings.regex_match);
         match regex {
             Ok(regex) => {
@@ -103,10 +113,11 @@ impl App {
 
                 self.rikai.set_text(text.clone());
 
-                std::thread::spawn(enclose! { (glossator) move || {
-                    let gloss = glossator.gloss(&text, variants);
-                    let _ = channel_tx.send(Message::Gloss(gloss));
-                }});
+                self.runtime
+                    .spawn(enclose! { (channel_tx, glossator) async move {
+                        let gloss = glossator.gloss(&text, variants).await;
+                        let _ = channel_tx.send(Message::Gloss(gloss));
+                    }});
             }
             Err(err) => self.transition(ui, State::Error(Error::Gloss(err.into()))),
         }
@@ -124,9 +135,9 @@ impl App {
 
         let text = text.into();
 
-        std::thread::spawn(
-            enclose! { (mut translator, mut settings, channel_tx) move || {
-                let translation = translator.translate(&mut settings, text);
+        self.runtime.spawn(
+            enclose! { (mut translator, mut settings, channel_tx) async move {
+                let translation = translator.translate(&settings, text).await;
                 let _ = channel_tx.send(Message::Translation(translation));
             }},
         );
@@ -141,34 +152,32 @@ impl App {
     }
 
     fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
-        match self.channel_rx.try_recv() {
-            Ok(Message::Gloss(Ok(gloss))) => {
-                if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
-                    ctx.add_unknown_glyphs_from_root(&gloss.root);
+        while let Ok(message) = self.channel_rx.try_recv() {
+            match message {
+                Message::Gloss(Ok(gloss)) => {
+                    if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
+                        ctx.add_unknown_glyphs_from_root(&gloss.root);
+                    }
+                    let should_translate = self.settings.auto_translate && gloss.translatable;
+                    let text = gloss.original_text.clone();
+                    self.rikai.set_gloss(gloss);
+                    if should_translate {
+                        self.request_translation(&text);
+                    } else {
+                        self.transition(ui, State::Completed);
+                        self.rikai.set_translation(None);
+                    }
                 }
-                let should_translate = self.settings.auto_translate && gloss.translatable;
-                let text = gloss.original_text.clone();
-                self.rikai.set_gloss(gloss);
-                if should_translate {
-                    self.request_translation(&text);
-                } else {
-                    self.transition(ui, State::Completed);
-                    self.rikai.set_translation(None);
+                Message::Translation(Ok(translation)) => {
+                    self.rikai.set_translation(Some(translation));
+                    self.transition(ui, State::Completed)
                 }
-            }
-            Ok(Message::Translation(Ok(translation))) => {
-                self.rikai.set_translation(Some(translation));
-                self.transition(ui, State::Completed)
-            }
-            Ok(Message::Gloss(Err(err))) => {
-                self.transition(ui, State::Error(err.into()));
-            }
-            Ok(Message::Translation(Err(err))) => {
-                self.transition(ui, State::Error(err.into()));
-            }
-            Err(mpsc::TryRecvError::Empty) => {}
-            x => {
-                log::error!("unhandled message: {:?}", x);
+                Message::Gloss(Err(err)) => {
+                    self.transition(ui, State::Error(err.into()));
+                }
+                Message::Translation(Err(err)) => {
+                    self.transition(ui, State::Error(err.into()));
+                }
             }
         }
 

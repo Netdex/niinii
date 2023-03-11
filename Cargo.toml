@@ -27,6 +27,11 @@ build = "build.rs"
 # hudhook = { git = "https://github.com/veeenu/hudhook.git" }
 
 [dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures = "0.3"
+async-trait = "0.1"
+
 imgui = { version = "0.10.0", features = ["tables-api"] }
 imgui-winit-support = { version = "0.10.0" }
 clipboard = "0.5"

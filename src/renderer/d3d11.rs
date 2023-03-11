@@ -149,6 +149,7 @@ impl Renderer for D3D11Renderer {
                     platform
                         .prepare_frame(io, window)
                         .expect("failed to start frame");
+                    window.request_redraw();
                 }
                 Event::RedrawRequested(_) => {
                     unsafe {
