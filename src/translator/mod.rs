@@ -46,6 +46,7 @@ pub trait Translate {
 }
 
 #[derive(Debug)]
+#[enum_dispatch]
 pub enum Translation {
     DeepL(DeepLTranslation),
     ChatGpt(ChatGptTranslation),

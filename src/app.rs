@@ -316,7 +316,7 @@ impl App {
                     ui.tooltip(|| ui.text("Text does not require translation"));
                 }
                 if let Some(translation) = self.rikai.translation() {
-                    TranslationView(translation).show_usage(ui);
+                    translation.show_usage(ui);
                 }
             }
 
@@ -383,7 +383,7 @@ impl App {
             .opened(&mut self.show_translator)
             .begin()
         {
-            TranslatorView(&mut self.translator, &mut self.settings).ui(ui);
+            self.translator.ui(ui, &mut self.settings);
         }
     }
 

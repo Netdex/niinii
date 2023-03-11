@@ -257,7 +257,7 @@ impl RikaiView {
                 }
                 ui.new_line();
                 if let Some(translation) = translation {
-                    TranslationView(translation).ui(ui);
+                    translation.ui(ui);
                 } else if *translation_pending {
                     ui.text_disabled("(waiting for translation...)")
                 }
