@@ -29,7 +29,7 @@ pub enum Translator {
 impl Translator {
     pub fn new(settings: &Settings) -> Self {
         match settings.translator_type() {
-            TranslatorType::DeepL => Translator::DeepL(DeepLTranslator::new(settings)),
+            TranslatorType::DeepL => Translator::DeepL(DeepLTranslator),
             TranslatorType::ChatGpt => Translator::ChatGpt(ChatGptTranslator::new(settings)),
         }
     }

@@ -1,7 +1,8 @@
 use std::{
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
+    path::{Path, PathBuf}, process::Stdio,
 };
+
+use tokio::process::{Command, Child};
 
 use crate::{
     job::{self, JobObject},
@@ -11,7 +12,7 @@ use crate::{
 pub struct PostgresDaemon {
     pg_bin_dir: PathBuf,
     data_path: PathBuf,
-    pg_proc: Result<std::process::Child, std::io::Error>,
+    pg_proc: Result<Child, std::io::Error>,
     _job_obj: Option<JobObject>,
     silent: bool,
 }
@@ -25,6 +26,7 @@ impl PostgresDaemon {
         let pg_bin_dir = pg_bin_dir.into();
         let data_path = data_path.into();
 
+        // TODO: consider using kill_on_drop
         let job_obj = job::setup();
         log::info!(
             "starting pg daemon in {:?} at {:?}",
@@ -45,7 +47,7 @@ impl PostgresDaemon {
 
         match &proc {
             Ok(proc) => {
-                log::info!("started pg daemon w/ pid {}", proc.id());
+                log::info!("started pg daemon w/ pid {:?}", proc.id());
             }
             Err(err) => {
                 log::warn!("failed to start pg daemon: {}", err)
@@ -72,7 +74,7 @@ impl Drop for PostgresDaemon {
             Ok(pg_proc) => match pg_proc.try_wait() {
                 Ok(Some(status)) => log::warn!("pg daemon already exited with: {}", status),
                 Ok(None) => {
-                    log::info!("stopping pg daemon w/ pid {}", pg_proc.id());
+                    log::info!("stopping pg daemon w/ pid {:?}", pg_proc.id());
                     let pgctl_bin_path = Self::pg_bin_path(&self.pg_bin_dir, "pg_ctl");
 
                     let mut pgctl_proc = Command::new(pgctl_bin_path);
