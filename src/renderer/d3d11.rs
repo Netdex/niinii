@@ -36,6 +36,205 @@ use super::context::ContextFlags;
 use super::Renderer;
 use crate::{app::App, settings::Settings};
 
+pub struct D3D11Renderer {
+    shared: Rc<Shared>,
+}
+struct Shared {
+    inner: RefCell<Inner>,
+    event_loop: Cell<Option<EventLoop<()>>>,
+}
+struct Inner {
+    window: winit::window::Window,
+    platform: WinitPlatform,
+    imgui: imgui::Context,
+    ctx: Context,
+    renderer: imgui_dx11_renderer::Renderer,
+    context: ComPtr<ID3D11DeviceContext>,
+    main_rtv: ComPtr<ID3D11RenderTargetView>,
+    swapchain: ComPtr<IDXGISwapChain>,
+    device: ComPtr<ID3D11Device>,
+    mousellhook: Option<HHOOK>,
+    last_want_capture_mouse: bool,
+}
+impl D3D11Renderer {
+    pub fn new(settings: &Settings) -> Self {
+        let event_loop = EventLoop::new();
+        let window = Self::create_window_builder(settings)
+            .build(&event_loop)
+            .unwrap();
+
+        let hwnd = window.hwnd();
+
+        let (swapchain, device, context) = unsafe { create_device(hwnd as _) }.unwrap();
+        let main_rtv = unsafe { create_render_target(&swapchain, &device) };
+
+        let mut imgui = imgui::Context::create();
+        Self::configure_imgui(&mut imgui, settings);
+        let platform = Self::create_platform(&mut imgui, &window);
+        let mut ctx = Context::new(ContextFlags::SUPPORTS_ATLAS_UPDATE);
+        ctx.update_fonts(&mut imgui, platform.hidpi_factor());
+
+        let renderer =
+            unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
+
+        let mut mousellhook: Option<HHOOK> = None;
+        if settings.overlay_mode {
+            unsafe {
+                let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
+                winuser::SetWindowLongA(
+                    hwnd as *mut _,
+                    winuser::GWL_EXSTYLE,
+                    (style as u32 | winuser::WS_EX_LAYERED) as i32,
+                );
+                mousellhook.replace(SetWindowsHookExA(
+                    WH_MOUSE_LL,
+                    Some(low_level_mouse_proc),
+                    ptr::null_mut(),
+                    0,
+                ));
+            }
+        }
+
+        let d3d11_renderer = Self {
+            shared: Rc::new(Shared {
+                inner: RefCell::new(Inner {
+                    window,
+                    platform,
+                    imgui,
+                    ctx,
+                    renderer,
+                    context,
+                    main_rtv,
+                    swapchain,
+                    device,
+                    mousellhook,
+                    last_want_capture_mouse: true,
+                }),
+                event_loop: Cell::new(Some(event_loop)),
+            }),
+        };
+        SYSTEM.with(|system| *system.borrow_mut() = d3d11_renderer.downgrade());
+        d3d11_renderer
+    }
+}
+impl Renderer for D3D11Renderer {
+    fn main_loop(&mut self, app: &mut App) {
+        let clear_color = [0.00, 0.00, 0.00, 0.00];
+        let mut last_frame = Instant::now();
+        let mut event_loop = self.shared.event_loop.replace(None).unwrap();
+
+        event_loop.run_return(|event, _, control_flow| {
+            let Inner {
+                window,
+                platform,
+                imgui,
+                ctx,
+                renderer,
+                context,
+                main_rtv,
+                swapchain,
+                device,
+                ..
+            } = &mut *self.shared.inner.borrow_mut();
+            match event {
+                Event::NewEvents(_) => {
+                    let now = Instant::now();
+                    imgui
+                        .io_mut()
+                        .update_delta_time(now.duration_since(last_frame));
+                    last_frame = now;
+                }
+                Event::MainEventsCleared => {
+                    let io = imgui.io_mut();
+                    platform
+                        .prepare_frame(io, window)
+                        .expect("failed to start frame");
+                }
+                Event::RedrawRequested(_) => {
+                    unsafe {
+                        context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
+                        context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
+                    }
+
+                    let now = std::time::Instant::now();
+                    if ctx.update_fonts(imgui, platform.hidpi_factor()) {
+                        unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
+                        let elapsed = now.elapsed();
+                        log::info!("rebuilt font atlas (took {:?})", elapsed);
+                    }
+                    let ui = imgui.frame();
+                    let mut run = true;
+                    app.ui(ctx, ui, &mut run);
+                    if !run {
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    platform.prepare_render(ui, window);
+                    let draw_data = imgui.render();
+                    renderer.render(draw_data).unwrap();
+                    unsafe {
+                        swapchain.Present(1, 0);
+                    }
+                }
+                // Event::RedrawEventsCleared => {
+                //     *control_flow = ControlFlow::Wait;
+                // }
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => *control_flow = winit::event_loop::ControlFlow::Exit,
+                Event::WindowEvent {
+                    event: WindowEvent::Resized(winit::dpi::PhysicalSize { height, width }),
+                    ..
+                } => unsafe {
+                    ptr::drop_in_place(main_rtv);
+                    swapchain.ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+                    ptr::write(main_rtv, create_render_target(swapchain, device));
+                    platform.handle_event(imgui.io_mut(), window, &event);
+                },
+                Event::LoopDestroyed => (),
+                event => {
+                    platform.handle_event(imgui.io_mut(), window, &event);
+                }
+            }
+        });
+    }
+}
+impl Drop for Inner {
+    fn drop(&mut self) {
+        let Inner { mousellhook, .. } = self;
+        if let Some(mousellhook) = mousellhook {
+            unsafe { UnhookWindowsHookEx(*mousellhook) };
+        }
+    }
+}
+
+pub struct WeakD3D11Renderer {
+    shared: Weak<Shared>,
+}
+impl D3D11Renderer {
+    pub fn downgrade(&self) -> WeakD3D11Renderer {
+        WeakD3D11Renderer {
+            shared: Rc::downgrade(&self.shared),
+        }
+    }
+}
+impl WeakD3D11Renderer {
+    pub fn new() -> Self {
+        WeakD3D11Renderer {
+            shared: Weak::new(),
+        }
+    }
+    pub fn upgrade(&self) -> Option<D3D11Renderer> {
+        let shared = self.shared.upgrade()?;
+        Some(D3D11Renderer { shared })
+    }
+}
+impl Default for WeakD3D11Renderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 unsafe fn create_device(
     hwnd: HWND,
 ) -> Option<(
@@ -191,199 +390,4 @@ unsafe extern "system" fn low_level_mouse_proc(
         }
     });
     CallNextHookEx(ptr::null_mut(), ncode, wparam, lparam)
-}
-
-pub struct D3D11Renderer {
-    shared: Rc<Shared>,
-}
-struct Shared {
-    inner: RefCell<Inner>,
-    event_loop: Cell<Option<EventLoop<()>>>,
-}
-struct Inner {
-    window: winit::window::Window,
-    platform: WinitPlatform,
-    imgui: imgui::Context,
-    ctx: Context,
-    renderer: imgui_dx11_renderer::Renderer,
-    context: ComPtr<ID3D11DeviceContext>,
-    main_rtv: ComPtr<ID3D11RenderTargetView>,
-    swapchain: ComPtr<IDXGISwapChain>,
-    device: ComPtr<ID3D11Device>,
-    mousellhook: Option<HHOOK>,
-    last_want_capture_mouse: bool,
-}
-impl D3D11Renderer {
-    pub fn new(settings: &Settings) -> Self {
-        let event_loop = EventLoop::new();
-        let window = Self::create_window_builder(settings)
-            .build(&event_loop)
-            .unwrap();
-
-        let hwnd = window.hwnd();
-
-        let (swapchain, device, context) = unsafe { create_device(hwnd as _) }.unwrap();
-        let main_rtv = unsafe { create_render_target(&swapchain, &device) };
-
-        let mut imgui = imgui::Context::create();
-        Self::configure_imgui(&mut imgui, settings);
-        let platform = Self::create_platform(&mut imgui, &window);
-        let mut ctx = Context::new(ContextFlags::SUPPORTS_ATLAS_UPDATE);
-        ctx.update_fonts(&mut imgui, platform.hidpi_factor());
-
-        let renderer =
-            unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
-
-        let mut mousellhook: Option<HHOOK> = None;
-        if settings.overlay_mode {
-            unsafe {
-                let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
-                winuser::SetWindowLongA(
-                    hwnd as *mut _,
-                    winuser::GWL_EXSTYLE,
-                    (style as u32 | winuser::WS_EX_LAYERED) as i32,
-                );
-                mousellhook.replace(SetWindowsHookExA(
-                    WH_MOUSE_LL,
-                    Some(low_level_mouse_proc),
-                    ptr::null_mut(),
-                    0,
-                ));
-            }
-        }
-
-        let d3d11_renderer = Self {
-            shared: Rc::new(Shared {
-                inner: RefCell::new(Inner {
-                    window,
-                    platform,
-                    imgui,
-                    ctx,
-                    renderer,
-                    context,
-                    main_rtv,
-                    swapchain,
-                    device,
-                    mousellhook,
-                    last_want_capture_mouse: true,
-                }),
-                event_loop: Cell::new(Some(event_loop)),
-            }),
-        };
-        SYSTEM.with(|system| *system.borrow_mut() = d3d11_renderer.downgrade());
-        d3d11_renderer
-    }
-}
-impl Renderer for D3D11Renderer {
-    fn main_loop(&mut self, app: &mut App) {
-        let clear_color = [0.00, 0.00, 0.00, 0.00];
-        let mut last_frame = Instant::now();
-        let mut event_loop = self.shared.event_loop.replace(None).unwrap();
-
-        event_loop.run_return(|event, _, control_flow| {
-            let Inner {
-                window,
-                platform,
-                imgui,
-                ctx,
-                renderer,
-                context,
-                main_rtv,
-                swapchain,
-                device,
-                ..
-            } = &mut *self.shared.inner.borrow_mut();
-            match event {
-                Event::NewEvents(_) => {
-                    let now = Instant::now();
-                    imgui.io_mut().update_delta_time(now - last_frame);
-                    last_frame = now;
-                }
-                Event::MainEventsCleared => {
-                    let io = imgui.io_mut();
-                    platform
-                        .prepare_frame(io, window)
-                        .expect("failed to start frame");
-                    window.request_redraw();
-                }
-                Event::RedrawRequested(_) => {
-                    unsafe {
-                        context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
-                        context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
-                    }
-
-                    let now = std::time::Instant::now();
-                    if ctx.update_fonts(imgui, platform.hidpi_factor()) {
-                        unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
-                        let elapsed = now.elapsed();
-                        log::info!("rebuilt font atlas (took {:?})", elapsed);
-                    }
-                    let ui = imgui.frame();
-                    let mut run = true;
-                    app.ui(ctx, ui, &mut run);
-                    if !run {
-                        *control_flow = ControlFlow::Exit;
-                    }
-                    platform.prepare_render(ui, window);
-                    let draw_data = imgui.render();
-                    renderer.render(draw_data).unwrap();
-                    unsafe {
-                        swapchain.Present(1, 0);
-                    }
-                }
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => *control_flow = winit::event_loop::ControlFlow::Exit,
-                Event::WindowEvent {
-                    event: WindowEvent::Resized(winit::dpi::PhysicalSize { height, width }),
-                    ..
-                } => unsafe {
-                    ptr::drop_in_place(main_rtv);
-                    swapchain.ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-                    ptr::write(main_rtv, create_render_target(swapchain, device));
-                    platform.handle_event(imgui.io_mut(), window, &event);
-                },
-                Event::LoopDestroyed => (),
-                event => {
-                    platform.handle_event(imgui.io_mut(), window, &event);
-                }
-            }
-        });
-    }
-}
-impl Drop for Inner {
-    fn drop(&mut self) {
-        let Inner { mousellhook, .. } = self;
-        if let Some(mousellhook) = mousellhook {
-            unsafe { UnhookWindowsHookEx(*mousellhook) };
-        }
-    }
-}
-
-pub struct WeakD3D11Renderer {
-    shared: Weak<Shared>,
-}
-impl D3D11Renderer {
-    pub fn downgrade(&self) -> WeakD3D11Renderer {
-        WeakD3D11Renderer {
-            shared: Rc::downgrade(&self.shared),
-        }
-    }
-}
-impl WeakD3D11Renderer {
-    pub fn new() -> Self {
-        WeakD3D11Renderer {
-            shared: Weak::new(),
-        }
-    }
-    pub fn upgrade(&self) -> Option<D3D11Renderer> {
-        let shared = self.shared.upgrade()?;
-        Some(D3D11Renderer { shared })
-    }
-}
-impl Default for WeakD3D11Renderer {
-    fn default() -> Self {
-        Self::new()
-    }
 }

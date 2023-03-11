@@ -72,6 +72,13 @@ impl<'a> SettingsView<'a> {
             ui.input_text("OpenAI API key*", &mut settings.openai_api_key)
                 .password(true)
                 .build();
+            ui.input_scalar(
+                "ChatGPT max context tokens",
+                &mut settings.chatgpt_max_context_tokens,
+            )
+            .build();
+            ui.input_scalar("ChatGPT max tokens", &mut settings.chatgpt_max_tokens)
+                .build();
         }
 
         if CollapsingHeader::new("Rendering")

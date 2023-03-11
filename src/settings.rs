@@ -44,6 +44,8 @@ pub struct Settings {
     pub deepl_api_key: String,
     pub openai_api_key: String,
     pub chatgpt_system_prompt: String,
+    pub chatgpt_max_context_tokens: u32,
+    pub chatgpt_max_tokens: u32,
 
     pub watch_clipboard: bool,
     pub show_manual_input: bool,
@@ -76,6 +78,8 @@ impl Default for Settings {
             openai_api_key: Default::default(),
             chatgpt_system_prompt:
                 "You will translate the following visual novel script into English.".into(),
+            chatgpt_max_context_tokens: 64,
+            chatgpt_max_tokens: 128,
 
             watch_clipboard: true,
             show_manual_input: true,

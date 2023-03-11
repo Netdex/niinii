@@ -14,36 +14,31 @@ impl<'a> ChatGptTranslatorView<'a> {
     pub fn ui(&mut self, ui: &Ui) {
         let Self(translator, settings) = self;
         let mut state = translator.shared.state.lock().unwrap();
-        if CollapsingHeader::new("ChatGPT")
-            .flags(TreeNodeFlags::LEAF)
-            .build(ui)
-        {
-            if ui.button("Clear context") {
-                state.context.clear();
-            }
-            if let Some(_t) = ui.begin_table_header_with_flags(
-                "context",
-                [
-                    TableColumnSetup::new("Role"),
-                    TableColumnSetup::new("Message"),
-                ],
-                TableFlags::SIZING_STRETCH_PROP,
-            ) {
+        if ui.button("Clear context") {
+            state.context.clear();
+        }
+        if let Some(_t) = ui.begin_table_header_with_flags(
+            "context",
+            [
+                TableColumnSetup::new("Role"),
+                TableColumnSetup::new("Message"),
+            ],
+            TableFlags::SIZING_STRETCH_PROP,
+        ) {
+            ui.table_next_column();
+            ui.text("System");
+            ui.table_next_column();
+            ui.input_text_multiline(
+                "##",
+                &mut settings.chatgpt_system_prompt,
+                [ui.content_region_avail()[0], 75.0],
+            )
+            .build();
+            for message in &state.context {
                 ui.table_next_column();
-                ui.text("System");
+                ui.text(format!("{:?}", message.role));
                 ui.table_next_column();
-                ui.input_text_multiline(
-                    "##",
-                    &mut settings.chatgpt_system_prompt,
-                    [ui.content_region_avail()[0], 75.0],
-                )
-                .build();
-                for message in &state.context {
-                    ui.table_next_column();
-                    ui.text(format!("{:?}", message.role));
-                    ui.table_next_column();
-                    ui.text_wrapped(format!("{}", message.content));
-                }
+                ui.text_wrapped(format!("{}", message.content));
             }
         }
     }
