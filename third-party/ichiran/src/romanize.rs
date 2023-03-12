@@ -382,10 +382,10 @@ mod tests {
         assert_eq!(gloss.pos_split(), vec!["n", "n-adv", "prt"]);
     }
 
-    #[test]
-    fn test_match() {
-        let (ichiran, _pg) = fixture::ichiran();
-        let nikaime = ichiran.romanize("2回目", 1).unwrap();
+    #[tokio::test]
+    async fn test_match() {
+        let (ichiran, _pg) = fixture::ichiran().await;
+        let nikaime = ichiran.romanize("2回目", 1).await.unwrap();
         let nikaime_gold = Root(vec![Segment::Clauses(vec![Clause(
             vec![Romanized(
                 "nikaime".into(),
@@ -416,10 +416,10 @@ mod tests {
         assert_eq!(nikaime, nikaime_gold);
     }
 
-    #[test]
-    fn test_deserialize() {
-        let (ichiran, _pg) = fixture::ichiran();
-        let _furaseteiru = ichiran.romanize("降らせている", 1).unwrap();
-        let _naidesho = ichiran.romanize("ないでしょ", 1).unwrap();
+    #[tokio::test]
+    async fn test_deserialize() {
+        let (ichiran, _pg) = fixture::ichiran().await;
+        let _furaseteiru = ichiran.romanize("降らせている", 1).await.unwrap();
+        let _naidesho = ichiran.romanize("ないでしょ", 1).await.unwrap();
     }
 }

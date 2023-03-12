@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 tokio = { version = "1", features = ["process"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+futures = "0.3"
 
 ketos = "0.12.0"
 lru = "0.7.0"
@@ -32,4 +33,5 @@ winapi = { version = "0.3", features = [
 ] }
 
 [dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
 serde_path_to_error = "0.1"

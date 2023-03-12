@@ -139,11 +139,11 @@ mod tests {
     use super::*;
     use crate::tests::fixture;
 
-    #[test]
-    fn test_match() {
-        let (ichiran, _pg) = fixture::ichiran();
+    #[tokio::test]
+    async fn test_match() {
+        let (ichiran, _pg) = fixture::ichiran().await;
 
-        let a = ichiran.kanji(&['来']).unwrap();
+        let a = ichiran.kanji(&['来']).await.unwrap();
         let a = a.get(&'来').unwrap();
         let b = &Kanji {
             text: "来".into(),

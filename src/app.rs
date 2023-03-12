@@ -13,7 +13,7 @@ use crate::{
         mixins::help_marker,
         rikai::RikaiView,
         settings::SettingsView,
-        translator::{TranslationView, TranslatorView},
+        translator::{TranslationUsageView, TranslationView, TranslatorView},
     },
 };
 
@@ -316,7 +316,7 @@ impl App {
                     ui.tooltip(|| ui.text("Text does not require translation"));
                 }
                 if let Some(translation) = self.rikai.translation() {
-                    translation.show_usage(ui);
+                    TranslationUsageView(translation).ui(ui);
                 }
             }
 
@@ -383,7 +383,7 @@ impl App {
             .opened(&mut self.show_translator)
             .begin()
         {
-            self.translator.ui(ui, &mut self.settings);
+            TranslatorView(&self.translator, &mut self.settings).ui(ui);
         }
     }
 

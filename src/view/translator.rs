@@ -11,13 +11,19 @@ use crate::{
 
 use super::mixins::stroke_text;
 
-#[enum_dispatch(Translator)]
-pub trait TranslatorView {
-    fn ui(&mut self, ui: &Ui, settings: &mut Settings);
+pub struct TranslatorView<'a>(pub &'a Translator, pub &'a mut Settings);
+impl<'a> TranslatorView<'a> {
+    pub fn ui(&mut self, ui: &Ui) {
+        let TranslatorView(translator, settings) = self;
+        translator.show_translator(ui, settings);
+    }
 }
-
-impl TranslatorView for ChatGptTranslator {
-    fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
+#[enum_dispatch(Translator)]
+trait ViewTranslator {
+    fn show_translator(&self, ui: &Ui, settings: &mut Settings);
+}
+impl ViewTranslator for ChatGptTranslator {
+    fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
         let mut state = self.shared.state.blocking_lock();
         if ui.button("Clear context") {
             state.context.clear();
@@ -48,18 +54,29 @@ impl TranslatorView for ChatGptTranslator {
         }
     }
 }
-impl TranslatorView for DeepLTranslator {
-    fn ui(&mut self, _ui: &Ui, _settings: &mut Settings) {}
+impl ViewTranslator for DeepLTranslator {
+    fn show_translator(&self, _ui: &Ui, _settings: &mut Settings) {}
 }
 
+pub struct TranslationView<'a>(pub &'a Translation);
+impl<'a> TranslationView<'a> {
+    pub fn ui(&self, ui: &Ui) {
+        self.0.view(ui);
+    }
+}
+pub struct TranslationUsageView<'a>(pub &'a Translation);
+impl<'a> TranslationUsageView<'a> {
+    pub fn ui(&self, ui: &Ui) {
+        self.0.show_usage(ui);
+    }
+}
 #[enum_dispatch(Translation)]
-pub trait TranslationView {
-    fn ui(&self, ui: &Ui);
+trait ViewTranslation {
+    fn view(&self, ui: &Ui);
     fn show_usage(&self, ui: &Ui);
 }
-
-impl TranslationView for ChatGptTranslation {
-    fn ui(&self, ui: &Ui) {
+impl ViewTranslation for ChatGptTranslation {
+    fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         let draw_list = ui.get_window_draw_list();
         lang_marker(ui, &draw_list, "en");
@@ -88,8 +105,8 @@ impl TranslationView for ChatGptTranslation {
             .build(ui);
     }
 }
-impl TranslationView for DeepLTranslation {
-    fn ui(&self, ui: &Ui) {
+impl ViewTranslation for DeepLTranslation {
+    fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         let draw_list = ui.get_window_draw_list();
         lang_marker(ui, &draw_list, "en");

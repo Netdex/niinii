@@ -2,7 +2,6 @@ pub mod charset;
 mod coerce;
 pub mod error;
 pub mod jmdict_data;
-mod job;
 pub mod kanji;
 mod lisp;
 pub mod pgdaemon;
