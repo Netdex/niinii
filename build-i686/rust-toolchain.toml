@@ -1,3 +1,0 @@
-[toolchain]
-channel = "nightly-i686-pc-windows-msvc"
-targets = [ "i686-pc-windows-msvc" ]

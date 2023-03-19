@@ -59,6 +59,12 @@ cd niinii
 cargo build --release
 ```
 
+If using the hooking feature, the bitness of the DLL must match the target
+application. To build a 32-bit application:
+```
+cargo +stable-i686-pc-windows-msvc build --target i686-pc-windows-msvc --release
+```
+
 For Japanese language support, the following additional components are required:
 - ichiran-cli ([Ichiran](https://github.com/tshatrov/ichiran))
 - PostgreSQL installation with Ichiran database

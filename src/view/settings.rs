@@ -66,10 +66,10 @@ impl<'a> SettingsView<'a> {
                 TranslatorType::VARIANTS,
             );
             ui.checkbox("Auto-translate", &mut settings.auto_translate);
-            ui.input_text("DeepL API key*", &mut settings.deepl_api_key)
+            ui.input_text("DeepL API key", &mut settings.deepl_api_key)
                 .password(true)
                 .build();
-            ui.input_text("OpenAI API key*", &mut settings.openai_api_key)
+            ui.input_text("OpenAI API key", &mut settings.openai_api_key)
                 .password(true)
                 .build();
             ui.input_scalar(

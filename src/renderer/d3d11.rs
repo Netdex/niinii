@@ -36,25 +36,42 @@ use super::context::ContextFlags;
 use super::Renderer;
 use crate::{app::App, settings::Settings};
 
-pub struct D3D11Renderer {
-    shared: Rc<Shared>,
-}
-struct Shared {
-    inner: RefCell<Inner>,
-    event_loop: Cell<Option<EventLoop<()>>>,
-}
 struct Inner {
     window: winit::window::Window,
     platform: WinitPlatform,
     imgui: imgui::Context,
     ctx: Context,
+
     renderer: imgui_dx11_renderer::Renderer,
     context: ComPtr<ID3D11DeviceContext>,
     main_rtv: ComPtr<ID3D11RenderTargetView>,
     swapchain: ComPtr<IDXGISwapChain>,
     device: ComPtr<ID3D11Device>,
-    mousellhook: Option<HHOOK>,
+
+    low_level_mouse_proc: Option<HHOOK>,
     last_want_capture_mouse: bool,
+
+    // winit_wnd_proc: winuser::WNDPROC,
+}
+impl Drop for Inner {
+    fn drop(&mut self) {
+        let Inner {
+            low_level_mouse_proc,
+            ..
+        } = self;
+        if let Some(low_level_mouse_proc) = low_level_mouse_proc {
+            unsafe { UnhookWindowsHookEx(*low_level_mouse_proc) };
+        }
+    }
+}
+
+struct Shared {
+    inner: RefCell<Inner>,
+    event_loop: Cell<Option<EventLoop<()>>>,
+}
+
+pub struct D3D11Renderer {
+    shared: Rc<Shared>,
 }
 impl D3D11Renderer {
     pub fn new(settings: &Settings) -> Self {
@@ -62,6 +79,9 @@ impl D3D11Renderer {
         let window = Self::create_window_builder(settings)
             .build(&event_loop)
             .unwrap();
+        if settings.overlay_mode {
+            window.set_cursor_hittest(false).unwrap();
+        }
 
         let hwnd = window.hwnd();
 
@@ -77,21 +97,23 @@ impl D3D11Renderer {
         let renderer =
             unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
 
-        let mut mousellhook: Option<HHOOK> = None;
+        let mut low_level_mouse_proc: Option<HHOOK> = None;
+        // let mut winit_wnd_proc: winuser::WNDPROC = None;
         if settings.overlay_mode {
             unsafe {
-                let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
-                winuser::SetWindowLongA(
-                    hwnd as *mut _,
-                    winuser::GWL_EXSTYLE,
-                    (style as u32 | winuser::WS_EX_LAYERED) as i32,
-                );
-                mousellhook.replace(SetWindowsHookExA(
+                low_level_mouse_proc.replace(SetWindowsHookExA(
                     WH_MOUSE_LL,
-                    Some(low_level_mouse_proc),
+                    Some(mouse_proc),
                     ptr::null_mut(),
                     0,
                 ));
+
+                // let orig_wnd_proc = SetWindowLongPtrA(
+                //     hwnd as HWND,
+                //     winuser::GWL_WNDPROC as i32,
+                //     window_proc as *const () as isize,
+                // );
+                // winit_wnd_proc.replace(std::mem::transmute(orig_wnd_proc));
             }
         }
 
@@ -107,8 +129,9 @@ impl D3D11Renderer {
                     main_rtv,
                     swapchain,
                     device,
-                    mousellhook,
-                    last_want_capture_mouse: true,
+                    low_level_mouse_proc,
+                    last_want_capture_mouse: false,
+                    // winit_wnd_proc,
                 }),
                 event_loop: Cell::new(Some(event_loop)),
             }),
@@ -200,24 +223,16 @@ impl Renderer for D3D11Renderer {
         });
     }
 }
-impl Drop for Inner {
-    fn drop(&mut self) {
-        let Inner { mousellhook, .. } = self;
-        if let Some(mousellhook) = mousellhook {
-            unsafe { UnhookWindowsHookEx(*mousellhook) };
-        }
-    }
-}
-
-pub struct WeakD3D11Renderer {
-    shared: Weak<Shared>,
-}
 impl D3D11Renderer {
     pub fn downgrade(&self) -> WeakD3D11Renderer {
         WeakD3D11Renderer {
             shared: Rc::downgrade(&self.shared),
         }
     }
+}
+
+pub struct WeakD3D11Renderer {
+    shared: Weak<Shared>,
 }
 impl WeakD3D11Renderer {
     pub fn new() -> Self {
@@ -318,77 +333,124 @@ thread_local! {
     static SYSTEM: RefCell<WeakD3D11Renderer> = RefCell::new(WeakD3D11Renderer::new());
 }
 
-unsafe extern "system" fn low_level_mouse_proc(
-    ncode: i32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
+// unsafe extern "system" fn window_proc(
+//     hwnd: HWND,
+//     msg: u32,
+//     wparam: WPARAM,
+//     lparam: LPARAM,
+// ) -> LRESULT {
+//     SYSTEM.with(|system| {
+//         let weak_d3d11_renderer = system.borrow();
+//         if let Some(d3d11_renderer) = weak_d3d11_renderer.upgrade() {
+//             let inner = d3d11_renderer.shared.inner.try_borrow_mut();
+//             if let Ok(mut inner) = inner {
+//                 let Inner {
+//                     // imgui,
+//                     winit_wnd_proc,
+//                     ..
+//                 } = &mut *inner;
+//                 match msg {
+//                     winuser::WM_NCHITTEST => {}
+//                     _ => {
+//                         if let Some(winit_wnd_proc) = *winit_wnd_proc {
+//                             drop(inner); // RefCell is not re-entrant
+//                             return winuser::CallWindowProcA(
+//                                 Some(winit_wnd_proc),
+//                                 hwnd,
+//                                 msg,
+//                                 wparam,
+//                                 lparam,
+//                             );
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//         0
+//     })
+// }
+unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     let ms = &mut *(lparam as *mut MSLLHOOKSTRUCT);
 
-    SYSTEM.with(|system| {
-        let weak_d3d11_renderer = system.borrow_mut();
-        if let Some(d3d11_renderer) = weak_d3d11_renderer.upgrade() {
-            let inner = d3d11_renderer.shared.inner.try_borrow_mut();
-            if let Ok(mut inner) = inner {
-                let Inner {
-                    window,
-                    platform,
-                    imgui,
-                    last_want_capture_mouse,
-                    ..
-                } = &mut *inner;
-
-                let hwnd = window.hwnd();
-
-                use winit::event::ModifiersState;
-                let wparam = wparam as UINT;
-                if wparam == winuser::WM_MOUSEMOVE {
-                    use winit::dpi::PhysicalPosition;
-
-                    let mut client_pos = ms.pt;
-                    let r = winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _);
-                    debug_assert_eq!(r, TRUE);
-                    let position = PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
-                    platform.handle_event::<()>(
-                        imgui.io_mut(),
+    if ncode == winuser::HC_ACTION {
+        SYSTEM.with(|system| {
+            let weak_d3d11_renderer = system.borrow();
+            if let Some(d3d11_renderer) = weak_d3d11_renderer.upgrade() {
+                let inner = d3d11_renderer.shared.inner.try_borrow_mut();
+                if let Ok(mut inner) = inner {
+                    let Inner {
                         window,
-                        &Event::WindowEvent {
-                            window_id: window.id(),
-                            event: WindowEvent::CursorMoved {
-                                device_id: DeviceId::dummy(),
-                                position,
-                                modifiers: ModifiersState::empty(),
-                            },
-                        },
+                        platform,
+                        imgui,
+                        last_want_capture_mouse,
+                        ..
+                    } = &mut *inner;
+
+                    let hwnd = window.hwnd();
+
+                    // if the window is transparent, we need to fake mouse move
+                    // events so it knows when it wants to capture the mouse
+                    if !*last_want_capture_mouse {
+                        use winit::event::ModifiersState;
+                        let wparam = wparam as UINT;
+                        if wparam == winuser::WM_MOUSEMOVE {
+                            use winit::dpi::PhysicalPosition;
+
+                            let mut client_pos = ms.pt;
+                            let r =
+                                winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _);
+                            debug_assert_eq!(r, TRUE);
+                            let position =
+                                PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
+                            platform.handle_event::<()>(
+                                imgui.io_mut(),
+                                window,
+                                &Event::WindowEvent {
+                                    window_id: window.id(),
+                                    event: WindowEvent::CursorMoved {
+                                        device_id: DeviceId::dummy(),
+                                        position,
+                                        modifiers: ModifiersState::empty(),
+                                    },
+                                },
+                            );
+                        }
+                    }
+
+                    // when we want to capture the mouse make the window opaque,
+                    // and when we no longer want to make the window transparent
+                    // again (this code causes me physical pain)
+                    let io = imgui.io_mut();
+                    if *last_want_capture_mouse != io.want_capture_mouse {
+                        let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
+                        if io.want_capture_mouse {
+                            winuser::SetWindowLongA(
+                                hwnd as *mut _,
+                                winuser::GWL_EXSTYLE,
+                                (style as u32 & (!winuser::WS_EX_TRANSPARENT)) as i32,
+                            );
+                        } else {
+                            winuser::SetWindowLongA(
+                                hwnd as *mut _,
+                                winuser::GWL_EXSTYLE,
+                                (style as u32 | winuser::WS_EX_TRANSPARENT) as i32,
+                            );
+                        }
+                        *last_want_capture_mouse = io.want_capture_mouse;
+                    }
+                } else {
+                    log::warn!(
+                        "failed to acquire ctx in hook ncode={} wparam={} lparam={}",
+                        ncode,
+                        wparam,
+                        lparam
                     );
                 }
-                let io = imgui.io_mut();
-                if *last_want_capture_mouse != io.want_capture_mouse {
-                    let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
-                    if io.want_capture_mouse {
-                        winuser::SetWindowLongA(
-                            hwnd as *mut _,
-                            winuser::GWL_EXSTYLE,
-                            (style as u32 & (!winuser::WS_EX_TRANSPARENT)) as i32,
-                        );
-                    } else {
-                        winuser::SetWindowLongA(
-                            hwnd as *mut _,
-                            winuser::GWL_EXSTYLE,
-                            (style as u32 | winuser::WS_EX_TRANSPARENT) as i32,
-                        );
-                    }
-                    *last_want_capture_mouse = io.want_capture_mouse;
-                }
-            } else {
-                log::warn!(
-                    "failed to acquire ctx in hook ncode={} wparam={} lparam={}",
-                    ncode,
-                    wparam,
-                    lparam
-                );
             }
-        }
-    });
+        });
+    }
+    // NOTE: Don't try consuming the message by returning non-zero, because it
+    // will also consume mouse move events. Selectively consuming mouse click
+    // events doesn't work either because hover still happens.
     CallNextHookEx(ptr::null_mut(), ncode, wparam, lparam)
 }

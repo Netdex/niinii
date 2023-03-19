@@ -13,7 +13,7 @@ use crate::{
         mixins::help_marker,
         rikai::RikaiView,
         settings::SettingsView,
-        translator::{TranslationUsageView, TranslationView, TranslatorView},
+        translator::{TranslationUsageView, TranslatorView},
     },
 };
 

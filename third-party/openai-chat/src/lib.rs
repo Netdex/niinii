@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use thiserror::Error;
 
@@ -36,7 +36,10 @@ impl Client {
             shared: Arc::new(Shared {
                 token,
                 state: Mutex::new(State {
-                    client: reqwest::Client::new(),
+                    client: reqwest::Client::builder()
+                        .timeout(Duration::from_secs(5))
+                        .build()
+                        .unwrap(),
                 }),
             }),
         }
