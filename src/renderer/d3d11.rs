@@ -89,7 +89,11 @@ impl D3D11Renderer {
 
         let mut imgui = imgui::Context::create();
         Self::configure_imgui(&mut imgui, settings);
-        let platform = Self::create_platform(&mut imgui, &window);
+        let dpi = match settings.force_dpi != 0.0 {
+            true => Some(settings.force_dpi),
+            false => None,
+        };
+        let platform = Self::create_platform(&mut imgui, &window, dpi);
         let mut ctx = Context::new(ContextFlags::SUPPORTS_ATLAS_UPDATE);
         ctx.update_fonts(&mut imgui, platform.hidpi_factor());
 

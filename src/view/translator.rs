@@ -9,7 +9,7 @@ use crate::{
     },
 };
 
-use super::mixins::stroke_text;
+use super::mixins::{stroke_text, stroke_token_with_color};
 
 pub struct TranslatorView<'a>(pub &'a Translator, pub &'a mut Settings);
 impl<'a> TranslatorView<'a> {
@@ -81,12 +81,22 @@ impl ViewTranslation for ChatGptTranslation {
         let draw_list = ui.get_window_draw_list();
         match self {
             ChatGptTranslation::Translated { content_text, .. } => {
-                lang_marker(ui, &draw_list, "en");
+                marker(
+                    ui,
+                    &draw_list,
+                    "ChatGPT",
+                    &ui.style_color(StyleColor::TextSelectedBg),
+                );
                 ui.same_line();
-                stroke_text(ui, &draw_list, content_text, ui.cursor_screen_pos(), 1.0);
+                stroke_text(ui, &draw_list, content_text, 1.0);
             }
             ChatGptTranslation::Filtered(result) => {
-                lang_marker(ui, &draw_list, "n/a");
+                marker(
+                    ui,
+                    &draw_list,
+                    "Filtered",
+                    &ui.style_color(StyleColor::PlotLinesHovered),
+                );
                 ui.same_line();
                 let s = result
                     .categories
@@ -94,13 +104,7 @@ impl ViewTranslation for ChatGptTranslation {
                     .filter_map(|(k, &v)| if v { Some(k.as_ref()) } else { None })
                     .collect::<Vec<_>>()
                     .join(", ");
-                stroke_text(
-                    ui,
-                    &draw_list,
-                    &format!("filtered for {}", s),
-                    ui.cursor_screen_pos(),
-                    1.0,
-                );
+                stroke_text(ui, &draw_list, &format!("{}", s), 1.0);
             }
         }
         ui.new_line();
@@ -133,15 +137,14 @@ impl ViewTranslation for DeepLTranslation {
     fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         let draw_list = ui.get_window_draw_list();
-        lang_marker(ui, &draw_list, "en");
-        ui.same_line();
-        stroke_text(
+        marker(
             ui,
             &draw_list,
-            &self.deepl_text,
-            ui.cursor_screen_pos(),
-            1.0,
+            "DeepL",
+            &ui.style_color(StyleColor::TextSelectedBg),
         );
+        ui.same_line();
+        stroke_text(ui, &draw_list, &self.deepl_text, 1.0);
         ui.new_line();
     }
     fn show_usage(&self, ui: &Ui) {
@@ -160,20 +163,23 @@ impl ViewTranslation for DeepLTranslation {
     }
 }
 
-fn lang_marker(ui: &Ui, draw_list: &DrawListMut, lang: impl AsRef<str>) {
-    let lang = lang.as_ref();
+fn marker(ui: &Ui, draw_list: &DrawListMut, text: impl AsRef<str>, color: &[f32; 4]) {
+    let lang = text.as_ref();
     let text = format!("[{}]", lang);
     let p = ui.cursor_screen_pos();
     let sz = ui.calc_text_size(&text);
     draw_list
-        .add_rect(
-            p,
-            [p[0] + sz[0], p[1] + sz[1]],
-            ui.style_color(StyleColor::TextSelectedBg),
-        )
+        .add_rect(p, [p[0] + sz[0], p[1] + sz[1]], *color)
         .filled(true)
         .build();
-
-    stroke_text(ui, draw_list, &text, ui.cursor_screen_pos(), 1.0);
+    stroke_token_with_color(
+        ui,
+        &draw_list,
+        &text,
+        p,
+        1.0,
+        StyleColor::Text,
+        StyleColor::TitleBg,
+    );
     ui.dummy(sz);
 }

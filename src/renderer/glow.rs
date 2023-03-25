@@ -27,7 +27,11 @@ impl GlowRenderer {
         let (event_loop, window) = create_window(Self::create_window_builder(settings));
         let mut imgui = imgui::Context::create();
         Self::configure_imgui(&mut imgui, settings);
-        let platform = Self::create_platform(&mut imgui, window.window());
+        let dpi = match settings.force_dpi != 0.0 {
+            true => Some(settings.force_dpi),
+            false => None,
+        };
+        let platform = Self::create_platform(&mut imgui, window.window(), dpi);
         let mut ctx = Context::new(ContextFlags::empty());
         ctx.update_fonts(&mut imgui, platform.hidpi_factor());
 

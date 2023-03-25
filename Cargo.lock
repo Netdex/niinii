@@ -1360,6 +1360,8 @@ dependencies = [
  "cfg-if 1.0.0",
  "chlorine",
  "mint",
+ "pkg-config",
+ "vcpkg",
 ]
 
 [[package]]
@@ -1697,6 +1699,7 @@ dependencies = [
  "imgui",
  "imgui-dx11-renderer",
  "imgui-glow-renderer",
+ "imgui-sys",
  "imgui-winit-support",
  "lazy_static",
  "log",

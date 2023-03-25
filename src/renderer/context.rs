@@ -119,15 +119,16 @@ impl Context {
         if !self.font_atlas_dirty {
             return false;
         }
+        // let scaling_factor = hidpi_factor.max(1.0); // only scale fonts down
+        let scaling_factor = hidpi_factor;
 
         imgui.fonts().clear();
-
-        imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+        imgui.io_mut().font_global_scale = (1.0 / scaling_factor) as f32;
 
         let ext_font_config = [FontConfig {
             rasterizer_multiply: 1.75,
             glyph_ranges: FontGlyphRanges::from_slice(unsafe { self.get_font_glyph_ranges() }),
-            oversample_h: 2,
+            oversample_h: if hidpi_factor < 1.0 { 3 } else { 2 },
             ..Default::default()
         }];
 
@@ -137,7 +138,7 @@ impl Context {
                     .iter()
                     .map(|config| FontSource::TtfData {
                         data: font_data,
-                        size_pixels: (size_pt * hidpi_factor) as f32,
+                        size_pixels: (size_pt * scaling_factor) as f32,
                         config: Some(FontConfig {
                             name: Some(name.to_string()),
                             ..config.clone()
@@ -153,7 +154,7 @@ impl Context {
         );
         self.add_font(
             TextStyle::Kanji,
-            create_font("Kanji", &self.font_data, 48.0, &ext_font_config),
+            create_font("Kanji", &self.font_data, 38.0, &ext_font_config),
         );
 
         self.font_atlas_dirty = false;

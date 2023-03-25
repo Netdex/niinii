@@ -1,3 +1,4 @@
+use enclose::enclose;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -9,7 +10,7 @@ use openai_chat::{
 
 use crate::settings::Settings;
 
-use super::{Error, Translate, Translation};
+use super::{DeepLTranslation, Error, Translate, Translation};
 
 #[derive(Clone)]
 pub struct ChatGptTranslator {
@@ -48,8 +49,34 @@ impl Translate for ChatGptTranslator {
             ..Default::default()
         };
         let moderation = self.shared.client.moderation(&mod_request).await?;
-        let translation = if moderation.flagged {
-            ChatGptTranslation::Filtered(moderation)
+        if moderation.flagged {
+            let Settings { deepl_api_key, .. } = settings;
+            let (deepl_text, deepl_usage) = tokio::task::spawn_blocking(enclose! { (text, deepl_api_key) move || {
+                let deepl = deepl_api::DeepL::new(deepl_api_key);
+                let deepl_text = deepl
+                    .translate(
+                        None,
+                        deepl_api::TranslatableTextList {
+                            source_language: Some("JA".into()),
+                            target_language: "EN-US".into(),
+                            texts: vec![text],
+                        },
+                    )?
+                    .first()
+                    .unwrap()
+                    .text
+                    .clone();
+                let deepl_usage = deepl.usage_information()?;
+                Ok::<(String, deepl_api::UsageInformation), deepl_api::Error>((deepl_text, deepl_usage))
+            }})
+            .await
+            .unwrap()?;
+
+            Ok(Translation::DeepL(DeepLTranslation {
+                source_text: text,
+                deepl_text,
+                deepl_usage,
+            }))
         } else {
             let chat_request = {
                 let State { context } = &mut *self.shared.state.lock().await;
@@ -86,13 +113,12 @@ impl Translate for ChatGptTranslator {
                 context.push_back(message.clone());
             }
             let content = &completion.choices.first().unwrap().message.content;
-            ChatGptTranslation::Translated {
+            Ok(Translation::ChatGpt(ChatGptTranslation::Translated {
                 content_text: content.to_string(),
                 openai_usage: completion.usage,
                 max_context_tokens: settings.chatgpt_max_context_tokens,
-            }
-        };
-        Ok(Translation::ChatGpt(translation))
+            }))
+        }
     }
 }
 

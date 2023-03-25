@@ -21,7 +21,7 @@ pub enum RubyTextMode<'a> {
     None,
 }
 
-pub fn stroke_text_with_offsets(
+pub fn stroke_token_with_offsets(
     ui: &Ui,
     draw_list: &DrawListMut,
     text: &str,
@@ -40,7 +40,7 @@ pub fn stroke_text_with_offsets(
     }
     draw_list.add_text(pos, ui.style_color(fore), text);
 }
-pub fn stroke_text_with_color(
+pub fn stroke_token_with_color(
     ui: &Ui,
     draw_list: &DrawListMut,
     text: &str,
@@ -59,18 +59,24 @@ pub fn stroke_text_with_color(
         [0.0, -1.0],
         [0.0, 1.0],
     ];
-    stroke_text_with_offsets(ui, draw_list, text, pos, thick, fore, back, &offsets);
+    stroke_token_with_offsets(ui, draw_list, text, pos, thick, fore, back, &offsets);
 }
-pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, pos: [f32; 2], thick: f32) {
-    stroke_text_with_color(
-        ui,
-        draw_list,
-        text,
-        pos,
-        thick,
-        StyleColor::Text,
-        StyleColor::TitleBg,
-    )
+pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, thick: f32) {
+    let tokens = text.split_whitespace();
+    for token in tokens {
+        let sz = ui.calc_text_size(token);
+        wrap_line(ui, sz[0]);
+        stroke_token_with_color(
+            ui,
+            &draw_list,
+            token,
+            ui.cursor_screen_pos(),
+            thick,
+            StyleColor::Text,
+            StyleColor::TitleBg,
+        );
+        ui.dummy(sz)
+    }
 }
 
 pub fn draw_kanji_text(
@@ -109,7 +115,7 @@ pub fn draw_kanji_text(
 
     let maybe_stroke_text = |text: &str, pos: [f32; 2], thick: f32| {
         if stroke {
-            stroke_text_with_color(
+            stroke_token_with_color(
                 ui,
                 &draw_list,
                 text,
@@ -161,7 +167,7 @@ pub fn draw_kanji_text(
 
     let _kanji_font_token = ui.push_font(ctx.get_font(TextStyle::Kanji));
     if preview {
-        stroke_text_with_offsets(
+        stroke_token_with_offsets(
             ui,
             &draw_list,
             text,

@@ -32,7 +32,9 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 async-trait = "0.1"
 
-imgui = { version = "0.10.0", features = ["tables-api"] }
+# on windows, you must install freetype with vcpkg
+imgui = { version = "0.10.0", features = ["tables-api", "freetype"] }
+imgui-sys = { version = "0.10.0", features = ["use-vcpkg"] }
 imgui-winit-support = { version = "0.10.0" }
 clipboard = "0.5"
 imgui-glow-renderer = "0.10.0"

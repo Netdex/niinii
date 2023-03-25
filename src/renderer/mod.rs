@@ -52,16 +52,20 @@ pub trait Renderer {
         }
     }
 
-    fn create_platform(imgui: &mut imgui::Context, window: &winit::window::Window) -> WinitPlatform
+    fn create_platform(
+        imgui: &mut imgui::Context,
+        window: &winit::window::Window,
+        dpi: Option<f64>,
+    ) -> WinitPlatform
     where
         Self: Sized,
     {
+        let dpi_mode = match dpi {
+            Some(dpi) => imgui_winit_support::HiDpiMode::Locked(dpi),
+            None => imgui_winit_support::HiDpiMode::Default,
+        };
         let mut platform = WinitPlatform::init(imgui);
-        platform.attach_window(
-            imgui.io_mut(),
-            window,
-            imgui_winit_support::HiDpiMode::Default,
-        );
+        platform.attach_window(imgui.io_mut(), window, dpi_mode);
         platform
     }
 }
