@@ -79,30 +79,54 @@ impl ViewTranslation for ChatGptTranslation {
     fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         let draw_list = ui.get_window_draw_list();
-        lang_marker(ui, &draw_list, "en");
-        ui.same_line();
-        stroke_text(
-            ui,
-            &draw_list,
-            &self.content_text,
-            ui.cursor_screen_pos(),
-            1.0,
-        );
+        match self {
+            ChatGptTranslation::Translated { content_text, .. } => {
+                lang_marker(ui, &draw_list, "en");
+                ui.same_line();
+                stroke_text(ui, &draw_list, content_text, ui.cursor_screen_pos(), 1.0);
+            }
+            ChatGptTranslation::Filtered(result) => {
+                lang_marker(ui, &draw_list, "n/a");
+                ui.same_line();
+                let s = result
+                    .categories
+                    .iter()
+                    .filter_map(|(k, &v)| if v { Some(k.as_ref()) } else { None })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                stroke_text(
+                    ui,
+                    &draw_list,
+                    &format!("filtered for {}", s),
+                    ui.cursor_screen_pos(),
+                    1.0,
+                );
+            }
+        }
         ui.new_line();
     }
     fn show_usage(&self, ui: &Ui) {
-        ui.same_line();
-        let fraction = self.openai_usage.prompt_tokens as f32 / self.max_context_tokens as f32;
-        ProgressBar::new(fraction)
-            .overlay_text(format!(
-                "ChatGPT: {}/{} prompt: {} context ({:.2}%)",
-                self.openai_usage.prompt_tokens,
-                self.openai_usage.total_tokens,
-                self.max_context_tokens,
-                fraction
-            ))
-            .size([350.0, 0.0])
-            .build(ui);
+        match self {
+            ChatGptTranslation::Translated {
+                openai_usage,
+                max_context_tokens,
+                ..
+            } => {
+                ui.same_line();
+                let fraction = openai_usage.prompt_tokens as f32 / *max_context_tokens as f32;
+                ProgressBar::new(fraction)
+                    .overlay_text(format!(
+                        "ChatGPT: {}/{} prompt: {} context ({:.2}%)",
+                        openai_usage.prompt_tokens,
+                        openai_usage.total_tokens,
+                        max_context_tokens,
+                        fraction
+                    ))
+                    .size([350.0, 0.0])
+                    .build(ui);
+            }
+            ChatGptTranslation::Filtered(_) => {}
+        }
     }
 }
 impl ViewTranslation for DeepLTranslation {

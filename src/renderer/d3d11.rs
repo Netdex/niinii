@@ -50,7 +50,6 @@ struct Inner {
 
     low_level_mouse_proc: Option<HHOOK>,
     last_want_capture_mouse: bool,
-
     // winit_wnd_proc: winuser::WNDPROC,
 }
 impl Drop for Inner {

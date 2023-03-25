@@ -4,7 +4,7 @@ use tiktoken_rs::tiktoken::cl100k_base_singleton;
 
 #[derive(Error, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[error("{kind}: {message}")]
-pub struct ResponseError {
+pub struct Error {
     message: String,
     #[serde(rename = "type")]
     kind: String,
@@ -123,5 +123,5 @@ pub struct Completion {
 #[serde(untagged)]
 pub(crate) enum Response {
     Completion(Completion),
-    Error { error: ResponseError },
+    Error { error: Error },
 }

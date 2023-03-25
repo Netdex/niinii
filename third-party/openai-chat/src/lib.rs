@@ -1,3 +1,8 @@
+//! Q: Did you really write an entire throwaway crate for this?
+//!    Like, you're not even publishing this crate anywhere.
+//!    You literally wrote it just for this program.
+//! A: Yes, and?
+
 use std::{sync::Arc, time::Duration};
 
 use thiserror::Error;
@@ -13,8 +18,8 @@ pub enum Error {
     Network(#[from] reqwest::Error),
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
-    #[error("Response Error: {0}")]
-    Response(#[from] ResponseError),
+    #[error("Chat Error: {0}")]
+    Chat(#[from] chat::Error),
 }
 
 #[derive(Clone)]
@@ -44,11 +49,11 @@ impl Client {
             }),
         }
     }
-    pub async fn completions(&self, request: &Request) -> Result<Completion, Error> {
+    pub async fn chat(&self, request: &chat::Request) -> Result<chat::Completion, Error> {
         assert!(!request.stream.unwrap_or(false), "streaming not supported");
         let Shared { token, state } = &*self.shared;
         let State { client } = &mut *state.lock().await;
-        let response: Response = client
+        let response: chat::Response = client
             .post("https://api.openai.com/v1/chat/completions")
             .bearer_auth(token)
             .json(request)
@@ -57,9 +62,25 @@ impl Client {
             .json()
             .await?;
         match response {
-            Response::Completion(completion) => Ok(completion),
-            Response::Error { error } => Err(Error::Response(error)),
+            chat::Response::Completion(completion) => Ok(completion),
+            chat::Response::Error { error } => Err(Error::Chat(error)),
         }
+    }
+    pub async fn moderation(
+        &self,
+        request: &moderation::Request,
+    ) -> Result<moderation::Result, Error> {
+        let Shared { token, state } = &*self.shared;
+        let State { client } = &mut *state.lock().await;
+        let mut response: moderation::Response = client
+            .post("https://api.openai.com/v1/moderations")
+            .bearer_auth(token)
+            .json(request)
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(response.results.remove(0))
     }
 }
 
@@ -69,17 +90,29 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_completions() {
+    async fn test_chat() {
         let client = fixture::client();
-        let request = Request {
-            messages: vec![Message {
-                role: Role::User,
-                content: "What is the capital city of Canada?".to_string(),
+        let request = chat::Request {
+            messages: vec![chat::Message {
+                role: chat::Role::User,
+                content: "What is the capital city of Canada?".into(),
             }],
             ..Default::default()
         };
-        let response = client.completions(&request).await.unwrap();
+        let response = client.chat(&request).await.unwrap();
         let content = &response.choices.first().unwrap().message.content;
         assert!(content.contains("Ottawa"));
+    }
+
+    #[tokio::test]
+    async fn test_moderation() {
+        let client = fixture::client();
+        let request = moderation::Request {
+            input: "I'm going to fucking kill you".into(),
+            ..Default::default()
+        };
+        let response = client.moderation(&request).await.unwrap();
+        assert!(response.flagged);
+        assert!(response.categories[&moderation::Category::Violence]);
     }
 }
