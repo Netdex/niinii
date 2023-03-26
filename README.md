@@ -52,8 +52,15 @@ The only target that is properly maintained is `x86_64-pc-windows-msvc`. There's
 nothing stopping it from working on other targets (e.g. Linux), but additional
 work may be required.
 
-To build the application from source:
-```
+To build the application from source on Windows:
+```bash
+# install vcpkg
+git clone https://github.com/microsoft/vcpkg
+.\vcpkg\bootstrap-vcpkg.bat
+
+# install freetype
+vcpkg install freetype:x64-windows-static-md
+
 git clone https://github.com/Netdex/niinii.git
 cd niinii
 cargo build --release

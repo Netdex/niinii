@@ -7,6 +7,7 @@ use crate::{
     gloss::{self, Gloss, Glossator},
     renderer::context::{Context, ContextFlags},
     settings::Settings,
+    support,
     translator::{self, Translate, Translation, Translator},
     view::{
         inject::InjectView,
@@ -203,7 +204,7 @@ impl App {
         }
     }
 
-    fn show_main_menu(&mut self, ctx: &mut Context, ui: &Ui) {
+    fn show_menu(&mut self, ctx: &mut Context, ui: &Ui) {
         if let Some(_token) = ui.begin_menu_bar() {
             if let Some(_menu) = ui.begin_menu("Options") {
                 if ui
@@ -268,6 +269,10 @@ impl App {
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
         let io = ui.io();
+
+        let ui_d = support::docking::UiDocking {};
+        let _space = ui_d.dockspace_over_viewport();
+
         let mut niinii = ui
             .window("niinii")
             .opened(run)
@@ -279,10 +284,11 @@ impl App {
             niinii = niinii
                 .position([0.0, 0.0], Condition::Always)
                 .size(io.display_size, Condition::Always)
+                .bring_to_front_on_focus(false)
                 .no_decoration()
         };
         niinii.build(|| {
-            self.show_main_menu(ctx, ui);
+            self.show_menu(ctx, ui);
 
             let disabled = matches!(self.state, State::Processing);
             if self.settings().show_manual_input {

@@ -1,3 +1,7 @@
+// Before settings this, figure out how to stop spawned processes from making
+// their own consoles
+// #![windows_subsystem = "windows"]
+
 #[cfg(windows)]
 use libniinii::renderer::d3d11::D3D11Renderer;
 use libniinii::{

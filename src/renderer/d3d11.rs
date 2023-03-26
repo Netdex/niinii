@@ -103,6 +103,8 @@ impl D3D11Renderer {
         let mut low_level_mouse_proc: Option<HHOOK> = None;
         // let mut winit_wnd_proc: winuser::WNDPROC = None;
         if settings.overlay_mode {
+            // this has to be after renderer is created or else we segfault
+            window.set_always_on_top(true);
             unsafe {
                 low_level_mouse_proc.replace(SetWindowsHookExA(
                     WH_MOUSE_LL,

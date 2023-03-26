@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use glutin::window;
 use imgui_winit_support::WinitPlatform;
 
-use crate::clipboard;
+use crate::support::clipboard;
 use crate::{app::App, settings::Settings};
 
 pub mod context;
@@ -18,7 +18,7 @@ pub trait Renderer {
     where
         Self: Sized,
     {
-        let on_top = settings.on_top || settings.overlay_mode;
+        // let on_top = settings.on_top || settings.overlay_mode;
         let maximized = settings.overlay_mode;
         let decorations = !settings.overlay_mode;
 
@@ -29,7 +29,8 @@ pub trait Renderer {
             // .with_drag_and_drop(false)
             .with_maximized(maximized)
             .with_decorations(decorations)
-            .with_always_on_top(on_top)
+            // .with_always_on_top(on_top) // can't set this here?
+            .with_fullscreen(Some(window::Fullscreen::Borderless(None)))
     }
 
     fn configure_imgui(imgui: &mut imgui::Context, settings: &Settings)
@@ -44,6 +45,7 @@ pub trait Renderer {
 
         let io = imgui.io_mut();
         io.font_allow_user_scaling = true;
+        io.config_flags |= imgui::ConfigFlags::DOCKING_ENABLE;
 
         if let Some(backend) = clipboard::init() {
             imgui.set_clipboard_backend(backend);

@@ -33,7 +33,7 @@ futures = "0.3"
 async-trait = "0.1"
 
 # on windows, you must install freetype with vcpkg
-imgui = { version = "0.10.0", features = ["tables-api", "freetype"] }
+imgui = { version = "0.10.0", features = ["tables-api", "freetype", "docking"] }
 imgui-sys = { version = "0.10.0", features = ["use-vcpkg"] }
 imgui-winit-support = { version = "0.10.0" }
 clipboard = "0.5"
