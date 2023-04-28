@@ -34,6 +34,7 @@ pub struct Settings {
     pub transparent: bool,
     pub on_top: bool,
     pub overlay_mode: bool,
+    pub use_force_dpi: bool,
     pub force_dpi: f64,
 
     pub ruby_text_type_idx: usize,
@@ -68,6 +69,7 @@ impl Default for Settings {
             transparent: Default::default(),
             on_top: false,
             overlay_mode: false,
+            use_force_dpi: false,
             force_dpi: 0.0,
 
             ruby_text_type_idx: RubyTextType::None as usize,

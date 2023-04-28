@@ -78,9 +78,9 @@ trait ViewTranslation {
 impl ViewTranslation for ChatGptTranslation {
     fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
-        let draw_list = ui.get_window_draw_list();
         match self {
             ChatGptTranslation::Translated { content_text, .. } => {
+                let draw_list = ui.get_window_draw_list();
                 marker(
                     ui,
                     &draw_list,
@@ -90,24 +90,31 @@ impl ViewTranslation for ChatGptTranslation {
                 ui.same_line();
                 stroke_text(ui, &draw_list, content_text, 1.0);
             }
-            ChatGptTranslation::Filtered(result) => {
-                marker(
-                    ui,
-                    &draw_list,
-                    "Filtered",
-                    &ui.style_color(StyleColor::PlotLinesHovered),
-                );
-                ui.same_line();
-                let s = result
+            ChatGptTranslation::Filtered {
+                fallback,
+                moderation,
+            } => {
+                let draw_list = ui.get_window_draw_list();
+                for k in moderation
                     .categories
                     .iter()
-                    .filter_map(|(k, &v)| if v { Some(k.as_ref()) } else { None })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                stroke_text(ui, &draw_list, &format!("{}", s), 1.0);
+                    .filter_map(|(k, &v)| if v { Some(k) } else { None })
+                {
+                    marker(
+                        ui,
+                        &draw_list,
+                        k.as_ref(),
+                        &ui.style_color(StyleColor::PlotLinesHovered),
+                    );
+                    if ui.is_item_hovered() {
+                        ui.tooltip_text(format!("{:.1}%", moderation.category_scores[k] * 100.0))
+                    }
+                }
+                ui.same_line();
+                drop(draw_list);
+                fallback.view(ui);
             }
         }
-        ui.new_line();
     }
     fn show_usage(&self, ui: &Ui) {
         match self {
@@ -129,7 +136,7 @@ impl ViewTranslation for ChatGptTranslation {
                     .size([350.0, 0.0])
                     .build(ui);
             }
-            ChatGptTranslation::Filtered(_) => {}
+            ChatGptTranslation::Filtered { fallback, .. } => fallback.show_usage(ui),
         }
     }
 }
@@ -145,7 +152,6 @@ impl ViewTranslation for DeepLTranslation {
         );
         ui.same_line();
         stroke_text(ui, &draw_list, &self.deepl_text, 1.0);
-        ui.new_line();
     }
     fn show_usage(&self, ui: &Ui) {
         ui.same_line();

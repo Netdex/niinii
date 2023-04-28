@@ -39,7 +39,8 @@ impl Translate for DeepLTranslator {
                 .first()
                 .unwrap()
                 .text
-                .clone();
+                .trim()
+                .to_owned();
             let deepl_usage = deepl.usage_information()?;
             Ok::<(String, deepl_api::UsageInformation), deepl_api::Error>((deepl_text, deepl_usage))
         }})

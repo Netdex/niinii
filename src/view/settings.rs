@@ -91,13 +91,18 @@ impl<'a> SettingsView<'a> {
                     &mut settings.renderer_type_idx,
                     RendererType::VARIANTS,
                 );
-                ui.input_scalar("Force DPI*", &mut settings.force_dpi)
-                    .display_format("%.2f")
-                    .build();
+                ui.checkbox("##", &mut settings.use_force_dpi);
                 ui.same_line();
+                ui.disabled(!settings.use_force_dpi, || {
+                    ui.slider_config("Force DPI*", 0.5f64, 2.0f64)
+                        .display_format("%.2f")
+                        .flags(SliderFlags::ALWAYS_CLAMP)
+                        .build(&mut settings.force_dpi);
+                    ui.same_line();
+                });
                 mixins::help_marker(
                     ui,
-                    "Force DPI used for global scaling factor, set to 0.0 to use default",
+                    "Force DPI used for global scaling factor (CTRL+click to type)",
                 );
 
                 ui.checkbox("Always on-top*", &mut settings.on_top);

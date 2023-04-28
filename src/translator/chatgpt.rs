@@ -72,10 +72,13 @@ impl Translate for ChatGptTranslator {
             .await
             .unwrap()?;
 
-            Ok(Translation::DeepL(DeepLTranslation {
-                source_text: text,
-                deepl_text,
-                deepl_usage,
+            Ok(Translation::ChatGpt(ChatGptTranslation::Filtered {
+                moderation,
+                fallback: DeepLTranslation {
+                    source_text: text,
+                    deepl_text,
+                    deepl_usage,
+                },
             }))
         } else {
             let chat_request = {
@@ -129,5 +132,8 @@ pub enum ChatGptTranslation {
         openai_usage: Usage,
         max_context_tokens: u32,
     },
-    Filtered(moderation::Result),
+    Filtered {
+        moderation: moderation::Result,
+        fallback: DeepLTranslation,
+    },
 }

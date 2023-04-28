@@ -89,7 +89,7 @@ impl D3D11Renderer {
 
         let mut imgui = imgui::Context::create();
         Self::configure_imgui(&mut imgui, settings);
-        let dpi = match settings.force_dpi != 0.0 {
+        let dpi = match settings.use_force_dpi {
             true => Some(settings.force_dpi),
             false => None,
         };
