@@ -4,15 +4,16 @@ use imgui::*;
 use tokio::sync::mpsc;
 
 use crate::{
-    gloss::{self, Gloss, Glossator},
+    parser::{self, Parser, SyntaxTree},
     renderer::context::{Context, ContextFlags},
     settings::Settings,
-    support,
+    support::{self},
     translator::{self, Translate, Translation, Translator},
+    tts::{self, TtsEngine},
     view::{
+        gloss::GlossView,
         inject::InjectView,
         mixins::help_marker,
-        rikai::RikaiView,
         settings::SettingsView,
         translator::{TranslationUsageView, TranslatorView},
     },
@@ -23,14 +24,16 @@ const ERROR_MODAL_TITLE: &str = "Error";
 #[derive(thiserror::Error, Debug)]
 enum Error {
     #[error(transparent)]
-    Gloss(#[from] gloss::Error),
+    Gloss(#[from] parser::Error),
     #[error(transparent)]
     Translation(#[from] translator::Error),
+    #[error(transparent)]
+    TextToSpeech(#[from] tts::Error),
 }
 
 #[derive(Debug)]
 enum Message {
-    Gloss(Result<Gloss, gloss::Error>),
+    Gloss(Result<SyntaxTree, parser::Error>),
     Translation(Result<Translation, translator::Error>),
 }
 
@@ -52,7 +55,6 @@ pub struct App {
 
     show_imgui_demo: bool,
     show_settings: bool,
-    show_raw: bool,
     show_metrics_window: bool,
     show_style_editor: bool,
     show_inject: bool,
@@ -60,9 +62,10 @@ pub struct App {
 
     settings: Settings,
     state: State,
-    glossator: Glossator,
+    glossator: Parser,
     translator: Translator,
-    rikai: RikaiView,
+    tts: TtsEngine,
+    gloss: GlossView,
 }
 
 impl App {
@@ -73,8 +76,9 @@ impl App {
             .unwrap();
 
         let (channel_tx, channel_rx) = tokio::sync::mpsc::unbounded_channel();
-        let glossator = runtime.block_on(Glossator::new(&settings));
+        let glossator = runtime.block_on(Parser::new(&settings));
         let translator = Translator::new(&settings);
+        let tts = TtsEngine::new(&settings);
 
         App {
             runtime,
@@ -85,7 +89,6 @@ impl App {
             request_gloss_text: None,
             show_imgui_demo: false,
             show_settings: false,
-            show_raw: false,
             show_metrics_window: false,
             show_style_editor: false,
             show_inject: false,
@@ -94,7 +97,8 @@ impl App {
             state: State::Completed,
             glossator,
             translator,
-            rikai: RikaiView::new(),
+            tts,
+            gloss: GlossView::new(),
         }
     }
 
@@ -112,11 +116,11 @@ impl App {
                     .into_owned();
                 let variants = if self.settings.more_variants { 5 } else { 1 };
 
-                self.rikai.set_text(text.clone());
+                self.gloss.set_text(text.clone());
 
                 self.runtime
                     .spawn(enclose! { (channel_tx, glossator) async move {
-                        let gloss = glossator.gloss(&text, variants).await;
+                        let gloss = glossator.parse(&text, variants).await;
                         let _ = channel_tx.send(Message::Gloss(gloss));
                     }});
             }
@@ -132,7 +136,7 @@ impl App {
             ..
         } = self;
 
-        self.rikai.set_translation_pending(true);
+        self.gloss.set_translation_pending(true);
 
         let text = text.into();
 
@@ -142,6 +146,12 @@ impl App {
                 let _ = channel_tx.send(Message::Translation(translation));
             }},
         );
+    }
+
+    fn request_tts(&mut self, ui: &Ui, text: &str) {
+        if let Err(err) = self.tts.request_tts(text) {
+            self.transition(ui, State::Error(err.into()));
+        }
     }
 
     fn transition(&mut self, ui: &Ui, state: State) {
@@ -155,22 +165,22 @@ impl App {
     fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
         while let Ok(message) = self.channel_rx.try_recv() {
             match message {
-                Message::Gloss(Ok(gloss)) => {
+                Message::Gloss(Ok(ast)) => {
                     if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
-                        ctx.add_unknown_glyphs_from_root(&gloss.root);
+                        ctx.add_unknown_glyphs_from_root(&ast.root);
                     }
-                    let should_translate = self.settings.auto_translate && gloss.translatable;
-                    let text = gloss.original_text.clone();
-                    self.rikai.set_gloss(gloss);
+                    let should_translate = self.settings.auto_translate && ast.translatable;
+                    let text = ast.original_text.clone();
+                    self.gloss.set_ast(ast);
                     if should_translate {
                         self.request_translation(&text);
                     } else {
                         self.transition(ui, State::Completed);
-                        self.rikai.set_translation(None);
+                        self.gloss.set_translation(None);
                     }
                 }
                 Message::Translation(Ok(translation)) => {
-                    self.rikai.set_translation(Some(translation));
+                    self.gloss.set_translation(Some(translation));
                     self.transition(ui, State::Completed)
                 }
                 Message::Gloss(Err(err)) => {
@@ -214,12 +224,6 @@ impl App {
                 {
                     self.settings.watch_clipboard = !self.settings.watch_clipboard;
                 }
-                ui.separator();
-                if ui.menu_item("Settings") {
-                    self.show_settings = true;
-                }
-            }
-            if let Some(_menu) = ui.begin_menu("View") {
                 if ui
                     .menu_item_config("Show input")
                     .selected(self.settings.show_manual_input)
@@ -228,9 +232,6 @@ impl App {
                     self.settings.show_manual_input = !self.settings.show_manual_input;
                 }
                 ui.separator();
-                if ui.menu_item("Raw") {
-                    self.show_raw = true;
-                }
                 if ui.menu_item("Style Editor") {
                     self.show_style_editor = true;
                 }
@@ -247,6 +248,27 @@ impl App {
                 }
                 if ui.menu_item("Translator") {
                     self.show_translator = true;
+                }
+                ui.separator();
+                if ui.menu_item("Settings") {
+                    self.show_settings = true;
+                }
+            }
+            if let Some(_menu) = ui.begin_menu("View") {
+                self.gloss.show_menu(ctx, ui);
+            }
+            ui.separator();
+            let disabled = matches!(self.state, State::Processing);
+            let _disable_input = ui.begin_disabled(disabled);
+            if ui.menu_item("Translate") {
+                self.transition(ui, State::Processing);
+                if let Some(gloss) = self.gloss.ast() {
+                    self.request_translation(&gloss.original_text.clone());
+                }
+            }
+            if ui.menu_item("Speak") {
+                if let Some(gloss) = self.gloss.ast() {
+                    self.request_tts(ui, &gloss.original_text.clone());
                 }
             }
         }
@@ -305,13 +327,13 @@ impl App {
                 }
                 ui.same_line();
 
-                let enable_tl = self.rikai.gloss().map_or_else(|| false, |x| x.translatable);
+                let enable_tl = self.gloss.ast().map_or_else(|| false, |x| x.translatable);
                 {
                     let mut _disable_tl =
-                        ui.begin_disabled(!enable_tl || self.rikai.translation().is_some());
+                        ui.begin_disabled(!enable_tl || self.gloss.translation().is_some());
                     if ui.button_with_size("Translate", [120.0, 0.0]) {
                         self.transition(ui, State::Processing);
-                        if let Some(gloss) = self.rikai.gloss() {
+                        if let Some(gloss) = self.gloss.ast() {
                             self.request_translation(&gloss.original_text.clone());
                         }
                     }
@@ -321,12 +343,12 @@ impl App {
                 {
                     ui.tooltip(|| ui.text("Text does not require translation"));
                 }
-                if let Some(translation) = self.rikai.translation() {
+                if let Some(translation) = self.gloss.translation() {
                     TranslationUsageView(translation).ui(ui);
                 }
             }
 
-            self.rikai.ui(ctx, ui, &self.settings, &mut self.show_raw);
+            self.gloss.ui(ctx, ui, &self.settings);
 
             if let State::Processing = &self.state {
                 ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));

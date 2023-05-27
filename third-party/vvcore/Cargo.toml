@@ -1,0 +1,14 @@
+[package]
+name = "vvcore"
+version = "0.0.2"
+edition = "2021"
+authors = ["tapoh <iwase22334@gmail.com>"]
+license = "MIT"
+description = "FFI bindings for VOICEVOX CORE"
+repository = "https://github.com/iwase22334/voicevox-core-rs"
+readme = "README.md"
+keywords = ["voicevox", "core"]
+build = "build.rs"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

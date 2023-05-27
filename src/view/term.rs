@@ -131,6 +131,10 @@ impl<'a> TermView<'a> {
                     ui.bullet();
                     ui.text(suffix);
                 }
+                // ignore suru
+                if [10285144, 10285148].contains(&plain.seq().unwrap_or(0)) {
+                    return;
+                }
                 // there should be no glosses if there are conjugations
                 self.add_glosses(ctx, ui, plain.gloss());
                 for conj in plain.conj() {

@@ -59,18 +59,21 @@ fancy-regex = "0.10"
 bitflags = "1.3.2"
 enum_dispatch = "0.3"
 enclose = "1.1.8"
+once_cell = "1.17.1"
 
 flate2 = { version = "1.0" }
 # rayon = "1.5.1"
 deepl-api = "0.3.1"
 # hudhook = { version = "0.3.0", features = ["simplelog"], optional = true }
 dirs = "4.0.0"
+rodio = "0.17.1"
 
 ichiran = { path = "third-party/ichiran" }
 openai-chat = { path = "third-party/openai-chat" }
 
 [target.'cfg(windows)'.dependencies]
 imgui-dx11-renderer = { path = "third-party/imgui-dx11-renderer" }
+vvcore = { path = "third-party/vvcore" }
 
 winapi = { version = "0.3" }
 wio = "0.2"

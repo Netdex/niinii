@@ -42,7 +42,7 @@ impl Client {
                 token,
                 state: Mutex::new(State {
                     client: reqwest::Client::builder()
-                        .timeout(Duration::from_secs(5))
+                        .timeout(Duration::from_secs(10))
                         .build()
                         .unwrap(),
                 }),

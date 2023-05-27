@@ -112,7 +112,9 @@ impl ViewTranslation for ChatGptTranslation {
                 }
                 ui.same_line();
                 drop(draw_list);
-                fallback.view(ui);
+                if let Some(fallback) = fallback {
+                    fallback.view(ui);
+                }
             }
         }
     }
@@ -136,7 +138,11 @@ impl ViewTranslation for ChatGptTranslation {
                     .size([350.0, 0.0])
                     .build(ui);
             }
-            ChatGptTranslation::Filtered { fallback, .. } => fallback.show_usage(ui),
+            ChatGptTranslation::Filtered {
+                fallback: Some(fallback),
+                ..
+            } => fallback.show_usage(ui),
+            _ => {}
         }
     }
 }

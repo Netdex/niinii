@@ -4,11 +4,7 @@ use imgui::*;
 use crate::renderer::context::Context;
 
 use super::id;
-
-fn wrap_bullet(ui: &Ui, text: &str) {
-    ui.bullet();
-    ui.text_wrapped(text);
-}
+use super::mixins::wrap_bullet;
 
 pub struct RawView<'a> {
     root: &'a Root,
@@ -44,6 +40,7 @@ fn add_segment(ui: &Ui, segment: &Segment) {
         }
     }
 }
+
 fn add_clause(ui: &Ui, clause: &Clause) {
     ui.tree_node_config(&format!("Clause (score: {})", clause.score()))
         .default_open(true)

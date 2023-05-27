@@ -9,6 +9,11 @@ pub fn help_marker(ui: &Ui, text: &str) {
     }
 }
 
+pub fn wrap_bullet(ui: &Ui, text: &str) {
+    ui.bullet();
+    ui.text_wrapped(text);
+}
+
 pub enum UnderlineMode {
     Normal,
     Pad,

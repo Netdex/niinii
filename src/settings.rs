@@ -48,6 +48,9 @@ pub struct Settings {
     pub chatgpt_system_prompt: String,
     pub chatgpt_max_context_tokens: u32,
     pub chatgpt_max_tokens: u32,
+    pub chatgpt_moderation: bool,
+
+    pub vv_model_path: String,
 
     pub watch_clipboard: bool,
     pub show_manual_input: bool,
@@ -84,6 +87,9 @@ impl Default for Settings {
                 "You will translate the following visual novel script into English.".into(),
             chatgpt_max_context_tokens: 64,
             chatgpt_max_tokens: 128,
+            chatgpt_moderation: false,
+
+            vv_model_path: Default::default(),
 
             watch_clipboard: true,
             show_manual_input: true,
