@@ -186,7 +186,7 @@ fn marker(ui: &Ui, draw_list: &DrawListMut, text: impl AsRef<str>, color: &[f32;
         .build();
     stroke_token_with_color(
         ui,
-        &draw_list,
+        draw_list,
         &text,
         p,
         1.0,

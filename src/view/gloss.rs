@@ -265,7 +265,7 @@ impl GlossView {
                         .size([300., 110.], Condition::FirstUseEver)
                         .opened(&mut self.show_glossary)
                         .build(|| {
-                            IndexView::new(&gloss).ui(ctx, ui, settings);
+                            IndexView::new(gloss).ui(ctx, ui, settings);
                         });
                 }
                 ui.new_line();
@@ -287,7 +287,7 @@ impl GlossView {
             .retain(|romanized| self.term_window(ctx, ui, settings, romanized));
     }
 
-    pub fn show_menu(&mut self, ctx: &mut Context, ui: &Ui) {
+    pub fn show_menu(&mut self, _ctx: &mut Context, ui: &Ui) {
         if ui.menu_item_config("Raw").selected(self.show_raw).build() {
             self.show_raw = true;
         }

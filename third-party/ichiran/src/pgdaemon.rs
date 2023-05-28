@@ -23,11 +23,7 @@ impl PostgresDaemon {
         let pg_bin_dir = pg_bin_dir.into();
         let data_path = data_path.into();
 
-        log::info!(
-            "starting pg daemon in {:?} at {:?}",
-            &pg_bin_dir,
-            &data_path
-        );
+        tracing::info!(?pg_bin_dir, ?data_path, "starting");
         let postgres_bin_path = Self::pg_bin_path(&pg_bin_dir, "postgres");
 
         let mut proc = Command::new(postgres_bin_path);
@@ -43,10 +39,10 @@ impl PostgresDaemon {
 
         match &proc {
             Ok(proc) => {
-                log::info!("started pg daemon w/ pid {:?}", proc.id());
+                tracing::info!(pid = ?proc.id(), "started");
             }
             Err(err) => {
-                log::warn!("failed to start pg daemon: {}", err)
+                tracing::warn!(%err, "start failed");
             }
         }
 
@@ -67,9 +63,9 @@ impl Drop for PostgresDaemon {
     fn drop(&mut self) {
         match &mut self.pg_proc {
             Ok(pg_proc) => match pg_proc.try_wait() {
-                Ok(Some(status)) => log::warn!("pg daemon already exited with: {}", status),
+                Ok(Some(status)) => tracing::warn!(?status, "exited"),
                 Ok(None) => {
-                    log::info!("stopping pg daemon w/ pid {:?}", pg_proc.id());
+                    tracing::info!(pid = ?pg_proc.id(), "stopping");
                     let pgctl_bin_path = Self::pg_bin_path(&self.pg_bin_dir, "pg_ctl");
 
                     let mut pgctl_proc = Command::new(pgctl_bin_path);
@@ -91,14 +87,14 @@ impl Drop for PostgresDaemon {
                                 Ok(handle) => handle.block_on(fut),
                                 Err(_) => futures::executor::block_on(fut),
                             };
-                            log::info!("stopped pg daemon");
+                            tracing::info!("stopped");
                         }
                         Err(err) => {
-                            log::warn!("failed to stop pg daemon: {}", err)
+                            tracing::warn!(%err, "stop failed")
                         }
                     }
                 }
-                Err(e) => log::error!("failed to wait pg daemon: {}", e),
+                Err(err) => tracing::error!(%err, "wait failed"),
             },
             Err(_) => (),
         }

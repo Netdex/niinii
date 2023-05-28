@@ -2,6 +2,7 @@ use enclose::enclose;
 use fancy_regex::Regex;
 use imgui::*;
 use tokio::sync::mpsc;
+use tracing::Instrument;
 
 use crate::{
     parser::{self, Parser, SyntaxTree},
@@ -102,7 +103,7 @@ impl App {
         }
     }
 
-    fn request_gloss(&mut self, ui: &Ui, text: &str) {
+    fn request_parse(&mut self, ui: &Ui, text: &str) {
         let Self {
             channel_tx,
             glossator,
@@ -120,8 +121,9 @@ impl App {
 
                 self.runtime
                     .spawn(enclose! { (channel_tx, glossator) async move {
-                        let gloss = glossator.parse(&text, variants).await;
-                        let _ = channel_tx.send(Message::Gloss(gloss));
+                        let span = tracing::trace_span!("parse");
+                        let ast = glossator.parse(&text, variants).instrument(span).await;
+                        let _ = channel_tx.send(Message::Gloss(ast));
                     }});
             }
             Err(err) => self.transition(ui, State::Error(Error::Gloss(err.into()))),
@@ -142,13 +144,16 @@ impl App {
 
         self.runtime.spawn(
             enclose! { (mut translator, mut settings, channel_tx) async move {
-                let translation = translator.translate(&settings, text).await;
+                let span = tracing::trace_span!("translation");
+                let translation = translator.translate(&settings, text).instrument(span).await;
                 let _ = channel_tx.send(Message::Translation(translation));
             }},
         );
     }
 
     fn request_tts(&mut self, ui: &Ui, text: &str) {
+        let span = tracing::trace_span!("translation");
+        let _enter = span.enter();
         if let Err(err) = self.tts.request_tts(text) {
             self.transition(ui, State::Error(err.into()));
         }
@@ -156,7 +161,7 @@ impl App {
 
     fn transition(&mut self, ui: &Ui, state: State) {
         if let State::Error(err) = &state {
-            log::error!("{}", err);
+            tracing::error!(%err);
             ui.open_popup(ERROR_MODAL_TITLE);
         }
         self.state = state;
@@ -197,7 +202,7 @@ impl App {
                 if let Some(request_gloss_text) = self.request_gloss_text.clone() {
                     self.request_gloss_text = None;
                     self.transition(ui, State::Processing);
-                    self.request_gloss(ui, &request_gloss_text);
+                    self.request_parse(ui, &request_gloss_text);
                 }
             }
             _ => (),
@@ -235,17 +240,6 @@ impl App {
                 if ui.menu_item("Style Editor") {
                     self.show_style_editor = true;
                 }
-                if ui.menu_item("Debugger") {
-                    self.show_metrics_window = true;
-                }
-                if ui.menu_item("ImGui Demo") {
-                    self.show_imgui_demo = true;
-                }
-                if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
-                    && ui.menu_item("Inject")
-                {
-                    self.show_inject = true;
-                }
                 if ui.menu_item("Translator") {
                     self.show_translator = true;
                 }
@@ -256,6 +250,19 @@ impl App {
             }
             if let Some(_menu) = ui.begin_menu("View") {
                 self.gloss.show_menu(ctx, ui);
+            }
+            if let Some(_menu) = ui.begin_menu("Debug") {
+                if ui.menu_item("Debugger") {
+                    self.show_metrics_window = true;
+                }
+                if ui.menu_item("Demo") {
+                    self.show_imgui_demo = true;
+                }
+                if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
+                    && ui.menu_item("Inject")
+                {
+                    self.show_inject = true;
+                }
             }
             ui.separator();
             let disabled = matches!(self.state, State::Processing);
@@ -293,7 +300,7 @@ impl App {
         let io = ui.io();
 
         let ui_d = support::docking::UiDocking {};
-        let _space = ui_d.dockspace_over_viewport();
+        ui_d.dockspace_over_viewport();
 
         let mut niinii = ui
             .window("niinii")

@@ -189,7 +189,7 @@ impl Renderer for D3D11Renderer {
                     if ctx.update_fonts(imgui, platform.hidpi_factor()) {
                         unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
                         let elapsed = now.elapsed();
-                        log::info!("rebuilt font atlas (took {:?})", elapsed);
+                        tracing::info!("rebuilt font atlas (took {:?})", elapsed);
                     }
                     let ui = imgui.frame();
                     let mut run = true;
@@ -444,7 +444,7 @@ unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM)
                         *last_want_capture_mouse = io.want_capture_mouse;
                     }
                 } else {
-                    log::warn!(
+                    tracing::warn!(
                         "failed to acquire ctx in hook ncode={} wparam={} lparam={}",
                         ncode,
                         wparam,

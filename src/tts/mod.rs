@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::mpsc::Receiver, thread::JoinHandle};
+use std::{path::PathBuf, thread::JoinHandle};
 
 use once_cell::sync::OnceCell;
 use std::sync::mpsc::Sender;
@@ -8,7 +8,7 @@ use vvcore::*;
 
 use crate::settings::Settings;
 
-use self::protocol::{Model, ModelData};
+use self::protocol::ModelData;
 
 pub mod protocol;
 
@@ -67,9 +67,9 @@ impl TtsEngine {
     }
 
     fn state(&self) -> Result<&State, Error> {
-        Ok(self.state.get_or_try_init(|| {
+        self.state.get_or_try_init(|| {
             let models_path = self.vvcore_path.join("model");
-            log::debug!("model path: {}", models_path.display());
+            tracing::debug!(?models_path, "check");
             if !models_path.try_exists()? {
                 return Err(std::io::Error::from(std::io::ErrorKind::NotFound).into());
             }
@@ -79,7 +79,7 @@ impl TtsEngine {
             );
 
             let open_jtalk_dic_path = self.vvcore_path.join("open_jtalk_dic_utf_8-1.11");
-            log::debug!("open jtalk dic path: {}", open_jtalk_dic_path.display());
+            tracing::debug!(?open_jtalk_dic_path, "check");
             if !open_jtalk_dic_path.try_exists()? {
                 return Err(std::io::Error::from(std::io::ErrorKind::NotFound).into());
             }
@@ -91,12 +91,10 @@ impl TtsEngine {
 
             let thread = std::thread::spawn(move || {
                 let version = VoicevoxCore::get_version();
-                log::debug!("voicevox version: {}", version);
                 let supported_devices_json = VoicevoxCore::get_supported_devices_json();
-                log::debug!("supported devices: {}", supported_devices_json);
+                tracing::debug!(version, supported_devices_json);
                 let metas_json = VoicevoxCore::get_metas_json();
                 let model_data: ModelData = serde_json::from_str(metas_json).unwrap();
-                log::debug!("supported models: {:?}", model_data);
                 tx.send(model_data).unwrap();
 
                 let vvcore = VoicevoxCore::new_from_options(
@@ -108,7 +106,7 @@ impl TtsEngine {
                 .unwrap();
 
                 let speaker_id: u32 = 51;
-                log::trace!("loading speaker {}", speaker_id);
+                tracing::debug!(speaker_id, "load_model");
                 vvcore.load_model(speaker_id).unwrap();
 
                 let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
@@ -117,7 +115,7 @@ impl TtsEngine {
                 while let Ok(message) = rx_request.recv() {
                     match message {
                         Request::Text(text) => {
-                            log::debug!("speaker {}: {}", speaker_id, text);
+                            tracing::debug!(speaker_id, text, "speaker");
                             let wav = vvcore
                                 .tts_simple(&text, speaker_id)
                                 .unwrap()
@@ -149,6 +147,6 @@ impl TtsEngine {
                 model_data,
                 _thread: thread,
             })
-        })?)
+        })
     }
 }

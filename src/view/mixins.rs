@@ -73,7 +73,7 @@ pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, thick: f32) {
         wrap_line(ui, sz[0]);
         stroke_token_with_color(
             ui,
-            &draw_list,
+            draw_list,
             token,
             ui.cursor_screen_pos(),
             thick,

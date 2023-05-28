@@ -53,6 +53,7 @@ impl Client {
         assert!(!request.stream.unwrap_or(false), "streaming not supported");
         let Shared { token, state } = &*self.shared;
         let State { client } = &mut *state.lock().await;
+        tracing::trace!(?request);
         let response: chat::Response = client
             .post("https://api.openai.com/v1/chat/completions")
             .bearer_auth(token)
@@ -61,6 +62,7 @@ impl Client {
             .await?
             .json()
             .await?;
+        tracing::trace!(?response);
         match response {
             chat::Response::Completion(completion) => Ok(completion),
             chat::Response::Error { error } => Err(Error::Chat(error)),
@@ -72,6 +74,7 @@ impl Client {
     ) -> Result<moderation::Result, Error> {
         let Shared { token, state } = &*self.shared;
         let State { client } = &mut *state.lock().await;
+        tracing::trace!(?request);
         let mut response: moderation::Response = client
             .post("https://api.openai.com/v1/moderations")
             .bearer_auth(token)
@@ -80,6 +83,7 @@ impl Client {
             .await?
             .json()
             .await?;
+        tracing::trace!(?response);
         Ok(response.results.remove(0))
     }
 }

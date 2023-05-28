@@ -50,7 +50,7 @@ impl Parser {
                 Some(pg_daemon)
             }
             Err(_) => {
-                log::warn!("could not get db conn params from ichiran");
+                tracing::warn!("could not get db conn params from ichiran");
                 None
             }
         };

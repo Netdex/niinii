@@ -10,6 +10,7 @@ pub mod context;
 #[cfg(windows)]
 pub mod d3d11;
 pub mod glow;
+mod ranges;
 
 pub trait Renderer {
     fn main_loop(&mut self, _app: &mut App) {}

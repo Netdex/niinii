@@ -2,12 +2,14 @@
 name = "niinii"
 version = "0.1.0"
 authors = ["netdex <admin@netdex.org>"]
-edition = "2018"
+edition = "2021"
 build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+default = ["tracy"]
+tracy = []
 # TODO: disabled until upstream updates imgui to 0.10
 # hook = ["dep:hudhook"]
 
@@ -43,6 +45,9 @@ glutin = "0.29.1"
 winit = "0.27.2"
 
 log = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+tracing-tracy = "0.10.2"
 env_logger = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
