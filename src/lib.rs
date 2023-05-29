@@ -1,10 +1,10 @@
 pub mod app;
-pub mod parser;
 #[cfg(feature = "hook")]
 pub mod hook;
+pub mod parser;
 pub mod renderer;
 pub mod settings;
 pub mod support;
 pub mod translator;
-pub mod view;
 pub mod tts;
+pub mod view;

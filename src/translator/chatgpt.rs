@@ -1,6 +1,8 @@
 use enclose::enclose;
-use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::Mutex;
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use openai_chat::{
@@ -83,7 +85,7 @@ impl Translate for ChatGptTranslator {
         }
 
         let chat_request = {
-            let State { context } = &mut *self.shared.state.lock().await;
+            let State { context } = &mut *self.shared.state.lock().unwrap();
             // TODO: experiment with summarizing context
             loop {
                 let estimated_tokens: u32 = context.iter().map(|m| m.estimate_tokens()).sum();
@@ -113,7 +115,7 @@ impl Translate for ChatGptTranslator {
         let completion = self.shared.client.chat(&chat_request).await?;
         let message = &completion.choices.first().unwrap().message;
         {
-            let State { context, .. } = &mut *self.shared.state.lock().await;
+            let State { context, .. } = &mut *self.shared.state.lock().unwrap();
             context.push_back(message.clone());
         }
         let content = &completion.choices.first().unwrap().message.content;

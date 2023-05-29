@@ -4,8 +4,9 @@ use imgui::*;
 use crate::{
     settings::Settings,
     translator::{
-        ChatGptTranslation, ChatGptTranslator, DeepLTranslation, DeepLTranslator, Translation,
-        Translator,
+        chatgpt::{ChatGptTranslation, ChatGptTranslator, State},
+        deepl::{DeepLTranslation, DeepLTranslator},
+        Translation, Translator,
     },
 };
 
@@ -24,9 +25,9 @@ trait ViewTranslator {
 }
 impl ViewTranslator for ChatGptTranslator {
     fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
-        let mut state = self.shared.state.blocking_lock();
+        let State { context } = &mut *self.shared.state.lock().unwrap();
         if ui.button("Clear context") {
-            state.context.clear();
+            context.clear();
         }
         if let Some(_t) = ui.begin_table_header_with_flags(
             "context",
@@ -45,7 +46,7 @@ impl ViewTranslator for ChatGptTranslator {
                 [ui.content_region_avail()[0], 75.0],
             )
             .build();
-            for message in &state.context {
+            for message in context {
                 ui.table_next_column();
                 ui.text(format!("{:?}", message.role));
                 ui.table_next_column();

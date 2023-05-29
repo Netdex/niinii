@@ -4,13 +4,13 @@ use thiserror::Error;
 
 use crate::settings::{Settings, TranslatorType};
 
-pub use self::{
+use self::{
     chatgpt::{ChatGptTranslation, ChatGptTranslator},
     deepl::{DeepLTranslation, DeepLTranslator},
 };
 
-mod chatgpt;
-mod deepl;
+pub mod chatgpt;
+pub mod deepl;
 
 #[derive(Error, Debug)]
 pub enum Error {

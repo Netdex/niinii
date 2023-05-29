@@ -2,9 +2,6 @@ use std::{path::PathBuf, thread::JoinHandle};
 
 use once_cell::sync::OnceCell;
 use std::sync::mpsc::Sender;
-use tokio::sync::oneshot;
-
-use vvcore::*;
 
 use crate::settings::Settings;
 
@@ -18,8 +15,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("Channel Error: closed")]
     Channel,
-    #[error("Voicevox Error: {0:?}")]
-    Voicevox(ResultCode),
+    #[error("Unsupported: closed")]
+    NotSupported,
 }
 
 enum Request {
@@ -66,8 +63,21 @@ impl TtsEngine {
         Ok(&state.model_data)
     }
 
+    #[cfg(not(feature = "voicevox"))]
+    fn state(&self) -> Result<&State, Error> {
+        let Self {
+            vvcore_path: _vvcore_path,
+            state: _state,
+        } = self;
+        Err(Error::NotSupported)
+    }
+
+    #[cfg(feature = "voicevox")]
     fn state(&self) -> Result<&State, Error> {
         self.state.get_or_try_init(|| {
+            use tokio::sync::oneshot;
+            use vvcore::*;
+
             let models_path = self.vvcore_path.join("model");
             tracing::debug!(?models_path, "check");
             if !models_path.try_exists()? {

@@ -8,8 +8,9 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["tracy"]
-tracy = []
+default = []
+tracy = ["tracing-tracy"]
+voicevox = ["vvcore"]
 # TODO: disabled until upstream updates imgui to 0.10
 # hook = ["dep:hudhook"]
 
@@ -47,7 +48,7 @@ winit = "0.27.2"
 log = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
-tracing-tracy = "0.10.2"
+tracing-tracy = { version = "0.10.2", optional = true }
 env_logger = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -78,7 +79,7 @@ openai-chat = { path = "third-party/openai-chat" }
 
 [target.'cfg(windows)'.dependencies]
 imgui-dx11-renderer = { path = "third-party/imgui-dx11-renderer" }
-vvcore = { path = "third-party/vvcore" }
+vvcore = { path = "third-party/vvcore", optional = true }
 
 winapi = { version = "0.3" }
 wio = "0.2"

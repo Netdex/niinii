@@ -33,13 +33,6 @@
 pub mod api;
 
 pub use self::api::{
-    VoicevoxCore,
-    ResultCode,
-    AccelerationMode,
-    CPointerWrap,
-    CStrWrap,
-    InitializeOptions,
-    AudioQueryOptions,
-    SynthesisOptions,
-    TtsOptions,
+    AccelerationMode, AudioQueryOptions, CPointerWrap, CStrWrap, InitializeOptions, ResultCode,
+    SynthesisOptions, TtsOptions, VoicevoxCore,
 };

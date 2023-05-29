@@ -1,12 +1,13 @@
-use vvcore::VoicevoxCore;
 use vvcore::AccelerationMode;
+use vvcore::VoicevoxCore;
 
 pub static SPEAKER_ID: u32 = 1;
 pub static OJT_PATH: &str = "./voicevox_core/open_jtalk_dic_utf_8-1.11";
 
 fn setup() -> VoicevoxCore {
     let dir = std::ffi::CString::new("./voicevox_core/open_jtalk_dic_utf_8-1.11").unwrap();
-    let vvc = VoicevoxCore::new_from_options(AccelerationMode::Auto, 0, false, dir.as_c_str()).unwrap();
+    let vvc =
+        VoicevoxCore::new_from_options(AccelerationMode::Auto, 0, false, dir.as_c_str()).unwrap();
 
     vvc.load_model(SPEAKER_ID).unwrap();
 
@@ -64,13 +65,13 @@ fn decode() {
 
     assert!(r.is_ok());
     assert_eq!(r.unwrap().as_slice().len(), F0_LENGTH * 256);
-
 }
 
 #[test]
 fn is_gpu_mode() {
     let dir = std::ffi::CString::new(OJT_PATH).unwrap();
-    let vvc = VoicevoxCore::new_from_options(AccelerationMode::CPU, 0, false, dir.as_c_str()).unwrap();
+    let vvc =
+        VoicevoxCore::new_from_options(AccelerationMode::CPU, 0, false, dir.as_c_str()).unwrap();
 
     assert_eq!(vvc.is_gpu_mode(), false);
 }
@@ -95,14 +96,13 @@ fn predict_duration() {
 
     // 「こんにちは、音声合成の世界へようこそ」という文章を変換して得た phoneme_vector
     let phoneme_vector = [
-        0, 23, 30, 4, 28, 21, 10, 21, 42, 7, 0, 30, 4, 35, 14, 14, 16, 30, 30, 35, 14, 14, 28,
-        30, 35, 14, 23, 7, 21, 14, 43, 30, 30, 23, 30, 35, 30, 0,
+        0, 23, 30, 4, 28, 21, 10, 21, 42, 7, 0, 30, 4, 35, 14, 14, 16, 30, 30, 35, 14, 14, 28, 30,
+        35, 14, 23, 7, 21, 14, 43, 30, 30, 23, 30, 35, 30, 0,
     ];
 
     let r = vvc.predict_duration(&phoneme_vector, 0);
     assert!(r.is_ok());
     assert_eq!(r.unwrap().as_slice().len(), phoneme_vector.len());
-
 }
 
 #[test]

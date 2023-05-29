@@ -8,7 +8,6 @@ use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 
 pub use protocol::*;
-use tokio::sync::Mutex;
 
 mod protocol;
 
@@ -24,35 +23,28 @@ pub enum Error {
 
 #[derive(Clone)]
 pub struct Client {
+    client: reqwest::Client,
     shared: Arc<Shared>,
 }
 struct Shared {
     token: String,
-    state: Mutex<State>,
-}
-struct State {
-    client: reqwest::Client,
 }
 
 impl Client {
     pub fn new(token: impl Into<String>) -> Self {
         let token = token.into();
         Self {
-            shared: Arc::new(Shared {
-                token,
-                state: Mutex::new(State {
-                    client: reqwest::Client::builder()
-                        .timeout(Duration::from_secs(10))
-                        .build()
-                        .unwrap(),
-                }),
-            }),
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .unwrap(),
+            shared: Arc::new(Shared { token }),
         }
     }
     pub async fn chat(&self, request: &chat::Request) -> Result<chat::Completion, Error> {
         assert!(!request.stream.unwrap_or(false), "streaming not supported");
-        let Shared { token, state } = &*self.shared;
-        let State { client } = &mut *state.lock().await;
+        let Self { shared, client } = self;
+        let Shared { token } = &**shared;
         tracing::trace!(?request);
         let response: chat::Response = client
             .post("https://api.openai.com/v1/chat/completions")
@@ -72,8 +64,8 @@ impl Client {
         &self,
         request: &moderation::Request,
     ) -> Result<moderation::Result, Error> {
-        let Shared { token, state } = &*self.shared;
-        let State { client } = &mut *state.lock().await;
+        let Self { shared, client } = self;
+        let Shared { token } = &**shared;
         tracing::trace!(?request);
         let mut response: moderation::Response = client
             .post("https://api.openai.com/v1/moderations")

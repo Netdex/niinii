@@ -2,8 +2,6 @@
 // their own consoles
 // #![windows_subsystem = "windows"]
 
-use tracing_subscriber::prelude::*;
-
 #[cfg(windows)]
 use libniinii::renderer::d3d11::D3D11Renderer;
 use libniinii::{
@@ -14,13 +12,16 @@ use libniinii::{
 
 fn main() -> std::io::Result<()> {
     // env_logger::init();
-    let tracy_layer = tracing_tracy::TracyLayer::new();
     let subscriber = tracing_subscriber::fmt::fmt()
         // .compact()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .finish();
     #[cfg(feature = "tracy")]
-    let subscriber = subscriber.with(tracy_layer);
+    let subscriber = {
+        use tracing_subscriber::prelude::*;
+        let tracy_layer = tracing_tracy::TracyLayer::new();
+        subscriber.with(tracy_layer)
+    };
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let settings = Settings::from_file();
