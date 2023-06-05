@@ -13,7 +13,6 @@ use crate::settings::{RubyTextType, Settings};
 use crate::translator::Translation;
 use crate::view::{raw::RawView, term::TermView};
 
-#[derive(Debug)]
 enum View {
     Text(String),
     Interpret {
@@ -23,7 +22,6 @@ enum View {
     },
 }
 
-#[derive(Debug)]
 pub struct GlossView {
     view: Option<View>,
     show_term_window: RefCell<HashSet<Romanized>>,

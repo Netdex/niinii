@@ -4,7 +4,7 @@ use imgui::*;
 use crate::{
     settings::Settings,
     translator::{
-        chatgpt::{ChatGptTranslation, ChatGptTranslator, State},
+        chatgpt::{ChatGptTranslation, ChatGptTranslator},
         deepl::{DeepLTranslation, DeepLTranslator},
         Translation, Translator,
     },
@@ -25,7 +25,7 @@ trait ViewTranslator {
 }
 impl ViewTranslator for ChatGptTranslator {
     fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
-        let State { context } = &mut *self.shared.state.lock().unwrap();
+        let mut context = self.context.lock().unwrap();
         if ui.button("Clear context") {
             context.clear();
         }
@@ -46,7 +46,7 @@ impl ViewTranslator for ChatGptTranslator {
                 [ui.content_region_avail()[0], 75.0],
             )
             .build();
-            for message in context {
+            for message in context.iter() {
                 ui.table_next_column();
                 ui.text(format!("{:?}", message.role));
                 ui.table_next_column();
@@ -80,7 +80,9 @@ impl ViewTranslation for ChatGptTranslation {
     fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         match self {
-            ChatGptTranslation::Translated { content_text, .. } => {
+            ChatGptTranslation::Translated { context, .. } => {
+                let context = context.lock().unwrap();
+
                 let draw_list = ui.get_window_draw_list();
                 marker(
                     ui,
@@ -89,12 +91,12 @@ impl ViewTranslation for ChatGptTranslation {
                     &ui.style_color(StyleColor::TextSelectedBg),
                 );
                 ui.same_line();
-                stroke_text(ui, &draw_list, content_text, 1.0);
+
+                if let Some(message) = context.back() {
+                    stroke_text(ui, &draw_list, &message.content, 1.0);
+                }
             }
-            ChatGptTranslation::Filtered {
-                fallback,
-                moderation,
-            } => {
+            ChatGptTranslation::Filtered { moderation } => {
                 let draw_list = ui.get_window_draw_list();
                 for k in moderation
                     .categories
@@ -113,38 +115,32 @@ impl ViewTranslation for ChatGptTranslation {
                 }
                 ui.same_line();
                 drop(draw_list);
-                if let Some(fallback) = fallback {
-                    fallback.view(ui);
-                }
             }
         }
     }
-    fn show_usage(&self, ui: &Ui) {
-        match self {
-            ChatGptTranslation::Translated {
-                openai_usage,
-                max_context_tokens,
-                ..
-            } => {
-                ui.same_line();
-                let fraction = openai_usage.prompt_tokens as f32 / *max_context_tokens as f32;
-                ProgressBar::new(fraction)
-                    .overlay_text(format!(
-                        "ChatGPT: {}/{} prompt: {} context ({:.2}%)",
-                        openai_usage.prompt_tokens,
-                        openai_usage.total_tokens,
-                        max_context_tokens,
-                        fraction
-                    ))
-                    .size([350.0, 0.0])
-                    .build(ui);
-            }
-            ChatGptTranslation::Filtered {
-                fallback: Some(fallback),
-                ..
-            } => fallback.show_usage(ui),
-            _ => {}
-        }
+    fn show_usage(&self, _ui: &Ui) {
+        // TODO: the streaming API doesn't have a usage field...
+        // match self {
+        //     ChatGptTranslation::Translated {
+        //         openai_usage,
+        //         max_context_tokens,
+        //         ..
+        //     } => {
+        //         ui.same_line();
+        //         let fraction = openai_usage.prompt_tokens as f32 / *max_context_tokens as f32;
+        //         ProgressBar::new(fraction)
+        //             .overlay_text(format!(
+        //                 "ChatGPT: {}/{} prompt: {} context ({:.2}%)",
+        //                 openai_usage.prompt_tokens,
+        //                 openai_usage.total_tokens,
+        //                 max_context_tokens,
+        //                 fraction
+        //             ))
+        //             .size([350.0, 0.0])
+        //             .build(ui);
+        //     }
+        //     _ => {}
+        // }
     }
 }
 impl ViewTranslation for DeepLTranslation {

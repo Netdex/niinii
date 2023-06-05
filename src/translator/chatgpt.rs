@@ -1,40 +1,28 @@
-use enclose::enclose;
-use std::{
-    collections::VecDeque,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use enclose::enclose;
 use openai_chat::{
-    chat::{self, Message, Usage},
-    moderation, Client,
+    chat::{self, Message},
+    moderation, Client, MessageBuffer,
 };
+use tokio_stream::StreamExt;
+use tokio_util::sync::{CancellationToken, DropGuard};
 
 use crate::settings::Settings;
 
-use super::{DeepLTranslation, Error, Translate, Translation};
+use super::{Error, Translate, Translation};
 
 #[derive(Clone)]
 pub struct ChatGptTranslator {
-    pub(crate) shared: Arc<Shared>,
-}
-pub(crate) struct Shared {
     client: Client,
-    pub(crate) state: Mutex<State>,
-}
-pub(crate) struct State {
-    pub context: VecDeque<Message>,
+    pub context: Arc<Mutex<MessageBuffer>>,
 }
 impl ChatGptTranslator {
     pub fn new(settings: &Settings) -> Self {
-        let client = openai_chat::Client::new(&settings.openai_api_key);
         Self {
-            shared: Arc::new(Shared {
-                client,
-                state: Mutex::new(State {
-                    context: VecDeque::new(),
-                }),
-            }),
+            client: openai_chat::Client::new(&settings.openai_api_key),
+            context: Arc::new(Mutex::new(MessageBuffer::new())),
         }
     }
 }
@@ -52,40 +40,16 @@ impl Translate for ChatGptTranslator {
                 input: text.clone(),
                 ..Default::default()
             };
-            let moderation = self.shared.client.moderation(&mod_request).await?;
+            let moderation = self.client.moderation(&mod_request).await?;
             if moderation.flagged {
-                let Settings { deepl_api_key, .. } = settings;
-                let (deepl_text, deepl_usage) = tokio::task::spawn_blocking(enclose! { (text, deepl_api_key) move || {
-                    let deepl = deepl_api::DeepL::new(deepl_api_key);
-                    let deepl_text = deepl
-                        .translate(
-                            None,
-                            deepl_api::TranslatableTextList {
-                                source_language: Some("JA".into()),
-                                target_language: "EN-US".into(),
-                                texts: vec![text],
-                            },
-                        )?
-                        .first()
-                        .unwrap()
-                        .text
-                        .clone();
-                    let deepl_usage = deepl.usage_information()?;
-                    Ok::<(String, deepl_api::UsageInformation), deepl_api::Error>((deepl_text, deepl_usage))
-                }}).await.unwrap()?;
                 return Ok(Translation::ChatGpt(ChatGptTranslation::Filtered {
                     moderation,
-                    fallback: Some(DeepLTranslation {
-                        source_text: text,
-                        deepl_text,
-                        deepl_usage,
-                    }),
                 }));
             }
         }
 
         let chat_request = {
-            let State { context } = &mut *self.shared.state.lock().unwrap();
+            let mut context = self.context.lock().unwrap();
             // TODO: experiment with summarizing context
             loop {
                 let estimated_tokens: u32 = context.iter().map(|m| m.estimate_tokens()).sum();
@@ -111,31 +75,46 @@ impl Translate for ChatGptTranslator {
             }
         };
 
-        // do not hold lock across I/O
-        let completion = self.shared.client.chat(&chat_request).await?;
-        let message = &completion.choices.first().unwrap().message;
-        {
-            let State { context, .. } = &mut *self.shared.state.lock().unwrap();
-            context.push_back(message.clone());
-        }
-        let content = &completion.choices.first().unwrap().message.content;
-        Ok(Translation::ChatGpt(ChatGptTranslation::Translated {
-            content_text: content.to_string(),
-            openai_usage: completion.usage,
+        let mut stream = self
+            .client
+            .stream(chat_request)
+            .await
+            .map_err(openai_chat::Error::Network)?;
+
+        let token = CancellationToken::new();
+        let context = &self.context;
+        tokio::spawn(enclose! { (context, token) async move {
+            loop {
+                tokio::select! {
+                    msg = stream.next() => match msg {
+                        Some(Ok(completion)) => {
+                            let mut context = context.lock().unwrap();
+                            let message = &completion.choices.first().unwrap().delta;
+                            context.delta(message)
+                        },
+                        _ => break
+                    },
+                    _ = token.cancelled() => break
+                }
+            }
+        }});
+
+        Ok(ChatGptTranslation::Translated {
+            context: context.clone(),
             max_context_tokens: settings.chatgpt_max_context_tokens,
-        }))
+            _guard: token.drop_guard(),
+        }
+        .into())
     }
 }
 
-#[derive(Debug)]
 pub enum ChatGptTranslation {
     Translated {
-        content_text: String,
-        openai_usage: Usage,
+        context: Arc<Mutex<MessageBuffer>>,
         max_context_tokens: u32,
+        _guard: DropGuard,
     },
     Filtered {
         moderation: moderation::Result,
-        fallback: Option<DeepLTranslation>,
     },
 }

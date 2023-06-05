@@ -45,7 +45,6 @@ pub trait Translate {
     ) -> Result<Translation, Error>;
 }
 
-#[derive(Debug)]
 #[enum_dispatch]
 pub enum Translation {
     DeepL(DeepLTranslation),

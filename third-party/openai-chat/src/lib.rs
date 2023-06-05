@@ -5,10 +5,14 @@
 
 use std::{sync::Arc, time::Duration};
 
+use eventsource_stream::Eventsource;
 use thiserror::Error;
+use tokio_stream::{Stream, StreamExt};
 
+pub use message_buffer::*;
 pub use protocol::*;
 
+mod message_buffer;
 mod protocol;
 
 #[derive(Error, Debug)]
@@ -19,6 +23,8 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("Chat Error: {0}")]
     Chat(#[from] chat::Error),
+    #[error(transparent)]
+    EventStream(#[from] eventsource_stream::EventStreamError<reqwest::Error>),
 }
 
 #[derive(Clone)]
@@ -41,15 +47,18 @@ impl Client {
             shared: Arc::new(Shared { token }),
         }
     }
-    pub async fn chat(&self, request: &chat::Request) -> Result<chat::Completion, Error> {
+
+    pub async fn chat(&self, mut request: chat::Request) -> Result<chat::Completion, Error> {
         assert!(!request.stream.unwrap_or(false), "streaming not supported");
+        request.stream = Some(false);
+
         let Self { shared, client } = self;
         let Shared { token } = &**shared;
         tracing::trace!(?request);
         let response: chat::Response = client
             .post("https://api.openai.com/v1/chat/completions")
             .bearer_auth(token)
-            .json(request)
+            .json(&request)
             .send()
             .await?
             .json()
@@ -60,6 +69,38 @@ impl Client {
             chat::Response::Error { error } => Err(Error::Chat(error)),
         }
     }
+
+    pub async fn stream(
+        &self,
+        mut request: chat::Request,
+    ) -> Result<impl Stream<Item = Result<chat::PartialCompletion, Error>>, reqwest::Error> {
+        assert!(request.stream.unwrap_or(true), "streaming required");
+        request.stream = Some(true);
+
+        let Self { shared, client } = self;
+        let Shared { token } = &**shared;
+        tracing::trace!(?request);
+        let stream = client
+            .post("https://api.openai.com/v1/chat/completions")
+            .bearer_auth(token)
+            .json(&request)
+            .send()
+            .await?
+            .bytes_stream()
+            .eventsource();
+        Ok(stream.map(|event| match event {
+            Ok(event) => {
+                let response: chat::PartialResponse = serde_json::from_str(&event.data)?;
+                tracing::trace!(?response);
+                match response {
+                    chat::PartialResponse::Delta(delta) => Ok::<_, Error>(delta),
+                    chat::PartialResponse::Error { error } => Err(Error::Chat(error)),
+                }
+            }
+            Err(err) => Err(err.into()),
+        }))
+    }
+
     pub async fn moderation(
         &self,
         request: &moderation::Request,
@@ -82,6 +123,8 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
+    use tracing_test::traced_test;
+
     mod fixture;
     use super::*;
 
@@ -95,9 +138,24 @@ mod tests {
             }],
             ..Default::default()
         };
-        let response = client.chat(&request).await.unwrap();
+        let response = client.chat(request).await.unwrap();
         let content = &response.choices.first().unwrap().message.content;
         assert!(content.contains("Ottawa"));
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_stream() {
+        let client = fixture::client();
+        let request = chat::Request {
+            messages: vec![chat::Message {
+                role: chat::Role::User,
+                content: "What is the capital city of Canada?".into(),
+            }],
+            ..Default::default()
+        };
+        let mut response = client.stream(request).await.unwrap();
+        while let Some(_msg) = response.next().await {}
     }
 
     #[tokio::test]

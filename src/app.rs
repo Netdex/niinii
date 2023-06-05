@@ -32,7 +32,6 @@ enum Error {
     TextToSpeech(#[from] tts::Error),
 }
 
-#[derive(Debug)]
 enum Message {
     Gloss(Result<SyntaxTree, parser::Error>),
     Translation(Result<Translation, translator::Error>),
@@ -152,7 +151,7 @@ impl App {
     }
 
     fn request_tts(&mut self, ui: &Ui, text: &str) {
-        let span = tracing::trace_span!("translation");
+        let span = tracing::trace_span!("tts");
         let _enter = span.enter();
         if let Err(err) = self.tts.request_tts(text) {
             self.transition(ui, State::Error(err.into()));

@@ -28,19 +28,6 @@ pub enum Role {
     Assistant,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Message {
-    pub role: Role,
-    pub content: String,
-}
-impl Message {
-    pub fn estimate_tokens(&self) -> u32 {
-        let bpe = cl100k_base_singleton();
-        let bpe = bpe.lock();
-        4 + bpe.encode_with_special_tokens(&self.content).len() as u32
-    }
-}
-
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Request {
@@ -103,8 +90,35 @@ pub struct Usage {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Message {
+    pub role: Role,
+    pub content: String,
+}
+impl Message {
+    pub fn estimate_tokens(&self) -> u32 {
+        let bpe = cl100k_base_singleton();
+        let bpe = bpe.lock();
+        4 + bpe.encode_with_special_tokens(&self.content).len() as u32
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PartialMessage {
+    Role(Role),
+    Content(String),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Choice {
     pub message: Message,
+    // finish_reason
+    // index
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PartialChoice {
+    pub delta: PartialMessage,
     // finish_reason
     // index
 }
@@ -124,4 +138,20 @@ pub struct Completion {
 pub(crate) enum Response {
     Completion(Completion),
     Error { error: Error },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PartialCompletion {
+    pub id: String,
+    pub object: String,
+    pub created: u32,
+    pub model: Model,
+    pub choices: Vec<PartialChoice>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum PartialResponse {
+    Delta(PartialCompletion),
+    Error { error: Error }, // TODO: ???
 }
