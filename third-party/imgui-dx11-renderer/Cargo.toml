@@ -1,6 +1,6 @@
 [package]
 name = "imgui-dx11-renderer"
-version = "0.10.0"
+version = "0.11.0"
 authors = ["Lukas Wirth <lukastw97@gmail.com>"]
 edition = "2021"
 description = "DirectX 11 renderer for the imgui crate"
@@ -19,14 +19,14 @@ winapi = { version = "0.3", features = [
     "minwindef",
     "winerror",
 ] }
-imgui = "0.10.0"
+imgui = "0.11.0"
 wio = "0.2"
 
 [build-dependencies]
 winapi = { version = "0.3", features = ["d3dcompiler", "d3dcommon", "winerror"] }
 
 [dev-dependencies]
-imgui-winit-support = "0.10.0"
+imgui-winit-support = "0.11.0"
 winit = "0.27.2"
 
 [package.metadata.docs.rs]

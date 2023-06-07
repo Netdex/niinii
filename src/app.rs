@@ -264,12 +264,17 @@ impl App {
                 }
             }
             ui.separator();
-            let disabled = matches!(self.state, State::Processing);
-            let _disable_input = ui.begin_disabled(disabled);
-            if ui.menu_item("Translate") {
-                self.transition(ui, State::Processing);
-                if let Some(gloss) = self.gloss.ast() {
-                    self.request_translation(&gloss.original_text.clone());
+            let _disable_state = ui.begin_disabled(matches!(self.state, State::Processing));
+            {
+                let mut _disable_tl = ui.begin_disabled(
+                    !self.gloss.ast().map_or(false, |ast| ast.translatable)
+                        || self.gloss.translation().is_some(),
+                );
+                if ui.menu_item("Translate") {
+                    self.transition(ui, State::Processing);
+                    if let Some(gloss) = self.gloss.ast() {
+                        self.request_translation(&gloss.original_text.clone());
+                    }
                 }
             }
             if ui.menu_item("Speak") {
@@ -333,7 +338,7 @@ impl App {
                 }
                 ui.same_line();
 
-                let enable_tl = self.gloss.ast().map_or_else(|| false, |x| x.translatable);
+                let enable_tl = self.gloss.ast().map_or(false, |ast| ast.translatable);
                 {
                     let mut _disable_tl =
                         ui.begin_disabled(!enable_tl || self.gloss.translation().is_some());

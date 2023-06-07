@@ -10,7 +10,7 @@ build = "build.rs"
 [features]
 default = []
 tracy = ["tracing-tracy"]
-voicevox = ["vvcore"]
+voicevox = ["vvcore", "rodio"]
 # TODO: disabled until upstream updates imgui to 0.10
 # hook = ["dep:hudhook"]
 
@@ -36,13 +36,13 @@ tokio-util = "0.7.8"
 futures = "0.3"
 async-trait = "0.1"
 
+# NOTE: these dependencies are very difficult to update
 # on windows, you must install freetype with vcpkg
-imgui = { version = "0.10.0", features = ["tables-api", "freetype", "docking"] }
-imgui-sys = { version = "0.10.0", features = ["use-vcpkg"] }
-imgui-winit-support = { version = "0.10.0" }
-clipboard = "0.5"
-imgui-glow-renderer = "0.10.0"
-glow = "0.10.0"
+imgui = { version = "0.11.0", features = ["tables-api", "freetype", "docking"] }
+imgui-sys = { version = "0.11.0", features = ["use-vcpkg"] }
+imgui-winit-support = { version = "0.11.0" }
+imgui-glow-renderer = "0.11.0"
+glow = "0.12.0"
 glutin = "0.29.1"
 winit = "0.27.2"
 
@@ -50,7 +50,7 @@ log = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 tracing-tracy = { version = "0.10.2", optional = true }
-env_logger = "0.9"
+env_logger = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 lazy_static = "1.4.0"
@@ -61,19 +61,20 @@ strum = "0.24"
 strum_macros = "0.24"
 thiserror = "1"
 num-format = "0.4.0"
-toml = "0.5"
-fancy-regex = "0.10"
-bitflags = "1.3.2"
+toml = "0.7"
+fancy-regex = "0.11"
+bitflags = "2.3"
 enum_dispatch = "0.3"
 enclose = "1.1.8"
 once_cell = "1.17.1"
 
+copypasta = "0.8"
 flate2 = { version = "1.0" }
+deepl-api = "0.4"
+dirs = "5.0"
+rodio = { version = "0.17.1", optional = true }
 # rayon = "1.5.1"
-deepl-api = "0.3.1"
 # hudhook = { version = "0.3.0", features = ["simplelog"], optional = true }
-dirs = "4.0.0"
-rodio = "0.17.1"
 
 ichiran = { path = "third-party/ichiran" }
 openai-chat = { path = "third-party/openai-chat" }
