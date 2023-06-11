@@ -8,7 +8,6 @@ use crate::{
     parser::{self, Parser, SyntaxTree},
     renderer::context::{Context, ContextFlags},
     settings::Settings,
-    support::{self},
     translator::{self, Translate, Translation, Translator},
     tts::{self, TtsEngine},
     view::{
@@ -103,21 +102,26 @@ impl App {
     }
 
     fn request_parse(&mut self, ui: &Ui, text: &str) {
-        let Self {
-            channel_tx,
-            glossator,
-            ..
-        } = self;
         let regex = Regex::new(&self.settings.regex_match);
         match regex {
             Ok(regex) => {
                 let text = regex
                     .replace(text, &self.settings.regex_replace)
                     .into_owned();
-                let variants = if self.settings.more_variants { 5 } else { 1 };
+                let text = text.trim().to_owned();
+                if text.is_empty() {
+                    return;
+                }
 
+                self.transition(ui, State::Processing);
                 self.gloss.set_text(text.clone());
 
+                let Self {
+                    channel_tx,
+                    glossator,
+                    ..
+                } = self;
+                let variants = if self.settings.more_variants { 5 } else { 1 };
                 self.runtime
                     .spawn(enclose! { (channel_tx, glossator) async move {
                         let span = tracing::trace_span!("parse");
@@ -129,15 +133,18 @@ impl App {
         }
     }
 
-    fn request_translation(&mut self, text: impl Into<String>) {
+    fn request_translation(&mut self, ui: &Ui, text: impl Into<String>) {
+        self.transition(ui, State::Processing);
+
         let Self {
             translator,
             settings,
             channel_tx,
+            gloss,
             ..
         } = self;
 
-        self.gloss.set_translation_pending(true);
+        gloss.set_translation_pending(true);
 
         let text = text.into();
 
@@ -177,7 +184,7 @@ impl App {
                     let text = ast.original_text.clone();
                     self.gloss.set_ast(ast);
                     if should_translate {
-                        self.request_translation(&text);
+                        self.request_translation(ui, &text);
                     } else {
                         self.transition(ui, State::Completed);
                         self.gloss.set_translation(None);
@@ -200,7 +207,6 @@ impl App {
             State::Error(_) | State::Completed => {
                 if let Some(request_gloss_text) = self.request_gloss_text.clone() {
                     self.request_gloss_text = None;
-                    self.transition(ui, State::Processing);
                     self.request_parse(ui, &request_gloss_text);
                 }
             }
@@ -271,9 +277,8 @@ impl App {
                         || self.gloss.translation().is_some(),
                 );
                 if ui.menu_item("Translate") {
-                    self.transition(ui, State::Processing);
                     if let Some(gloss) = self.gloss.ast() {
-                        self.request_translation(&gloss.original_text.clone());
+                        self.request_translation(ui, &gloss.original_text.clone());
                     }
                 }
             }
@@ -303,8 +308,7 @@ impl App {
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
         let io = ui.io();
 
-        let ui_d = support::docking::UiDocking {};
-        ui_d.dockspace_over_viewport();
+        ui.dockspace_over_main_viewport();
 
         let mut niinii = ui
             .window("niinii")
@@ -343,9 +347,8 @@ impl App {
                     let mut _disable_tl =
                         ui.begin_disabled(!enable_tl || self.gloss.translation().is_some());
                     if ui.button_with_size("Translate", [120.0, 0.0]) {
-                        self.transition(ui, State::Processing);
                         if let Some(gloss) = self.gloss.ast() {
-                            self.request_translation(&gloss.original_text.clone());
+                            self.request_translation(ui, &gloss.original_text.clone());
                         }
                     }
                 }

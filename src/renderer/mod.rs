@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use glutin::window;
 use imgui_winit_support::WinitPlatform;
+use winit::window;
 
 use crate::support::clipboard;
 use crate::{app::App, settings::Settings};
@@ -9,7 +9,7 @@ use crate::{app::App, settings::Settings};
 pub mod context;
 #[cfg(windows)]
 pub mod d3d11;
-pub mod glow;
+pub mod glow_viewports;
 mod ranges;
 
 pub trait Renderer {

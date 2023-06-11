@@ -6,7 +6,7 @@
 use libniinii::renderer::d3d11::D3D11Renderer;
 use libniinii::{
     app::App,
-    renderer::{glow::GlowRenderer, Renderer},
+    renderer::{glow_viewports::GlowRenderer, Renderer},
     settings::{RendererType, Settings},
 };
 
@@ -27,6 +27,7 @@ fn main() -> std::io::Result<()> {
     let settings = Settings::from_file();
 
     let mut app = App::new(settings);
+    tracing::info!("initializing renderer {:?}", app.settings().renderer_type());
     let mut renderer: Box<dyn Renderer> = match app.settings().renderer_type() {
         RendererType::Glow => Box::new(GlowRenderer::new(app.settings())),
         #[cfg(windows)]

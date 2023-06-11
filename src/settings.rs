@@ -3,7 +3,7 @@ use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumString, EnumVariantNames};
 
-#[derive(FromPrimitive, EnumString, EnumVariantNames)]
+#[derive(Debug, FromPrimitive, EnumString, EnumVariantNames)]
 pub enum RendererType {
     Glow = 0,
     #[cfg(windows)]
