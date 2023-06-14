@@ -12,8 +12,15 @@ use libniinii::{
 
 fn main() -> std::io::Result<()> {
     // env_logger::init();
+    let rust_log_style = std::env::var("RUST_LOG_STYLE").unwrap_or("auto".into());
+    let with_ansi = match rust_log_style.as_str() {
+        "auto" | "always" => true,
+        "never" => false,
+        _ => true,
+    };
     let subscriber = tracing_subscriber::fmt::fmt()
         // .compact()
+        .with_ansi(with_ansi)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .finish();
     #[cfg(feature = "tracy")]

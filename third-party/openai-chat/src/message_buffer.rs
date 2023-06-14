@@ -13,19 +13,15 @@ impl MessageBuffer {
         }
     }
     pub fn apply_delta(&mut self, delta: &PartialMessage) {
-        match delta {
-            PartialMessage::Role(role) => {
-                let message = Message {
-                    role: role.clone(),
-                    content: "".into(),
-                    name: None,
-                };
-                self.messages.push_back(message)
-            }
-            PartialMessage::Content(content) => {
-                if let Some(last) = self.back_mut() {
-                    last.content.push_str(&content)
-                }
+        if let Some(role) = &delta.role {
+            let message = Message {
+                role: role.clone(),
+                content: delta.content.clone(),
+            };
+            self.messages.push_back(message)
+        } else {
+            if let Some(last) = self.back_mut() {
+                last.content.push_str(&delta.content)
             }
         }
     }

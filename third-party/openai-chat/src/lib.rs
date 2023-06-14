@@ -12,6 +12,8 @@ use tokio_stream::{Stream, StreamExt};
 pub use message_buffer::*;
 pub use protocol::*;
 
+use crate::chat::PartialResponse;
+
 mod message_buffer;
 mod protocol;
 
@@ -88,16 +90,25 @@ impl Client {
             .await?
             .bytes_stream()
             .eventsource();
-        Ok(stream.map(|event| match event {
+        Ok(stream.map_while(|event| match event {
             Ok(event) => {
-                let response: chat::PartialResponse = serde_json::from_str(&event.data)?;
-                tracing::trace!(?response);
-                match response {
-                    chat::PartialResponse::Delta(delta) => Ok::<_, Error>(delta),
-                    chat::PartialResponse::Error { error } => Err(Error::Chat(error)),
+                if event.data == "[DONE]" {
+                    None
+                } else {
+                    let response = match serde_json::from_str::<PartialResponse>(&event.data) {
+                        Ok(response) => {
+                            tracing::trace!(?response);
+                            Ok::<_, Error>(response.0)
+                        }
+                        Err(err) => {
+                            tracing::error!(?err, ?event.data);
+                            Err(err.into())
+                        }
+                    };
+                    Some(response)
                 }
             }
-            Err(err) => Err(err.into()),
+            Err(err) => Some(Err(err.into())),
         }))
     }
 

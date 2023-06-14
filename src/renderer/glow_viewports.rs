@@ -3,7 +3,7 @@ use std::{ffi::CString, num::NonZeroU32, time::Instant};
 use glow::HasContext;
 use glutin::{
     config::ConfigTemplateBuilder,
-    context::{ContextAttributesBuilder},
+    context::ContextAttributesBuilder,
     display::GetGlDisplay,
     prelude::{
         GlDisplay, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentContextGlSurfaceAccessor,
@@ -15,10 +15,8 @@ use imgui::ConfigFlags;
 use imgui_winit_glow_renderer_viewports::Renderer as GlowViewportsRenderer;
 use raw_window_handle::HasRawWindowHandle;
 use winit::{
-    event::WindowEvent,
-    event_loop::EventLoop,
-    platform::run_return::EventLoopExtRunReturn,
-    window::{Window},
+    event::WindowEvent, event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn,
+    window::Window,
 };
 
 use crate::{app::App, settings::Settings};
