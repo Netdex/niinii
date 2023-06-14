@@ -62,13 +62,16 @@ impl Translate for ChatGptTranslator {
             context.push_back(Message {
                 role: chat::Role::User,
                 content: text.clone(),
+                ..Default::default()
             });
             let mut messages = vec![chat::Message {
                 role: chat::Role::System,
                 content: settings.chatgpt_system_prompt.clone(),
+                ..Default::default()
             }];
             messages.extend(context.iter().cloned());
             chat::Request {
+                model: chat::Model::Gpt35Turbo0613,
                 messages,
                 max_tokens: Some(settings.chatgpt_max_tokens),
                 ..Default::default()
@@ -90,7 +93,7 @@ impl Translate for ChatGptTranslator {
                         Some(Ok(completion)) => {
                             let mut context = context.lock().unwrap();
                             let message = &completion.choices.first().unwrap().delta;
-                            context.delta(message)
+                            context.apply_delta(message)
                         },
                         _ => break
                     },

@@ -12,18 +12,20 @@ impl MessageBuffer {
             messages: VecDeque::new(),
         }
     }
-    pub fn delta(&mut self, delta: &PartialMessage) {
+    pub fn apply_delta(&mut self, delta: &PartialMessage) {
         match delta {
             PartialMessage::Role(role) => {
                 let message = Message {
                     role: role.clone(),
                     content: "".into(),
+                    name: None,
                 };
                 self.messages.push_back(message)
             }
             PartialMessage::Content(content) => {
-                let last = self.back_mut().unwrap();
-                last.content.push_str(&content)
+                if let Some(last) = self.back_mut() {
+                    last.content.push_str(&content)
+                }
             }
         }
     }

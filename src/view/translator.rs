@@ -43,7 +43,7 @@ impl ViewTranslator for ChatGptTranslator {
             ui.input_text_multiline(
                 "##",
                 &mut settings.chatgpt_system_prompt,
-                [ui.content_region_avail()[0], 75.0],
+                [ui.content_region_avail()[0], 200.0],
             )
             .build();
             for message in context.iter() {

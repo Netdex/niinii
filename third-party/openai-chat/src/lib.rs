@@ -135,6 +135,7 @@ mod tests {
             messages: vec![chat::Message {
                 role: chat::Role::User,
                 content: "What is the capital city of Canada?".into(),
+                ..Default::default()
             }],
             ..Default::default()
         };
@@ -151,6 +152,7 @@ mod tests {
             messages: vec![chat::Message {
                 role: chat::Role::User,
                 content: "What is the capital city of Canada?".into(),
+                ..Default::default()
             }],
             ..Default::default()
         };
