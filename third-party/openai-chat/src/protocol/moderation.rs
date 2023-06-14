@@ -12,7 +12,7 @@ pub enum Model {
 }
 
 #[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Request {
     /// Two content moderations models are available: text-moderation-stable and
     /// text-moderation-latest.
@@ -34,7 +34,7 @@ impl Default for Request {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialOrd, Ord, PartialEq, Eq, AsRefStr)]
+#[derive(Debug, Clone, Deserialize, PartialOrd, Ord, PartialEq, Eq, AsRefStr)]
 pub enum Category {
     #[serde(rename = "hate")]
     Hate,
@@ -52,14 +52,14 @@ pub enum Category {
     ViolenceGraphic,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Result {
     pub categories: BTreeMap<Category, bool>,
     pub category_scores: BTreeMap<Category, f64>,
     pub flagged: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Response {
     pub id: String,
     pub model: String,

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tiktoken_rs::tiktoken::cl100k_base_singleton;
 
-#[derive(Error, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, Deserialize, PartialEq, Eq)]
 #[error("{kind}: {message}")]
 pub struct Error {
     message: String,
@@ -68,7 +68,7 @@ impl Default for Message {
 }
 
 #[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Request {
     /// ID of the model to use. Currently, only gpt-3.5-turbo and gpt-3.5-turbo-0301 are supported.
     pub model: Model,
@@ -144,35 +144,35 @@ impl Default for Request {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PartialMessage {
     Role(Role),
     Content(String),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Choice {
     pub message: Message,
     // finish_reason
     // index
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PartialChoice {
     pub delta: PartialMessage,
     // finish_reason
     // index
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Completion {
     pub id: String,
     pub object: String,
@@ -182,14 +182,14 @@ pub struct Completion {
     pub choices: Vec<Choice>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum Response {
     Completion(Completion),
     Error { error: Error },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PartialCompletion {
     pub id: String,
     pub object: String,
@@ -198,7 +198,7 @@ pub struct PartialCompletion {
     pub choices: Vec<PartialChoice>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum PartialResponse {
     Delta(PartialCompletion),
