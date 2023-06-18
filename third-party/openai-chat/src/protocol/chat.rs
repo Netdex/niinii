@@ -24,6 +24,8 @@ pub enum Model {
     Gpt4_32k0613,
     #[serde(rename = "gpt-3.5-turbo")]
     Gpt35Turbo,
+    #[serde(rename = "gpt-3.5-turbo-0301")]
+    Gpt35Turbo0301,
     #[serde(rename = "gpt-3.5-turbo-0613")]
     Gpt35Turbo0613,
     #[serde(rename = "gpt-3.5-turbo-16k")]
@@ -41,18 +43,42 @@ pub enum Role {
     Function,
 }
 
+pub type Parameters = serde_json::Value;
+
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Function {
+    name: String,
+    description: Option<String>,
+    parameters: Option<Parameters>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct FunctionCall {
+    name: String,
+    arguments: Parameters,
+}
+
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Message {
     pub role: Role,
-    pub content: String,
-    // name
-    // function_call
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub function_call: Option<FunctionCall>,
 }
 impl Message {
     pub fn estimate_tokens(&self) -> u32 {
-        let bpe = cl100k_base_singleton();
-        let bpe = bpe.lock();
-        4 + bpe.encode_with_special_tokens(&self.content).len() as u32
+        if let Some(content) = &self.content {
+            let bpe = cl100k_base_singleton();
+            let bpe = bpe.lock();
+            4 + bpe.encode_with_special_tokens(content).len() as u32
+        } else {
+            0
+        }
     }
 }
 impl Default for Message {
@@ -60,6 +86,8 @@ impl Default for Message {
         Self {
             role: Role::User,
             content: Default::default(),
+            name: None,
+            function_call: None,
         }
     }
 }
@@ -71,8 +99,9 @@ pub struct Request {
     pub model: Model,
     /// The messages to generate chat completions for, in the chat format.
     pub messages: Vec<Message>,
-    // A list of functions the model may generate JSON inputs for.
-    // functions
+    /// A list of functions the model may generate JSON inputs for.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub functions: Vec<Function>,
     // Controls how the model responds to function calls. "none" means the
     // model does not call a function, and responds to the end-user. "auto"
     // means the model can pick between an end-user or calling a function.
@@ -126,6 +155,7 @@ impl Default for Request {
         Self {
             model: Model::Gpt35Turbo,
             messages: Default::default(),
+            functions: Default::default(),
             temperature: Default::default(),
             top_p: Default::default(),
             n: Default::default(),
@@ -177,10 +207,10 @@ pub struct Completion {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
 pub(crate) enum Response {
+    Error(Error),
+    #[serde(untagged)]
     Completion(Completion),
-    Error { error: Error },
 }
 
 #[derive(Debug, Clone, Deserialize)]

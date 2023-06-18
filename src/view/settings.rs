@@ -72,24 +72,18 @@ impl<'a> SettingsView<'a> {
             ui.input_text("OpenAI API key", &mut settings.openai_api_key)
                 .password(true)
                 .build();
-            ui.input_scalar(
-                "ChatGPT max context tokens",
-                &mut settings.chatgpt_max_context_tokens,
-            )
-            .build();
-            ui.input_scalar("ChatGPT max tokens", &mut settings.chatgpt_max_tokens)
-                .build();
-            ui.checkbox("ChatGPT moderation", &mut settings.chatgpt_moderation);
         }
 
-        if CollapsingHeader::new("Text-to-speech")
-            .default_open(true)
-            .build(ui)
-        {
-            ui.input_text("VOICEVOX*", &mut settings.vv_model_path)
-                .build();
-            ui.same_line();
-            mixins::help_marker(ui, "Path of VOICEVOX models");
+        if cfg!(feature = "voicevox") {
+            if CollapsingHeader::new("Text-to-speech")
+                .default_open(true)
+                .build(ui)
+            {
+                ui.input_text("VOICEVOX*", &mut settings.vv_model_path)
+                    .build();
+                ui.same_line();
+                mixins::help_marker(ui, "Path of VOICEVOX models");
+            }
         }
 
         if CollapsingHeader::new("Rendering")

@@ -26,8 +26,29 @@ trait ViewTranslator {
 impl ViewTranslator for ChatGptTranslator {
     fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
         let mut context = self.context.lock().unwrap();
-        if ui.button("Clear context") {
-            context.clear();
+        ui.menu_bar(|| {
+            ui.menu("Settings", || {
+                if ui
+                    .menu_item_config("Moderation")
+                    .selected(settings.chatgpt_moderation)
+                    .build()
+                {
+                    settings.chatgpt_moderation = !settings.chatgpt_moderation;
+                }
+            });
+            ui.separator();
+            if ui.menu_item("Clear") {
+                context.clear();
+            }
+        });
+        if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
+            ui.input_scalar(
+                "Max context tokens",
+                &mut settings.chatgpt_max_context_tokens,
+            )
+            .build();
+            ui.input_scalar("Max tokens", &mut settings.chatgpt_max_tokens)
+                .build();
         }
         if let Some(_t) = ui.begin_table_header_with_flags(
             "context",
@@ -50,7 +71,9 @@ impl ViewTranslator for ChatGptTranslator {
                 ui.table_next_column();
                 ui.text(format!("{:?}", message.role));
                 ui.table_next_column();
-                ui.text_wrapped(&message.content);
+                if let Some(content) = &message.content {
+                    ui.text_wrapped(content);
+                }
             }
         }
     }
@@ -92,8 +115,8 @@ impl ViewTranslation for ChatGptTranslation {
                 );
                 ui.same_line();
 
-                if let Some(message) = context.back() {
-                    stroke_text(ui, &draw_list, &message.content, 1.0);
+                if let Some(content) = context.back().and_then(|x| x.content.as_ref()) {
+                    stroke_text(ui, &draw_list, content, 1.0);
                 }
             }
             ChatGptTranslation::Filtered { moderation } => {

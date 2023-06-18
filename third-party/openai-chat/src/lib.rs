@@ -68,7 +68,7 @@ impl Client {
         tracing::trace!(?response);
         match response {
             chat::Response::Completion(completion) => Ok(completion),
-            chat::Response::Error { error } => Err(Error::Chat(error)),
+            chat::Response::Error(error) => Err(Error::Chat(error)),
         }
     }
 
@@ -140,18 +140,26 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[traced_test]
     async fn test_chat() {
         let client = fixture::client();
         let request = chat::Request {
             messages: vec![chat::Message {
                 role: chat::Role::User,
-                content: "What is the capital city of Canada?".into(),
+                content: Some("What is the capital city of Canada?".into()),
                 ..Default::default()
             }],
             ..Default::default()
         };
         let response = client.chat(request).await.unwrap();
-        let content = &response.choices.first().unwrap().message.content;
+        let content = &response
+            .choices
+            .first()
+            .unwrap()
+            .message
+            .content
+            .as_ref()
+            .unwrap();
         assert!(content.contains("Ottawa"));
     }
 
@@ -162,16 +170,19 @@ mod tests {
         let request = chat::Request {
             messages: vec![chat::Message {
                 role: chat::Role::User,
-                content: "What is the capital city of Canada?".into(),
+                content: Some("What is the capital city of Canada?".into()),
                 ..Default::default()
             }],
             ..Default::default()
         };
         let mut response = client.stream(request).await.unwrap();
-        while let Some(_msg) = response.next().await {}
+        while let Some(msg) = response.next().await {
+            msg.unwrap();
+        }
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_moderation() {
         let client = fixture::client();
         let request = moderation::Request {

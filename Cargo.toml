@@ -9,7 +9,8 @@ build = "build.rs"
 
 [features]
 default = []
-tracy = ["tracing-tracy"]
+tracing-tracy = ["dep:tracing-tracy"]
+tracing-chrome = ["dep:tracing-chrome"]
 voicevox = ["vvcore", "rodio"]
 # TODO: disabled until upstream updates imgui to 0.10
 # hook = ["dep:hudhook"]
@@ -52,6 +53,7 @@ log = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 tracing-tracy = { version = "0.10.2", optional = true }
+tracing-chrome = { version = "0.7.1", optional = true }
 env_logger = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

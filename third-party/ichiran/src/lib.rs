@@ -60,7 +60,6 @@ impl Ichiran {
         }
     }
 
-    #[tracing::instrument(skip(self), fields(text = text.as_ref()))]
     pub async fn romanize(&self, text: impl AsRef<str>, limit: u32) -> Result<Root, IchiranError> {
         assert!(limit > 0);
         let text = text.as_ref();
@@ -78,7 +77,6 @@ impl Ichiran {
         Ok(root)
     }
 
-    #[tracing::instrument(skip(self))]
     pub async fn kanji(&self, chars: &[char]) -> Result<HashMap<char, Kanji>, IchiranError> {
         let mut kanji_info: HashMap<char, Kanji> = HashMap::new();
         let mut commands: Vec<String> = vec![];

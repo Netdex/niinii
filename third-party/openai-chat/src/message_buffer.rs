@@ -16,12 +16,15 @@ impl MessageBuffer {
         if let Some(role) = &delta.role {
             let message = Message {
                 role: role.clone(),
-                content: delta.content.clone(),
+                content: Some(delta.content.clone()),
+                ..Default::default()
             };
             self.messages.push_back(message)
         } else {
             if let Some(last) = self.back_mut() {
-                last.content.push_str(&delta.content)
+                if let Some(content) = &mut last.content {
+                    content.push_str(&delta.content)
+                }
             }
         }
     }

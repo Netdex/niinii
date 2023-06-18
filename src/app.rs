@@ -282,9 +282,11 @@ impl App {
                     }
                 }
             }
-            if ui.menu_item("Speak") {
-                if let Some(gloss) = self.gloss.ast() {
-                    self.request_tts(ui, &gloss.original_text.clone());
+            if cfg!(feature = "voicevox") {
+                if ui.menu_item("Speak") {
+                    if let Some(gloss) = self.gloss.ast() {
+                        self.request_tts(ui, &gloss.original_text.clone());
+                    }
                 }
             }
         }
@@ -423,6 +425,7 @@ impl App {
             .window("Translator")
             .size_constraints([200.0, 100.0], [1000.0, 1000.0])
             .opened(&mut self.show_translator)
+            .menu_bar(true)
             .begin()
         {
             TranslatorView(&self.translator, &mut self.settings).ui(ui);

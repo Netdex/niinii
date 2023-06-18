@@ -8,6 +8,7 @@ use openai_chat::{
 };
 use tokio_stream::StreamExt;
 use tokio_util::sync::{CancellationToken, DropGuard};
+use tracing::Instrument;
 
 use crate::settings::Settings;
 
@@ -61,12 +62,12 @@ impl Translate for ChatGptTranslator {
             }
             context.push_back(Message {
                 role: chat::Role::User,
-                content: text.clone(),
+                content: Some(text.clone()),
                 ..Default::default()
             });
             let mut messages = vec![chat::Message {
                 role: chat::Role::System,
-                content: settings.chatgpt_system_prompt.clone(),
+                content: Some(settings.chatgpt_system_prompt.clone()),
                 ..Default::default()
             }];
             messages.extend(context.iter().cloned());
@@ -100,7 +101,7 @@ impl Translate for ChatGptTranslator {
                     _ = token.cancelled() => break
                 }
             }
-        }});
+        }.instrument(tracing::Span::current())});
 
         Ok(ChatGptTranslation::Translated {
             context: context.clone(),

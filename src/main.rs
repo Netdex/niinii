@@ -9,32 +9,35 @@ use libniinii::{
     renderer::{glow_viewports::GlowRenderer, Renderer},
     settings::{RendererType, Settings},
 };
+use tracing_subscriber::fmt::format::FmtSpan;
 
 fn main() -> std::io::Result<()> {
-    // env_logger::init();
-    let rust_log_style = std::env::var("RUST_LOG_STYLE").unwrap_or("auto".into());
-    let with_ansi = match rust_log_style.as_str() {
-        "auto" | "always" => true,
-        "never" => false,
-        _ => true,
-    };
+    let with_ansi = std::env::var("RUST_LOG_STYLE")
+        .map(|val| val != "never")
+        .unwrap_or(true);
     let subscriber = tracing_subscriber::fmt::fmt()
-        // .compact()
         .with_ansi(with_ansi)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_span_events(FmtSpan::CLOSE)
         .finish();
-    #[cfg(feature = "tracy")]
+    #[cfg(feature = "tracing-tracy")]
     let subscriber = {
         use tracing_subscriber::prelude::*;
         let tracy_layer = tracing_tracy::TracyLayer::new();
         subscriber.with(tracy_layer)
+    };
+    #[cfg(feature = "tracing-chrome")]
+    let (subscriber, _guard) = {
+        use tracing_subscriber::prelude::*;
+        let (chrome_layer, _guard) = tracing_chrome::ChromeLayerBuilder::new().build();
+        (subscriber.with(chrome_layer), _guard)
     };
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let settings = Settings::from_file();
 
     let mut app = App::new(settings);
-    tracing::info!("initializing renderer {:?}", app.settings().renderer_type());
+    tracing::info!(renderer=?app.settings().renderer_type());
     let mut renderer: Box<dyn Renderer> = match app.settings().renderer_type() {
         RendererType::Glow => Box::new(GlowRenderer::new(app.settings())),
         #[cfg(windows)]
