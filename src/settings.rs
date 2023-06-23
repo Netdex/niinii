@@ -25,6 +25,32 @@ pub enum TranslatorType {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
+pub struct ChatGptSettings {
+    pub system_prompt: String,
+    pub max_context_tokens: u32,
+    pub moderation: bool,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub presence_penalty: Option<f32>,
+}
+
+impl Default for ChatGptSettings {
+    fn default() -> Self {
+        Self {
+            system_prompt: "You will translate the following visual novel script into English."
+                .into(),
+            max_context_tokens: 64,
+            moderation: false,
+            temperature: None,
+            top_p: None,
+            max_tokens: Some(128),
+            presence_penalty: None,
+        }
+    }
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Settings {
     pub ichiran_path: String,
     pub postgres_path: String,
@@ -45,10 +71,7 @@ pub struct Settings {
     pub auto_translate: bool,
     pub deepl_api_key: String,
     pub openai_api_key: String,
-    pub chatgpt_system_prompt: String,
-    pub chatgpt_max_context_tokens: u32,
-    pub chatgpt_max_tokens: u32,
-    pub chatgpt_moderation: bool,
+    pub chatgpt: ChatGptSettings,
 
     pub vv_model_path: String,
 
@@ -83,11 +106,7 @@ impl Default for Settings {
             auto_translate: false,
             deepl_api_key: Default::default(),
             openai_api_key: Default::default(),
-            chatgpt_system_prompt:
-                "You will translate the following visual novel script into English.".into(),
-            chatgpt_max_context_tokens: 64,
-            chatgpt_max_tokens: 128,
-            chatgpt_moderation: false,
+            chatgpt: Default::default(),
 
             vv_model_path: Default::default(),
 

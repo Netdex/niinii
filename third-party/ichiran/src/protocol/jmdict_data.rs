@@ -1,8 +1,9 @@
-use super::IchiranError;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
 use tokio::fs::File;
-use tokio_stream::StreamExt;
+
+use crate::IchiranError;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KwPos {

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use ichiran::romanize::*;
+use ichiran::prelude::*;
 use imgui::*;
 
 use super::index::IndexView;

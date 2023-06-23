@@ -1,9 +1,8 @@
-use ichiran::romanize::*;
+use ichiran::prelude::*;
 use imgui::*;
 
 use crate::renderer::context::Context;
 
-use super::id;
 use super::mixins::wrap_bullet;
 
 pub struct RawView<'a> {
@@ -22,7 +21,7 @@ impl<'a> RawView<'a> {
 fn add_root(ui: &Ui, root: &Root) {
     ui.tree_node_config("Root").default_open(true).build(|| {
         for segment in root.segments() {
-            let _id_token = ui.push_id_ptr(&id(segment));
+            let _id_token = ui.push_id_ptr(segment);
             add_segment(ui, segment);
         }
     });
@@ -33,7 +32,7 @@ fn add_segment(ui: &Ui, segment: &Segment) {
         Segment::Clauses(clauses) => {
             ui.tree_node_config("Segment").default_open(true).build(|| {
                 for clause in clauses {
-                    let _id_token = ui.push_id_ptr(&id(clause));
+                    let _id_token = ui.push_id_ptr(clause);
                     add_clause(ui, clause);
                 }
             });
@@ -46,7 +45,7 @@ fn add_clause(ui: &Ui, clause: &Clause) {
         .default_open(true)
         .build(|| {
             for romanized in clause.romanized() {
-                let _id_token = ui.push_id_ptr(&id(romanized));
+                let _id_token = ui.push_id_ptr(romanized);
                 ui.tree_node_config(&format!("Romanized ({})", romanized.romaji()))
                     .default_open(true)
                     .build(|| {
@@ -65,7 +64,7 @@ fn add_term(ui: &Ui, term: &Term) {
                 .default_open(true)
                 .build(|| {
                     for alt in alts.alts() {
-                        let _id_token = ui.push_id_ptr(&id(alt));
+                        let _id_token = ui.push_id_ptr(alt);
                         add_word(ui, alt);
                     }
                 });
@@ -104,7 +103,7 @@ fn add_plain(ui: &Ui, plain: &Plain) {
                 .default_open(false)
                 .build(|| {
                     for gloss in plain.gloss() {
-                        let _id_token = ui.push_id_ptr(&id(gloss));
+                        let _id_token = ui.push_id_ptr(gloss);
                         add_gloss(ui, gloss);
                     }
                 });
@@ -112,7 +111,7 @@ fn add_plain(ui: &Ui, plain: &Plain) {
                 .default_open(false)
                 .build(|| {
                     for conj in plain.conj() {
-                        let _id_token = ui.push_id_ptr(&id(conj));
+                        let _id_token = ui.push_id_ptr(conj);
                         add_conj(ui, conj);
                     }
                 });
@@ -128,7 +127,7 @@ fn add_compound(ui: &Ui, compound: &Compound) {
                 .default_open(false)
                 .build(|| {
                     for component in compound.components() {
-                        let _id_token = ui.push_id_ptr(&id(component));
+                        let _id_token = ui.push_id_ptr(component);
                         add_term(ui, component);
                     }
                 });
@@ -162,7 +161,7 @@ fn add_conj(ui: &Ui, conj: &Conjugation) {
                 .default_open(false)
                 .build(|| {
                     for prop in conj.prop() {
-                        let _id_token = ui.push_id_ptr(&id(prop));
+                        let _id_token = ui.push_id_ptr(prop);
                         add_prop(ui, prop);
                     }
                 });
@@ -170,7 +169,7 @@ fn add_conj(ui: &Ui, conj: &Conjugation) {
                 .default_open(false)
                 .build(|| {
                     for gloss in conj.gloss() {
-                        let _id_token = ui.push_id_ptr(&id(gloss));
+                        let _id_token = ui.push_id_ptr(gloss);
                         add_gloss(ui, gloss);
                     }
                 });

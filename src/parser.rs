@@ -1,8 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use ichiran::{
-    kanji::Kanji, pgdaemon::PostgresDaemon, romanize::Root, Ichiran, IchiranError, JmDictData,
-};
+use ichiran::prelude::*;
 use thiserror::Error;
 
 use crate::settings::Settings;

@@ -12,7 +12,7 @@ pub enum Model {
 }
 
 #[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Request {
     /// Two content moderations models are available: text-moderation-stable and
     /// text-moderation-latest.
@@ -24,14 +24,6 @@ pub struct Request {
     pub model: Option<Model>,
     /// The input text to classify
     pub input: String, // Vec<String> + String
-}
-impl Default for Request {
-    fn default() -> Self {
-        Self {
-            model: None,
-            input: Default::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialOrd, Ord, PartialEq, Eq, AsRefStr)]

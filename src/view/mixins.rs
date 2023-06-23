@@ -210,3 +210,54 @@ pub fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
         true
     }
 }
+
+pub fn marker(ui: &Ui, draw_list: &DrawListMut, text: impl AsRef<str>, color: &[f32; 4]) {
+    let lang = text.as_ref();
+    let text = format!("[{}]", lang);
+    let p = ui.cursor_screen_pos();
+    let sz = ui.calc_text_size(&text);
+    draw_list
+        .add_rect(p, [p[0] + sz[0], p[1] + sz[1]], *color)
+        .filled(true)
+        .build();
+    stroke_token_with_color(
+        ui,
+        draw_list,
+        &text,
+        p,
+        1.0,
+        StyleColor::Text,
+        StyleColor::TitleBg,
+    );
+    ui.dummy(sz);
+}
+
+pub fn checkbox_option<T: Default, U>(
+    ui: &Ui,
+    val: &mut Option<T>,
+    f: impl FnOnce(&Ui, &mut T) -> U,
+) -> U {
+    checkbox_option_with_default(ui, val, T::default(), f)
+}
+
+pub fn checkbox_option_with_default<T, U>(
+    ui: &Ui,
+    val: &mut Option<T>,
+    default: T,
+    f: impl FnOnce(&Ui, &mut T) -> U,
+) -> U {
+    let mut default = Some(default);
+    let mut chk_value = val.is_some();
+    let _id = ui.push_id_ptr(val);
+    if ui.checkbox("##", &mut chk_value) {
+        *val = if chk_value { default.take() } else { None }
+    }
+    ui.same_line();
+    if let Some(val) = val {
+        f(ui, val)
+    } else {
+        let _token = ui.begin_disabled(true);
+        let mut dummy = default.unwrap();
+        f(ui, &mut dummy)
+    }
+}

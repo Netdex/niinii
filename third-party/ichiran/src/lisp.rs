@@ -1,14 +1,12 @@
 use ketos::FromValue;
 
-use crate::IchiranError;
-
-pub fn lisp_interpret<T>(expr: &str) -> Result<T, IchiranError>
+pub fn lisp_interpret<T>(expr: &str) -> Result<T, ketos::Error>
 where
     T: FromValue,
 {
     let interp = ketos::Interpreter::new();
     let result = interp.run_single_expr(expr, None)?;
-    Ok(T::from_value(result).map_err(ketos::Error::ExecError)?)
+    T::from_value(result).map_err(ketos::Error::ExecError)
 }
 
 pub fn lisp_escape_string(text: impl AsRef<str>) -> String {

@@ -20,11 +20,9 @@ impl MessageBuffer {
                 ..Default::default()
             };
             self.messages.push_back(message)
-        } else {
-            if let Some(last) = self.back_mut() {
-                if let Some(content) = &mut last.content {
-                    content.push_str(&delta.content)
-                }
+        } else if let Some(last) = self.back_mut() {
+            if let Some(content) = &mut last.content {
+                content.push_str(&delta.content)
             }
         }
     }

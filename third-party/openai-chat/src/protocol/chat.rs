@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use thiserror::Error;
-use tiktoken_rs::tiktoken::cl100k_base_singleton;
+use tiktoken_rs::cl100k_base_singleton;
 
 #[derive(Error, Debug, Clone, Deserialize, PartialEq, Eq)]
 #[error("{kind}: {message}")]
@@ -12,7 +13,7 @@ pub struct Error {
     code: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Model {
     #[serde(rename = "gpt-4")]
     Gpt4,
@@ -23,6 +24,7 @@ pub enum Model {
     #[serde(rename = "gpt-4-32k-0613")]
     Gpt4_32k0613,
     #[serde(rename = "gpt-3.5-turbo")]
+    #[default]
     Gpt35Turbo,
     #[serde(rename = "gpt-3.5-turbo-0301")]
     Gpt35Turbo0301,
@@ -34,40 +36,46 @@ pub enum Model {
     Gpt35Turbo16k0613,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
+    #[default]
     User,
     Assistant,
     Function,
 }
 
-pub type Parameters = serde_json::Value;
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum FunctionUsage {
+    None,
+    Auto,
+    Name(String),
+}
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Function {
     name: String,
     description: Option<String>,
-    parameters: Option<Parameters>,
+    #[serde(skip_serializing_if = "Value::is_null")]
+    parameters: Value,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FunctionCall {
     name: String,
-    arguments: Parameters,
+    arguments: Value,
 }
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Message {
     pub role: Role,
-    #[serde(default)]
     pub content: Option<String>,
-    #[serde(default)]
     pub name: Option<String>,
-    #[serde(default)]
     pub function_call: Option<FunctionCall>,
 }
 impl Message {
@@ -93,7 +101,7 @@ impl Default for Message {
 }
 
 #[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Request {
     /// ID of the model to use. Currently, only gpt-3.5-turbo and gpt-3.5-turbo-0301 are supported.
     pub model: Model,
@@ -102,13 +110,13 @@ pub struct Request {
     /// A list of functions the model may generate JSON inputs for.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub functions: Vec<Function>,
-    // Controls how the model responds to function calls. "none" means the
-    // model does not call a function, and responds to the end-user. "auto"
-    // means the model can pick between an end-user or calling a function.
-    // Specifying a particular function via {"name":\ "my_function"} forces the
-    // model to call that function. "none" is the default when no functions are
-    // present. "auto" is the default if functions are present.
-    // function_call
+    /// Controls how the model responds to function calls. "none" means the
+    /// model does not call a function, and responds to the end-user. "auto"
+    /// means the model can pick between an end-user or calling a function.
+    /// Specifying a particular function via {"name":\ "my_function"} forces the
+    /// model to call that function. "none" is the default when no functions are
+    /// present. "auto" is the default if functions are present.
+    pub function_call: Option<FunctionUsage>,
     /// What sampling temperature to use, between 0 and 2. Higher values like
     /// 0.8 will make the output more random, while lower values like 0.2 will
     /// make it more focused and deterministic.
@@ -150,25 +158,8 @@ pub struct Request {
     // monitor and detect abuse.
     // user
 }
-impl Default for Request {
-    fn default() -> Self {
-        Self {
-            model: Model::Gpt35Turbo,
-            messages: Default::default(),
-            functions: Default::default(),
-            temperature: Default::default(),
-            top_p: Default::default(),
-            n: Default::default(),
-            stream: Default::default(),
-            stop: Default::default(),
-            max_tokens: Default::default(),
-            presence_penalty: Default::default(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "lowercase")]
 pub struct PartialMessage {
     pub role: Option<Role>,
     #[serde(default)]
@@ -208,6 +199,7 @@ pub struct Completion {
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) enum Response {
+    #[serde(rename = "error")]
     Error(Error),
     #[serde(untagged)]
     Completion(Completion),

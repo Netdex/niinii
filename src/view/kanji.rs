@@ -1,4 +1,4 @@
-use ichiran::kanji::Kanji;
+use ichiran::prelude::*;
 use imgui::*;
 
 use crate::renderer::context::{Context, TextStyle};

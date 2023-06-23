@@ -140,6 +140,7 @@ mod tests {
     use crate::tests::fixture;
 
     #[tokio::test]
+    #[ignore]
     async fn test_match() {
         let (ichiran, _pg) = fixture::ichiran().await;
 

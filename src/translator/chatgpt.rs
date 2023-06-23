@@ -35,8 +35,9 @@ impl Translate for ChatGptTranslator {
         text: impl 'async_trait + Into<String> + Send,
     ) -> Result<Translation, Error> {
         let text = text.into();
+        let chatgpt = &settings.chatgpt;
 
-        if settings.chatgpt_moderation {
+        if chatgpt.moderation {
             let mod_request = moderation::Request {
                 input: text.clone(),
                 ..Default::default()
@@ -54,7 +55,7 @@ impl Translate for ChatGptTranslator {
             // TODO: experiment with summarizing context
             loop {
                 let estimated_tokens: u32 = context.iter().map(|m| m.estimate_tokens()).sum();
-                if estimated_tokens <= settings.chatgpt_max_context_tokens {
+                if estimated_tokens <= chatgpt.max_context_tokens {
                     break;
                 }
                 context.pop_front();
@@ -67,14 +68,17 @@ impl Translate for ChatGptTranslator {
             });
             let mut messages = vec![chat::Message {
                 role: chat::Role::System,
-                content: Some(settings.chatgpt_system_prompt.clone()),
+                content: Some(chatgpt.system_prompt.clone()),
                 ..Default::default()
             }];
             messages.extend(context.iter().cloned());
             chat::Request {
                 model: chat::Model::Gpt35Turbo0613,
                 messages,
-                max_tokens: Some(settings.chatgpt_max_tokens),
+                temperature: chatgpt.temperature,
+                top_p: chatgpt.top_p,
+                max_tokens: chatgpt.max_tokens,
+                presence_penalty: chatgpt.presence_penalty,
                 ..Default::default()
             }
         };
@@ -105,7 +109,7 @@ impl Translate for ChatGptTranslator {
 
         Ok(ChatGptTranslation::Translated {
             context: context.clone(),
-            max_context_tokens: settings.chatgpt_max_context_tokens,
+            max_context_tokens: chatgpt.max_context_tokens,
             _guard: token.drop_guard(),
         }
         .into())

@@ -5,10 +5,7 @@ use std::{
 
 use bitflags::bitflags;
 use flate2::bufread::GzDecoder;
-use ichiran::{
-    charset,
-    romanize::{Clause, Conjugation, Meta, Root, Segment, Term, Word},
-};
+use ichiran::prelude::*;
 use imgui::*;
 
 use super::ranges::*;
@@ -156,7 +153,7 @@ impl Context {
     fn add_unknown_glyphs<T: AsRef<str>>(&mut self, text: T) {
         let text = text.as_ref();
         for c in text.chars() {
-            if charset::is_kanji(&c) {
+            if is_kanji(&c) {
                 let code = c as u32;
                 if !self.has_font_glyph(code) {
                     self.add_font_glyph(code);

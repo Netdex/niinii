@@ -10,7 +10,7 @@ use crate::{
     },
 };
 
-use super::mixins::{stroke_text, stroke_token_with_color};
+use super::mixins::{checkbox_option, checkbox_option_with_default, marker, stroke_text};
 
 pub struct TranslatorView<'a>(pub &'a Translator, pub &'a mut Settings);
 impl<'a> TranslatorView<'a> {
@@ -26,15 +26,11 @@ trait ViewTranslator {
 impl ViewTranslator for ChatGptTranslator {
     fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
         let mut context = self.context.lock().unwrap();
+        let chatgpt = &mut settings.chatgpt;
         ui.menu_bar(|| {
             ui.menu("Settings", || {
-                if ui
-                    .menu_item_config("Moderation")
-                    .selected(settings.chatgpt_moderation)
-                    .build()
-                {
-                    settings.chatgpt_moderation = !settings.chatgpt_moderation;
-                }
+                ui.menu_item_config("Moderation")
+                    .build_with_ref(&mut chatgpt.moderation);
             });
             ui.separator();
             if ui.menu_item("Clear") {
@@ -42,13 +38,51 @@ impl ViewTranslator for ChatGptTranslator {
             }
         });
         if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
-            ui.input_scalar(
-                "Max context tokens",
-                &mut settings.chatgpt_max_context_tokens,
-            )
-            .build();
-            ui.input_scalar("Max tokens", &mut settings.chatgpt_max_tokens)
-                .build();
+            if let Some(_token) = ui.begin_table("##", 2) {
+                ui.table_next_column();
+                ui.set_next_item_width(ui.current_font_size() * -8.0);
+                ui.input_scalar("Max context tokens", &mut chatgpt.max_context_tokens)
+                    .build();
+                ui.table_next_column();
+                checkbox_option(ui, &mut chatgpt.max_tokens, |ui, max_tokens| {
+                    ui.set_next_item_width(ui.current_font_size() * -8.0);
+                    ui.input_scalar("Max tokens", max_tokens).build();
+                });
+                ui.table_next_column();
+                checkbox_option_with_default(
+                    ui,
+                    &mut chatgpt.temperature,
+                    1.0,
+                    |ui, temperature| {
+                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        ui.slider_config("Temperature", 0.0f32, 2.0f32)
+                            .display_format("%.2f")
+                            .flags(SliderFlags::ALWAYS_CLAMP)
+                            .build(temperature);
+                    },
+                );
+                ui.table_next_column();
+                checkbox_option_with_default(ui, &mut chatgpt.top_p, 1.0, |ui, top_p| {
+                    ui.set_next_item_width(ui.current_font_size() * -8.0);
+                    ui.slider_config("Top P", 0.0f32, 1.0f32)
+                        .display_format("%.2f")
+                        .flags(SliderFlags::ALWAYS_CLAMP)
+                        .build(top_p);
+                });
+                ui.table_next_column();
+                checkbox_option_with_default(
+                    ui,
+                    &mut chatgpt.presence_penalty,
+                    0.0,
+                    |ui, presence_penalty| {
+                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        ui.slider_config("Presence penalty", -2.0f32, 2.0f32)
+                            .display_format("%.2f")
+                            .flags(SliderFlags::ALWAYS_CLAMP)
+                            .build(presence_penalty);
+                    },
+                );
+            }
         }
         if let Some(_t) = ui.begin_table_header_with_flags(
             "context",
@@ -63,7 +97,7 @@ impl ViewTranslator for ChatGptTranslator {
             ui.table_next_column();
             ui.input_text_multiline(
                 "##",
-                &mut settings.chatgpt_system_prompt,
+                &mut chatgpt.system_prompt,
                 [ui.content_region_avail()[0], 200.0],
             )
             .build();
@@ -193,25 +227,4 @@ impl ViewTranslation for DeepLTranslation {
             .size([350.0, 0.0])
             .build(ui);
     }
-}
-
-fn marker(ui: &Ui, draw_list: &DrawListMut, text: impl AsRef<str>, color: &[f32; 4]) {
-    let lang = text.as_ref();
-    let text = format!("[{}]", lang);
-    let p = ui.cursor_screen_pos();
-    let sz = ui.calc_text_size(&text);
-    draw_list
-        .add_rect(p, [p[0] + sz[0], p[1] + sz[1]], *color)
-        .filled(true)
-        .build();
-    stroke_token_with_color(
-        ui,
-        draw_list,
-        &text,
-        p,
-        1.0,
-        StyleColor::Text,
-        StyleColor::TitleBg,
-    );
-    ui.dummy(sz);
 }

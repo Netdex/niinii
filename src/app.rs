@@ -227,20 +227,10 @@ impl App {
     fn show_menu(&mut self, ctx: &mut Context, ui: &Ui) {
         if let Some(_token) = ui.begin_menu_bar() {
             if let Some(_menu) = ui.begin_menu("Options") {
-                if ui
-                    .menu_item_config("Watch clipboard")
-                    .selected(self.settings.watch_clipboard)
-                    .build()
-                {
-                    self.settings.watch_clipboard = !self.settings.watch_clipboard;
-                }
-                if ui
-                    .menu_item_config("Show input")
-                    .selected(self.settings.show_manual_input)
-                    .build()
-                {
-                    self.settings.show_manual_input = !self.settings.show_manual_input;
-                }
+                ui.menu_item_config("Watch clipboard")
+                    .build_with_ref(&mut self.settings.watch_clipboard);
+                ui.menu_item_config("Show input")
+                    .build_with_ref(&mut self.settings.show_manual_input);
                 ui.separator();
                 if ui.menu_item("Style Editor") {
                     self.show_style_editor = true;
@@ -423,7 +413,7 @@ impl App {
     fn show_translator(&mut self, _ctx: &mut Context, ui: &mut Ui) {
         if let Some(_token) = ui
             .window("Translator")
-            .size_constraints([200.0, 100.0], [1000.0, 1000.0])
+            .size_constraints([600.0, 300.0], [1200.0, 1200.0])
             .opened(&mut self.show_translator)
             .menu_bar(true)
             .begin()

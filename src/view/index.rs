@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
-use ichiran::{charset::is_kanji, romanize::*};
+use ichiran::prelude::*;
 use imgui::*;
 
 use crate::{parser::SyntaxTree, renderer::context::Context, settings::Settings};
 
-use super::{id, term::TermView};
+use super::term::TermView;
 
 pub struct IndexView<'a> {
     ast: &'a SyntaxTree,
@@ -24,7 +24,7 @@ impl<'a> IndexView<'a> {
     }
     fn add_root(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings, root: &Root) {
         for segment in root.segments() {
-            let _id_token = ui.push_id_ptr(&id(segment));
+            let _id_token = ui.push_id_ptr(segment);
             self.add_segment(ctx, ui, settings, segment);
         }
     }
@@ -40,7 +40,7 @@ impl<'a> IndexView<'a> {
     }
     fn add_clause(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings, clause: &Clause) {
         for (_idx, romanized) in clause.romanized().iter().enumerate() {
-            let _id_token = ui.push_id_ptr(&id(romanized));
+            let _id_token = ui.push_id_ptr(romanized);
             if !romanized.term().text().chars().any(|c| is_kanji(&c)) {
                 continue;
             }

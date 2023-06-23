@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ichiran::{kanji::Kanji, romanize::*, JmDictData};
+use ichiran::prelude::*;
 use imgui::*;
 
 use super::kanji::KanjiView;
