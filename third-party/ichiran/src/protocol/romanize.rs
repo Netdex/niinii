@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,13 @@ impl Clause {
     pub fn score(&self) -> i32 {
         self.1
     }
+    /// Get the original text for this term
+    pub fn text(&self) -> String {
+        self.romanized()
+            .iter()
+            .map(|rom| rom.term().text())
+            .join("")
+    }
 }
 
 /// A romanized term along with metadata.
@@ -76,7 +84,6 @@ impl Term {
     pub fn text(&self) -> &str {
         self.best().meta().text()
     }
-
     /// Get the kana for this term
     pub fn kana(&self) -> &str {
         self.best().meta().kana()

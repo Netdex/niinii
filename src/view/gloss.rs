@@ -188,46 +188,50 @@ impl GlossView {
 
                 let clause = clauses.get(clause_idx as usize);
                 if let Some(clause) = clause {
-                    let romanized = clause.romanized();
-                    for (idx, rz) in romanized.iter().enumerate() {
-                        let ul_hover = self.add_romanized(
-                            ctx,
-                            ui,
-                            settings,
-                            rz,
-                            settings.ruby_text_type(),
-                            if idx == romanized.len() - 1 {
-                                UnderlineMode::Normal
-                            } else {
-                                UnderlineMode::Pad
-                            },
-                        );
-                        if ul_hover {
-                            let scroll = ui.io().mouse_wheel as i32;
-                            clause_idx -= scroll;
-                            clause_idx = clause_idx.clamp(0, clauses.len() as i32 - 1);
-                            if scroll != 0 {
-                                selected_clause.insert(segment.clone(), clause_idx);
+                    if clause.score() > 0 {
+                        let romanized = clause.romanized();
+                        for (idx, rz) in romanized.iter().enumerate() {
+                            let ul_hover = self.add_romanized(
+                                ctx,
+                                ui,
+                                settings,
+                                rz,
+                                settings.ruby_text_type(),
+                                if idx == romanized.len() - 1 {
+                                    UnderlineMode::Normal
+                                } else {
+                                    UnderlineMode::Pad
+                                },
+                            );
+                            if ul_hover {
+                                let scroll = ui.io().mouse_wheel as i32;
+                                clause_idx -= scroll;
+                                clause_idx = clause_idx.clamp(0, clauses.len() as i32 - 1);
+                                if scroll != 0 {
+                                    selected_clause.insert(segment.clone(), clause_idx);
+                                }
+                                ui.tooltip(|| {
+                                    ui.text(format!(
+                                        "Alternate #{}/{} score={} (scroll to cycle)",
+                                        clause_idx + 1,
+                                        clauses.len(),
+                                        clause.score()
+                                    ));
+                                    ui.separator();
+                                    let _wrap_token = ui
+                                        .push_text_wrap_pos_with_pos(ui.current_font_size() * 20.0);
+                                    let romaji = clause
+                                        .romanized()
+                                        .iter()
+                                        .map(|x| x.romaji())
+                                        .collect::<Vec<&str>>()
+                                        .join(" ");
+                                    ui.text_wrapped(romaji);
+                                });
                             }
-                            ui.tooltip(|| {
-                                ui.text(format!(
-                                    "Alternate #{}/{} score={} (scroll to cycle)",
-                                    clause_idx + 1,
-                                    clauses.len(),
-                                    clause.score()
-                                ));
-                                ui.separator();
-                                let _wrap_token =
-                                    ui.push_text_wrap_pos_with_pos(ui.current_font_size() * 20.0);
-                                let romaji = clause
-                                    .romanized()
-                                    .iter()
-                                    .map(|x| x.romaji())
-                                    .collect::<Vec<&str>>()
-                                    .join(" ");
-                                ui.text_wrapped(romaji);
-                            });
                         }
+                    } else {
+                        self.add_skipped(ctx, ui, settings, &clause.text(), false);
                     }
                 }
             }

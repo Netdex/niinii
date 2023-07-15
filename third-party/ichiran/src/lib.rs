@@ -15,12 +15,13 @@ use std::{
 };
 
 use enclose::enclose;
-use futures::{stream, StreamExt, TryStreamExt};
+use futures::{stream, TryStreamExt};
 use itertools::Itertools;
 use lru::LruCache;
 use nonzero_ext::nonzero;
-use par_stream::{ParStreamExt, TryIndexStreamExt};
+use par_stream::ParStreamExt;
 use tokio::process::Command;
+use tracing::{Instrument, Level};
 
 pub mod prelude {
     pub use crate::charset::*;
@@ -98,8 +99,8 @@ impl Shared {
 }
 
 struct State {
-    kanji: LruCache<char, Kanji>,
-    segments: LruCache<String, Segment>,
+    kanji_cache: LruCache<char, Kanji>,
+    segment_cache: LruCache<String, Segment>,
     jmdict: Option<JmDictData>,
 }
 
@@ -109,14 +110,15 @@ impl Ichiran {
             shared: Arc::new(Shared {
                 path: path.into(),
                 state: Mutex::new(State {
-                    kanji: LruCache::new(nonzero!(512usize)),
-                    segments: LruCache::new(nonzero!(512usize)),
+                    kanji_cache: LruCache::new(nonzero!(512usize)),
+                    segment_cache: LruCache::new(nonzero!(512usize)),
                     jmdict: None,
                 }),
             }),
         }
     }
 
+    #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
     pub async fn romanize(&self, text: &str, limit: u32) -> Result<Root, IchiranError> {
         assert!(limit > 0);
 
@@ -125,91 +127,117 @@ impl Ichiran {
             .into_iter()
             .map(|(ty, text)| (ty, text.to_owned()))
             .collect();
-        let segments: Vec<Segment> = stream::iter(splits)
-            .enumerate()
+
+        // determine minimal candidate queries from splits
+        let split_queries: Vec<_> = splits
+            .iter()
+            .filter_map(|split| match split {
+                (Split::Text, text) => Some(text),
+                _ => None,
+            })
+            .sorted_unstable()
+            .unique()
+            .cloned()
+            .collect();
+
+        let mut segment_table: HashMap<String, Segment> = {
+            let segment_cache = &mut shared.state.lock().unwrap().segment_cache;
+            // for entries which are in segment cache, use cached value
+            split_queries
+                .iter()
+                .filter_map(|text| {
+                    segment_cache
+                        .get(text)
+                        .map(|segment| (text.clone(), segment.clone()))
+                })
+                .collect::<HashMap<String, Segment>>()
+        };
+
+        let split_queries: Vec<_> = split_queries
+            .into_iter()
+            .filter(|query| !segment_table.contains_key(query))
+            .collect();
+
+        // for entries which are not in the cache, query ichiran
+        let span = tracing::Span::current();
+        let query_table: HashMap<String, Segment> = stream::iter(split_queries)
             .par_then_unordered(
                 None,
-                enclose! { (shared) move |(idx, split)| {
-                    enclose! { (shared) async move {
-                        match split {
-                            (split::Split::Text, text) => {
-                                let segment = {
-                                    let mut state = shared.state.lock().unwrap();
-                                    state.segments.get(&text).cloned()
-                                };
-                                if let Some(segment) = segment {
-                                    Ok((idx, segment))
-                                } else {
-                                    let output = shared
-                                        .evaluate(format!(
-                                            r#"(jsown:to-json (ichiran:romanize* "{}" :limit {}))"#,
-                                            lisp_escape_string(text.clone()),
-                                            limit
-                                        ))
-                                        .await?;
-                                    let output = lisp_interpret::<String>(&output)?;
-                                    let root: Root = serde_json::from_str(&output)?;
-                                    assert_eq!(
-                                        root.segments().len(),
-                                        1,
-                                        "unexpected number of segments",
-                                    );
-                                    let segment = root.segments()[0].clone();
-
-                                    let mut state = shared.state.lock().unwrap();
-                                    state.segments.put(text, segment.clone());
-                                    Ok((idx, segment))
-                                }
-                            }
-                            (split::Split::Skip, skip) => {
-                                Ok::<_, IchiranError>((idx, Segment::Skipped(skip)))
-                            }
-                        }
-                    }
+                enclose! { (span, shared) move |split: String| {
+                    enclose! { (span, shared) async move {
+                        let output = shared
+                            .evaluate(format!(
+                                r#"(jsown:to-json (ichiran:romanize* "{}" :limit {}))"#,
+                                lisp_escape_string(split.clone()),
+                                limit
+                            ))
+                            .await?;
+                        let output = lisp_interpret::<String>(&output)?;
+                        let root: Root = serde_json::from_str(&output)?;
+                        assert_eq!(
+                            root.segments().len(),
+                            1,
+                            "unexpected number of segments",
+                        );
+                        let segment = root.segments()[0].clone();
+                        Ok::<_, IchiranError>((split.clone(), segment))
+                    }.instrument(span)
                 }}},
             )
-            .try_reorder_enumerated()
             .try_collect()
             .await?;
+
+        // put queried entries into segment cache
+        let segment_cache = &mut shared.state.lock().unwrap().segment_cache;
+        for (k, v) in &query_table {
+            segment_cache.push(k.clone(), v.clone());
+        }
+        segment_table.extend(query_table);
+
+        let segments: Vec<_> = splits
+            .iter()
+            .map(|split| match split {
+                (Split::Text, text) => segment_table.get(text).cloned().unwrap(),
+                (Split::Skip, skip) => Segment::Skipped(skip.clone()),
+            })
+            .collect();
+
         Ok(Root(segments))
     }
 
+    #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
     pub async fn kanji(&self, chars: &[char]) -> Result<HashMap<char, Kanji>, IchiranError> {
-        let mut kanji_info: HashMap<char, Kanji> = HashMap::new();
-
-        let commands = {
-            let mut commands: Vec<String> = vec![];
-            let mut state = self.shared.state.lock().unwrap();
-            for chr in chars {
-                if let Some(kanji) = state.kanji.get(chr) {
-                    kanji_info.insert(*chr, kanji.clone());
-                } else {
-                    commands.push(format!(
-                        r#"(jsown:to-json (ichiran/kanji:kanji-info-json #\{}))"#,
-                        chr
-                    ));
-                }
-            }
-            commands
+        let (mut kanji_info, query_chars): (HashMap<char, Kanji>, Vec<_>) = {
+            let kanji_cache = &mut self.shared.state.lock().unwrap().kanji_cache;
+            let kanji_info = chars
+                .iter()
+                .filter_map(|c| kanji_cache.get(c).map(|kanji| (*c, kanji.clone())))
+                .collect();
+            let query_chars = chars.iter().filter(|c| !kanji_cache.contains(c)).collect();
+            (kanji_info, query_chars)
         };
-        if commands.is_empty() {
+
+        if query_chars.is_empty() {
             return Ok(kanji_info);
         }
 
-        // this is what happens when you don't know lisp
+        let commands: Vec<String> = query_chars
+            .iter()
+            .map(|c| format!(r#"(jsown:to-json (ichiran/kanji:kanji-info-json #\{}))"#, c))
+            .collect();
+
         let expr = format!("(list {})", commands.join(" "));
 
         let output = self.shared.evaluate(expr).await?;
-        let output = format!("'{}", output); // add an apostrophe to turn it into a list
-        let output: Vec<String> = lisp_interpret(&output)?;
+        let output: Vec<String> = lisp_interpret(&format!("'{}", output))?;
 
-        let mut state = self.shared.state.lock().unwrap();
+        let kanji_cache = &mut self.shared.state.lock().unwrap().kanji_cache;
         for json in output {
             if json != "[]" {
                 let kanji: Kanji = serde_json::from_str(&json)?;
                 let chr = kanji.text().chars().next().unwrap();
                 kanji_info.insert(chr, kanji.clone());
-                state.kanji.put(chr, kanji);
+                kanji_cache.put(chr, kanji);
             }
         }
         Ok(kanji_info)

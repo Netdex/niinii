@@ -1,5 +1,4 @@
-//! An high-performance implementation of core ichiran logic which is in the
-//! critical path.
+//! Implementation of ichiran splitting logic
 
 use const_format::formatcp;
 use fancy_regex::Regex;

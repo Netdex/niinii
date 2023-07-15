@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use enclose::enclose;
 use openai_chat::{
-    chat::{self, Message},
+    chat::{self, Message, Role},
     moderation, Client, MessageBuffer,
 };
 use tokio_stream::StreamExt;
@@ -53,13 +53,24 @@ impl Translate for ChatGptTranslator {
         let chat_request = {
             let mut context = self.context.lock().unwrap();
             // TODO: experiment with summarizing context
+            while let Some(message) = context.back() {
+                if message.role == Role::Assistant {
+                    break;
+                }
+                context.pop_back();
+            }
             loop {
                 let estimated_tokens: u32 = context.iter().map(|m| m.estimate_tokens()).sum();
                 if estimated_tokens <= chatgpt.max_context_tokens {
                     break;
                 }
                 context.pop_front();
-                context.pop_front();
+                while let Some(message) = context.front() {
+                    if message.role == Role::User {
+                        break;
+                    }
+                    context.pop_front();
+                }
             }
             context.push_back(Message {
                 role: chat::Role::User,
@@ -100,6 +111,8 @@ impl Translate for ChatGptTranslator {
                             let message = &completion.choices.first().unwrap().delta;
                             context.apply_delta(message)
                         },
+                        // TODO: need to pipe this error to the event loop somehow
+                        Some(Err(err)) => tracing::error!(%err),
                         _ => break
                     },
                     _ = token.cancelled() => break

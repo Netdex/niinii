@@ -124,7 +124,7 @@ impl App {
                 let variants = if self.settings.more_variants { 5 } else { 1 };
                 self.runtime
                     .spawn(enclose! { (channel_tx, glossator) async move {
-                        let span = tracing::trace_span!("parse");
+                        let span = tracing::debug_span!("parse");
                         let ast = glossator.parse(&text, variants).instrument(span).await;
                         let _ = channel_tx.send(Message::Gloss(ast));
                     }});
@@ -150,7 +150,7 @@ impl App {
 
         self.runtime.spawn(
             enclose! { (mut translator, mut settings, channel_tx) async move {
-                let span = tracing::trace_span!("translation");
+                let span = tracing::debug_span!("translation");
                 let translation = translator.translate(&settings, text).instrument(span).await;
                 let _ = channel_tx.send(Message::Translation(translation));
             }},
@@ -158,7 +158,7 @@ impl App {
     }
 
     fn request_tts(&mut self, ui: &Ui, text: &str) {
-        let span = tracing::trace_span!("tts");
+        let span = tracing::debug_span!("tts");
         let _enter = span.enter();
         if let Err(err) = self.tts.request_tts(text) {
             self.transition(ui, State::Error(err.into()));
@@ -262,10 +262,8 @@ impl App {
             ui.separator();
             let _disable_state = ui.begin_disabled(matches!(self.state, State::Processing));
             {
-                let mut _disable_tl = ui.begin_disabled(
-                    !self.gloss.ast().map_or(false, |ast| ast.translatable)
-                        || self.gloss.translation().is_some(),
-                );
+                let mut _disable_tl =
+                    ui.begin_disabled(!self.gloss.ast().map_or(false, |ast| ast.translatable));
                 if ui.menu_item("Translate") {
                     if let Some(gloss) = self.gloss.ast() {
                         self.request_translation(ui, &gloss.original_text.clone());
@@ -336,8 +334,7 @@ impl App {
 
                 let enable_tl = self.gloss.ast().map_or(false, |ast| ast.translatable);
                 {
-                    let mut _disable_tl =
-                        ui.begin_disabled(!enable_tl || self.gloss.translation().is_some());
+                    let mut _disable_tl = ui.begin_disabled(!enable_tl);
                     if ui.button_with_size("Translate", [120.0, 0.0]) {
                         if let Some(gloss) = self.gloss.ast() {
                             self.request_translation(ui, &gloss.original_text.clone());

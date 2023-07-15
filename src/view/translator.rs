@@ -82,6 +82,11 @@ impl ViewTranslator for ChatGptTranslator {
                             .build(presence_penalty);
                     },
                 );
+                ui.table_next_column();
+                ui.set_next_item_width(ui.current_font_size() * -8.0);
+                if let Some(_token) = ui.begin_combo_no_preview("Model") {
+                    // TODO
+                }
             }
         }
         if let Some(_t) = ui.begin_table_header_with_flags(
