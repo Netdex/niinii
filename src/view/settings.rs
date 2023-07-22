@@ -6,7 +6,7 @@ use crate::{
     settings::{RendererType, RubyTextType, Settings, TranslatorType},
 };
 
-use super::mixins;
+use super::mixins::{self, checkbox_option};
 
 pub struct SettingsView<'a>(pub &'a mut Settings);
 
@@ -83,6 +83,10 @@ impl<'a> SettingsView<'a> {
                     .build();
                 ui.same_line();
                 mixins::help_marker(ui, "Path of VOICEVOX models");
+                checkbox_option(ui, &mut settings.auto_tts_regex, |ui, auto_tts_regex| {
+                    ui.set_next_item_width(ui.current_font_size() * -8.0);
+                    ui.input_text("Auto TTS regex", auto_tts_regex).build();
+                });
             }
         }
 

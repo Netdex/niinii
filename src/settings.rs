@@ -74,6 +74,7 @@ pub struct Settings {
     pub chatgpt: ChatGptSettings,
 
     pub vv_model_path: String,
+    pub auto_tts_regex: Option<String>,
 
     pub watch_clipboard: bool,
     pub show_manual_input: bool,
@@ -109,6 +110,7 @@ impl Default for Settings {
             chatgpt: Default::default(),
 
             vv_model_path: Default::default(),
+            auto_tts_regex: None,
 
             watch_clipboard: true,
             show_manual_input: true,

@@ -183,6 +183,19 @@ impl App {
                     let should_translate = self.settings.auto_translate && ast.translatable;
                     let text = ast.original_text.clone();
                     self.gloss.set_ast(ast);
+                    if let Some(auto_tts_regex) = &self.settings.auto_tts_regex {
+                        let regex = Regex::new(auto_tts_regex).ok();
+                        if let Some(regex) = regex {
+                            let captures = regex.captures(&text).unwrap();
+                            if let Some(captures) = captures {
+                                if let Some(cap) = captures.get(1) {
+                                    self.request_tts(ui, &cap.as_str());
+                                } else {
+                                    self.request_tts(ui, &text);
+                                }
+                            }
+                        }
+                    }
                     if should_translate {
                         self.request_translation(ui, &text);
                     } else {
