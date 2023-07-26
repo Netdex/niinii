@@ -84,7 +84,7 @@ impl Translate for ChatGptTranslator {
             }];
             messages.extend(context.iter().cloned());
             chat::Request {
-                model: chat::Model::Gpt35Turbo0613,
+                model: chatgpt.model,
                 messages,
                 temperature: chatgpt.temperature,
                 top_p: chatgpt.top_p,

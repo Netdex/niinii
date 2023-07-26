@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use strum_macros::{EnumIter, IntoStaticStr};
 use thiserror::Error;
 use tiktoken_rs::cl100k_base_singleton;
 
@@ -13,7 +14,9 @@ pub struct Error {
     code: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter,
+)]
 pub enum Model {
     #[serde(rename = "gpt-4")]
     Gpt4,

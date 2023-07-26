@@ -1,5 +1,6 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use openai_chat::chat::Model;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumString, EnumVariantNames};
 
@@ -33,6 +34,7 @@ pub struct ChatGptSettings {
     pub top_p: Option<f32>,
     pub max_tokens: Option<u32>,
     pub presence_penalty: Option<f32>,
+    pub model: Model,
 }
 
 impl Default for ChatGptSettings {
@@ -46,6 +48,7 @@ impl Default for ChatGptSettings {
             top_p: None,
             max_tokens: Some(128),
             presence_penalty: None,
+            model: Model::Gpt35Turbo0613,
         }
     }
 }

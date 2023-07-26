@@ -2611,6 +2611,8 @@ dependencies = [
  "eventsource-stream",
  "lazy_static",
  "log",
+ "num-derive",
+ "num-traits",
  "regex",
  "reqwest",
  "serde",

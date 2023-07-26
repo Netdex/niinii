@@ -10,7 +10,9 @@ use crate::{
     },
 };
 
-use super::mixins::{checkbox_option, checkbox_option_with_default, marker, stroke_text};
+use super::mixins::{
+    checkbox_option, checkbox_option_with_default, combo_enum, marker, stroke_text,
+};
 
 pub struct TranslatorView<'a>(pub &'a Translator, pub &'a mut Settings);
 impl<'a> TranslatorView<'a> {
@@ -84,9 +86,7 @@ impl ViewTranslator for ChatGptTranslator {
                 );
                 ui.table_next_column();
                 ui.set_next_item_width(ui.current_font_size() * -8.0);
-                if let Some(_token) = ui.begin_combo_no_preview("Model") {
-                    // TODO
-                }
+                combo_enum(ui, "Model", &mut chatgpt.model);
             }
         }
         if let Some(_t) = ui.begin_table_header_with_flags(

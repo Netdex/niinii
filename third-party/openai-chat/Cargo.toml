@@ -22,6 +22,8 @@ thiserror = "1"
 csv = "1.1"
 regex = "1"
 lazy_static = "1.4.0"
+num-traits = "0.2"
+num-derive = "0.3"
 strum = "0.25"
 strum_macros = "0.25"
 

@@ -1,4 +1,5 @@
 use imgui::{DrawListMut, StyleColor, Ui};
+use strum::IntoEnumIterator;
 
 use crate::renderer::context::{Context, TextStyle};
 
@@ -259,5 +260,20 @@ pub fn checkbox_option_with_default<T, U>(
         let _token = ui.begin_disabled(true);
         let mut dummy = default.unwrap();
         f(ui, &mut dummy)
+    }
+}
+
+pub fn combo_enum<T>(ui: &Ui, label: impl AsRef<str>, val: &mut T)
+where
+    T: IntoEnumIterator,
+    for<'a> &'a T: Into<&'static str> + 'a,
+{
+    let val_name = <&T as Into<&'static str>>::into(val);
+    if let Some(_token) = ui.begin_combo(label, val_name) {
+        for e in T::iter() {
+            if ui.selectable(<&T as Into<&'static str>>::into(&e)) {
+                *val = e;
+            }
+        }
     }
 }
