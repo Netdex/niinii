@@ -128,7 +128,7 @@ impl GlossView {
             !preview,
             preview,
             UnderlineMode::None,
-            if settings.ruby_text_type() == RubyTextType::None {
+            if settings.ruby_text_type == RubyTextType::None {
                 RubyTextMode::None
             } else {
                 RubyTextMode::Pad
@@ -196,7 +196,7 @@ impl GlossView {
                                 ui,
                                 settings,
                                 rz,
-                                settings.ruby_text_type(),
+                                settings.ruby_text_type,
                                 if idx == romanized.len() - 1 {
                                     UnderlineMode::Normal
                                 } else {

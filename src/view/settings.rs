@@ -1,12 +1,11 @@
 use imgui::*;
-use strum::VariantNames;
 
 use crate::{
     renderer::context::{Context, ContextFlags},
-    settings::{RendererType, RubyTextType, Settings, TranslatorType},
+    settings::Settings,
 };
 
-use super::mixins::{self, checkbox_option};
+use super::mixins::{self, checkbox_option, combo_enum};
 
 pub struct SettingsView<'a>(pub &'a mut Settings);
 
@@ -46,11 +45,7 @@ impl<'a> SettingsView<'a> {
             .default_open(true)
             .build(ui)
         {
-            ui.combo_simple_string(
-                "Ruby text",
-                &mut settings.ruby_text_type_idx,
-                RubyTextType::VARIANTS,
-            );
+            combo_enum(ui, "Ruby text", &mut settings.ruby_text_type);
             ui.checkbox("Alternate interpretations", &mut settings.more_variants);
             ui.same_line();
             mixins::help_marker(ui, "Search for different ways to interpret a phrase");
@@ -60,11 +55,7 @@ impl<'a> SettingsView<'a> {
             .default_open(true)
             .build(ui)
         {
-            ui.combo_simple_string(
-                "Translator*",
-                &mut settings.translator_type_idx,
-                TranslatorType::VARIANTS,
-            );
+            combo_enum(ui, "Translator*", &mut settings.translator_type);
             ui.checkbox("Auto-translate", &mut settings.auto_translate);
             ui.input_text("DeepL API key", &mut settings.deepl_api_key)
                 .password(true)
@@ -95,11 +86,7 @@ impl<'a> SettingsView<'a> {
             .build(ui)
         {
             if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT) {
-                ui.combo_simple_string(
-                    "Renderer*",
-                    &mut settings.renderer_type_idx,
-                    RendererType::VARIANTS,
-                );
+                combo_enum(ui, "Renderer*", &mut settings.renderer_type);
                 ui.checkbox("##", &mut settings.use_force_dpi);
                 ui.same_line();
                 ui.disabled(!settings.use_force_dpi, || {
