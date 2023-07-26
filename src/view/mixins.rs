@@ -266,7 +266,7 @@ pub fn checkbox_option_with_default<T, U>(
 pub fn combo_enum<T>(ui: &Ui, label: impl AsRef<str>, val: &mut T)
 where
     T: IntoEnumIterator,
-    for<'a> &'a T: Into<&'static str> + 'a,
+    for<'a> &'a T: Into<&'static str>,
 {
     let val_name = <&T as Into<&'static str>>::into(val);
     if let Some(_token) = ui.begin_combo(label, val_name) {
