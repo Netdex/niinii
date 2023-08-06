@@ -1771,8 +1771,6 @@ dependencies = [
 [[package]]
 name = "imgui-winit-glow-renderer-viewports"
 version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4504e6ab17f3ac76fe8bb2a524c35fa1a28f37fb07705dde6eb0dc66b5a16c65"
 dependencies = [
  "glow",
  "glutin",

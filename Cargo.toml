@@ -28,6 +28,7 @@ voicevox = ["vvcore", "rodio"]
 # imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
 # imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
 # imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
+imgui-winit-glow-renderer-viewports = { path = "third-party/imgui-winit-glow-renderer-viewports" }
 # hudhook = { git = "https://github.com/veeenu/hudhook.git" }
 
 [dependencies]
