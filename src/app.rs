@@ -8,6 +8,7 @@ use crate::{
     parser::{self, Parser, SyntaxTree},
     renderer::context::{Context, ContextFlags},
     settings::Settings,
+    support::docking::UiDocking,
     translator::{self, Translate, Translation, Translator},
     tts::{self, TtsEngine},
     view::{
@@ -189,7 +190,7 @@ impl App {
                             let captures = regex.captures(&text).unwrap();
                             if let Some(captures) = captures {
                                 if let Some(cap) = captures.get(1) {
-                                    self.request_tts(ui, &cap.as_str());
+                                    self.request_tts(ui, cap.as_str());
                                 } else {
                                     self.request_tts(ui, &text);
                                 }
@@ -311,7 +312,7 @@ impl App {
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
         let io = ui.io();
 
-        ui.dockspace_over_main_viewport();
+        let _dockspace = ui.dockspace_over_viewport();
 
         let mut niinii = ui
             .window("niinii")
@@ -439,10 +440,10 @@ impl App {
                 .menu_bar(true)
                 .build(|| {
                     ui.menu_bar(|| {
-                        if ui.button("Save") {
+                        if ui.menu_item("Save") {
                             self.settings_mut().set_style(Some(&ui.clone_style()));
                         }
-                        if ui.button("Reset") {
+                        if ui.menu_item("Reset") {
                             self.settings_mut().set_style(None);
                         }
                         if self.settings.style.is_some() {

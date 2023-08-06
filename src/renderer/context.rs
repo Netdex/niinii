@@ -116,9 +116,10 @@ impl Context {
         imgui.io_mut().font_global_scale = (1.0 / scaling_factor) as f32;
 
         let ext_font_config = [FontConfig {
-            rasterizer_multiply: 1.75,
+            rasterizer_multiply: if hidpi_factor < 1.0 { 1.0 } else { 1.75 },
             glyph_ranges: FontGlyphRanges::from_slice(unsafe { self.get_font_glyph_ranges() }),
             oversample_h: if hidpi_factor < 1.0 { 3 } else { 2 },
+            oversample_v: if hidpi_factor < 1.0 { 2 } else { 1 },
             ..Default::default()
         }];
 

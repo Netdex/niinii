@@ -150,12 +150,17 @@ impl ViewTranslation for ChatGptTranslation {
                     ui,
                     &draw_list,
                     "ChatGPT",
-                    &ui.style_color(StyleColor::TextSelectedBg),
+                    &ui.style_color(StyleColor::NavHighlight),
                 );
                 ui.same_line();
 
                 if let Some(content) = context.back().and_then(|x| x.content.as_ref()) {
-                    stroke_text(ui, &draw_list, content, 1.0);
+                    marker(
+                        ui,
+                        &draw_list,
+                        content,
+                        &ui.style_color(StyleColor::TextSelectedBg),
+                    );
                 }
             }
             ChatGptTranslation::Filtered { moderation } => {

@@ -125,7 +125,7 @@ impl GlossView {
             ctx,
             skipped,
             false,
-            !preview,
+            !preview && settings.stroke_text,
             preview,
             UnderlineMode::None,
             if settings.ruby_text_type == RubyTextType::None {

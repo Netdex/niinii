@@ -26,6 +26,7 @@ pub enum TranslatorType {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ChatGptSettings {
+    pub model: Model,
     pub system_prompt: String,
     pub max_context_tokens: u32,
     pub moderation: bool,
@@ -33,12 +34,12 @@ pub struct ChatGptSettings {
     pub top_p: Option<f32>,
     pub max_tokens: Option<u32>,
     pub presence_penalty: Option<f32>,
-    pub model: Model,
 }
 
 impl Default for ChatGptSettings {
     fn default() -> Self {
         Self {
+            model: Model::Gpt35Turbo0613,
             system_prompt: "You will translate the following visual novel script into English."
                 .into(),
             max_context_tokens: 64,
@@ -47,7 +48,6 @@ impl Default for ChatGptSettings {
             top_p: None,
             max_tokens: Some(128),
             presence_penalty: None,
-            model: Model::Gpt35Turbo0613,
         }
     }
 }
