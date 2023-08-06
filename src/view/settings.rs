@@ -102,25 +102,15 @@ impl<'a> SettingsView<'a> {
                 );
 
                 ui.checkbox("Always on-top*", &mut settings.on_top);
-                ui.same_line();
-                mixins::help_marker(
-                    ui,
-                    "Whether to always put the window on top of others or not",
-                );
 
                 #[cfg(windows)]
                 {
                     ui.checkbox("Overlay mode*", &mut settings.overlay_mode);
                     ui.same_line();
-                    mixins::help_marker(
-                        ui,
-                        "Turns the window into an overlay on top of all other windows (D3D11 only)",
-                    );
+                    mixins::help_marker(ui, "Overlay on top of all other windows (D3D11 only)");
                 }
             }
-            ui.checkbox("Transparent*", &mut settings.transparent);
-            ui.same_line();
-            mixins::help_marker(ui, "Whether to make the window transparent or not");
+            ui.checkbox("Transparent", &mut settings.transparent);
         }
     }
 }

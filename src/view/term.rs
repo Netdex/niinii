@@ -132,7 +132,7 @@ impl<'a> TermView<'a> {
                     ui.text(suffix);
                 }
                 // ignore suru
-                if [10285144, 10285148].contains(&plain.seq().unwrap_or(0)) {
+                if [10285144, 10285148, 10285150, 10285187].contains(&plain.seq().unwrap_or(0)) {
                     return;
                 }
                 // there should be no glosses if there are conjugations
@@ -151,12 +151,15 @@ impl<'a> TermView<'a> {
             }
             Word::Compound(compound) => {
                 ui.text(format!("Compound {}", compound.compound().join(" + ")));
-                for component in compound.components() {
-                    ui.tree_node_config(&component.text().to_string())
-                        .default_open(true)
-                        .build(|| {
-                            self.add_term(ctx, ui, settings, component, romaji, false);
-                        });
+                if let Some(_table) = ui.begin_table_with_flags("compound", 1, TableFlags::BORDERS)
+                {
+                    for component in compound.components() {
+                        ui.table_next_column();
+                        ui.table_header(&component.reading().to_string());
+                        ui.table_next_row();
+                        ui.table_next_column();
+                        self.add_term(ctx, ui, settings, component, romaji, false);
+                    }
                 }
             }
         }

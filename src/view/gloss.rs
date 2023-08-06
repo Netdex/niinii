@@ -191,17 +191,22 @@ impl GlossView {
                     if clause.score() > 0 {
                         let romanized = clause.romanized();
                         for (idx, rz) in romanized.iter().enumerate() {
+                            let underline_mode = if clauses.len() > 1 {
+                                if idx == romanized.len() - 1 {
+                                    UnderlineMode::Normal
+                                } else {
+                                    UnderlineMode::Pad
+                                }
+                            } else {
+                                UnderlineMode::None
+                            };
                             let ul_hover = self.add_romanized(
                                 ctx,
                                 ui,
                                 settings,
                                 rz,
                                 settings.ruby_text_type,
-                                if idx == romanized.len() - 1 {
-                                    UnderlineMode::Normal
-                                } else {
-                                    UnderlineMode::Pad
-                                },
+                                underline_mode,
                             );
                             if ul_hover {
                                 let scroll = ui.io().mouse_wheel as i32;

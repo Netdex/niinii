@@ -88,6 +88,10 @@ impl Term {
     pub fn kana(&self) -> &str {
         self.best().meta().kana()
     }
+    /// Get the reading for this term
+    pub fn reading(&self) -> &str {
+        self.best().meta().reading()
+    }
 
     /// Get the word or best alternative
     pub fn best(&self) -> &Word {
