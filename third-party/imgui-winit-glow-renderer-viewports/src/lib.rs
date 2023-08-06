@@ -20,7 +20,7 @@ use imgui::{BackendFlags, ConfigFlags, Id, Key, MouseButton, ViewportFlags};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use thiserror::Error;
 use winit::{
-    dpi::{PhysicalPosition, PhysicalSize},
+    dpi::{LogicalPosition, PhysicalPosition, PhysicalSize},
     event::{DeviceEvent, ElementState, KeyboardInput, TouchPhase, VirtualKeyCode},
     event_loop::EventLoopWindowTarget,
     window::{CursorIcon, Window, WindowBuilder},
@@ -361,9 +361,11 @@ impl Renderer {
         io.backend_flags
             .insert(BackendFlags::RENDERER_HAS_VTX_OFFSET);
 
+        let hidpi_factor = main_window.scale_factor();
         let window_size = main_window.inner_size().cast::<f32>();
-        io.display_size = [window_size.width, window_size.height];
-        io.display_framebuffer_scale = [1.0, 1.0];
+        let logical_size = window_size.to_logical::<f32>(hidpi_factor);
+        io.display_size = [logical_size.width, logical_size.height];
+        io.display_framebuffer_scale = [hidpi_factor as f32, hidpi_factor as f32];
 
         let viewport = imgui.main_viewport_mut();
 
@@ -372,11 +374,12 @@ impl Renderer {
             .unwrap_or_default()
             .cast::<f32>();
 
+        // TODO: ???
         viewport.pos = [main_pos.x, main_pos.y];
         viewport.work_pos = viewport.pos;
         viewport.size = [window_size.width, window_size.height];
-        viewport.work_size = viewport.size;
-        viewport.dpi_scale = 1.0;
+        viewport.work_size = [window_size.width, window_size.height];
+        viewport.dpi_scale = hidpi_factor as f32;
         viewport.platform_user_data = Box::into_raw(Box::new(ViewportData {
             pos: [main_pos.x, main_pos.y],
             size: [window_size.width, window_size.height],
@@ -387,7 +390,11 @@ impl Renderer {
 
         let mut monitors = Vec::new();
         for monitor in main_window.available_monitors() {
+            // let main_size = monitor.size().to_logical::<f32>(hidpi_factor);
+            // let work_size = monitor.size().to_logical::<f32>(hidpi_factor);
             monitors.push(imgui::PlatformMonitor {
+                // main_size: [main_size.width, main_size.height],
+                // work_size: [work_size.width, work_size.height],
                 main_pos: [monitor.position().x as f32, monitor.position().y as f32],
                 main_size: [monitor.size().width as f32, monitor.size().height as f32],
                 work_pos: [monitor.position().x as f32, monitor.position().y as f32],
@@ -431,7 +438,6 @@ impl Renderer {
             last_cursor: CursorIcon::Default,
         })
     }
-
     pub fn handle_event<T>(
         &mut self,
         imgui: &mut imgui::Context,
@@ -462,23 +468,28 @@ impl Renderer {
                 } else {
                     return;
                 };
+                println!("{:?}", *event);
 
                 match *event {
                     winit::event::WindowEvent::Resized(new_size) => {
+                        let new_size = new_size.to_logical::<f32>(window.scale_factor());
                         unsafe {
                             (*(viewport.platform_user_data.cast::<ViewportData>())).size =
-                                [new_size.width as f32, new_size.height as f32];
+                                [new_size.width, new_size.height];
                         }
 
                         viewport.platform_request_resize = true;
 
                         if window_id == main_window.id() {
-                            imgui.io_mut().display_size =
-                                [new_size.width as f32, new_size.height as f32];
+                            imgui.io_mut().display_size = [new_size.width, new_size.height];
                         }
                     }
                     winit::event::WindowEvent::Moved(_) => unsafe {
-                        let new_pos = window.inner_position().unwrap().cast::<f32>();
+                        let new_pos = window
+                            .inner_position()
+                            .unwrap()
+                            .to_logical::<f32>(window.scale_factor())
+                            .cast::<f32>();
                         (*(viewport.platform_user_data.cast::<ViewportData>())).pos =
                             [new_pos.x, new_pos.y];
 
@@ -533,6 +544,12 @@ impl Renderer {
                             .config_flags
                             .contains(ConfigFlags::VIEWPORTS_ENABLE)
                         {
+                            let position = position.to_logical::<f32>(window.scale_factor());
+                            // let window_pos = window
+                            //     .inner_position()
+                            //     .unwrap_or_default()
+                            //     .to_logical::<f32>(window.scale_factor())
+                            //     .cast::<f32>();
                             let window_pos =
                                 window.inner_position().unwrap_or_default().cast::<f32>();
                             imgui.io_mut().add_mouse_pos_event([
@@ -809,9 +826,9 @@ impl Renderer {
         gl_objects: &GlObjects,
     ) -> Result<(), RendererError> {
         unsafe {
-            let window_size = window.inner_size();
-
-            glow.viewport(0, 0, window_size.width as i32, window_size.height as i32);
+            let viewport_w = (draw_data.display_size[0] * draw_data.framebuffer_scale[0]) as i32;
+            let viewport_h = (draw_data.display_size[1] * draw_data.framebuffer_scale[1]) as i32;
+            glow.viewport(0, 0, viewport_w, viewport_h);
 
             glow.enable(glow::BLEND);
             glow.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
@@ -840,11 +857,11 @@ impl Renderer {
                 0.0,
                 0.0,
                 0.0,
-                -1.0,
+                0.5,
                 0.0,
                 (right + left) / (left - right),
                 (top + bottom) / (bottom - top),
-                0.0,
+                0.5,
                 1.0,
             ];
 
@@ -853,6 +870,8 @@ impl Renderer {
                 .unwrap();
             glow.uniform_matrix_4_f32_slice(Some(&loc), false, &matrix);
 
+            let clip_off = draw_data.display_pos;
+            let clip_scale = draw_data.framebuffer_scale;
             for list in draw_data.draw_lists() {
                 glow.buffer_data_u8_slice(
                     glow::ARRAY_BUFFER,
@@ -872,15 +891,25 @@ impl Renderer {
                 );
 
                 for cmd in list.commands() {
-                    if let imgui::DrawCmd::Elements { count, cmd_params } = cmd {
-                        let clip_x1 = (cmd_params.clip_rect[0] - draw_data.display_pos[0]) as i32;
-                        let clip_y1 = (cmd_params.clip_rect[1] - draw_data.display_pos[1]) as i32;
-                        let clip_x2 = (cmd_params.clip_rect[2] - draw_data.display_pos[0]) as i32;
-                        let clip_y2 = (cmd_params.clip_rect[3] - draw_data.display_pos[1]) as i32;
+                    if let imgui::DrawCmd::Elements {
+                        count,
+                        cmd_params:
+                            imgui::DrawCmdParams {
+                                clip_rect,
+                                idx_offset,
+                                vtx_offset,
+                                ..
+                            },
+                    } = cmd
+                    {
+                        let clip_x1 = ((clip_rect[0] - clip_off[0]) * clip_scale[0]) as i32;
+                        let clip_y1 = ((clip_rect[1] - clip_off[1]) * clip_scale[1]) as i32;
+                        let clip_x2 = ((clip_rect[2] - clip_off[0]) * clip_scale[0]) as i32;
+                        let clip_y2 = ((clip_rect[3] - clip_off[1]) * clip_scale[1]) as i32;
 
                         glow.scissor(
                             clip_x1,
-                            window_size.height as i32 - clip_y2,
+                            viewport_h - clip_y2, // TODO: ???
                             clip_x2 - clip_x1,
                             clip_y2 - clip_y1,
                         );
@@ -888,8 +917,8 @@ impl Renderer {
                             glow::TRIANGLES,
                             count as i32,
                             glow::UNSIGNED_SHORT,
-                            (cmd_params.idx_offset * 2) as i32,
-                            cmd_params.vtx_offset as i32,
+                            (idx_offset * 2) as i32,
+                            vtx_offset as i32,
                         );
                     }
                 }
