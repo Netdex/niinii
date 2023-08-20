@@ -22,6 +22,11 @@ pub trait Renderer {
         // let on_top = settings.on_top || settings.overlay_mode;
         let maximized = settings.overlay_mode;
         let decorations = !settings.overlay_mode;
+        let fullscreen = if settings.overlay_mode {
+            Some(window::Fullscreen::Borderless(None))
+        } else {
+            None
+        };
 
         window::WindowBuilder::new()
             .with_title("niinii")
@@ -31,7 +36,7 @@ pub trait Renderer {
             .with_maximized(maximized)
             .with_decorations(decorations)
             // .with_always_on_top(on_top) // can't set this here?
-            .with_fullscreen(Some(window::Fullscreen::Borderless(None)))
+            .with_fullscreen(fullscreen)
     }
 
     fn configure_imgui(imgui: &mut imgui::Context, settings: &Settings)

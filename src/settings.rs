@@ -94,7 +94,7 @@ impl Default for Settings {
             postgres_path: Default::default(),
             db_path: Default::default(),
 
-            renderer_type: RendererType::Glow,
+            renderer_type: RendererType::Direct3D11,
             transparent: Default::default(),
             on_top: false,
             overlay_mode: false,

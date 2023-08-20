@@ -20,7 +20,7 @@ use imgui::{BackendFlags, ConfigFlags, Id, Key, MouseButton, ViewportFlags};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use thiserror::Error;
 use winit::{
-    dpi::{LogicalPosition, PhysicalPosition, PhysicalSize},
+    dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
     event::{DeviceEvent, ElementState, KeyboardInput, TouchPhase, VirtualKeyCode},
     event_loop::EventLoopWindowTarget,
     window::{CursorIcon, Window, WindowBuilder},
@@ -362,27 +362,31 @@ impl Renderer {
             .insert(BackendFlags::RENDERER_HAS_VTX_OFFSET);
 
         let hidpi_factor = main_window.scale_factor();
-        let window_size = main_window.inner_size().cast::<f32>();
-        let logical_size = window_size.to_logical::<f32>(hidpi_factor);
-        io.display_size = [logical_size.width, logical_size.height];
+        let main_size_phy = main_window.inner_size().cast::<f32>();
+        let main_size_log = main_size_phy.to_logical::<f32>(hidpi_factor);
+        // TODO: probably shouldn't use these?
+        io.display_size = main_size_log.into();
         io.display_framebuffer_scale = [hidpi_factor as f32, hidpi_factor as f32];
 
         let viewport = imgui.main_viewport_mut();
 
-        let main_pos = main_window
+        let main_pos_phy = main_window
             .inner_position()
             .unwrap_or_default()
             .cast::<f32>();
+        let main_pos_log = main_pos_phy.to_logical::<f32>(hidpi_factor);
 
         // TODO: ???
-        viewport.pos = [main_pos.x, main_pos.y];
-        viewport.work_pos = viewport.pos;
-        viewport.size = [window_size.width, window_size.height];
-        viewport.work_size = [window_size.width, window_size.height];
+        // viewport: position in dpi-scaled space (logical)
+        // platform_user_data: position in real coordinates (physical)
+        viewport.pos = main_pos_log.into();
+        viewport.work_pos = main_pos_log.into();
+        viewport.size = main_size_log.into();
+        viewport.work_size = main_size_log.into();
         viewport.dpi_scale = hidpi_factor as f32;
         viewport.platform_user_data = Box::into_raw(Box::new(ViewportData {
-            pos: [main_pos.x, main_pos.y],
-            size: [window_size.width, window_size.height],
+            pos: main_pos_phy.into(),
+            size: main_size_phy.into(),
             focus: true,
             minimized: false,
         }))
@@ -390,16 +394,12 @@ impl Renderer {
 
         let mut monitors = Vec::new();
         for monitor in main_window.available_monitors() {
-            // let main_size = monitor.size().to_logical::<f32>(hidpi_factor);
-            // let work_size = monitor.size().to_logical::<f32>(hidpi_factor);
             monitors.push(imgui::PlatformMonitor {
-                // main_size: [main_size.width, main_size.height],
-                // work_size: [work_size.width, work_size.height],
-                main_pos: [monitor.position().x as f32, monitor.position().y as f32],
-                main_size: [monitor.size().width as f32, monitor.size().height as f32],
-                work_pos: [monitor.position().x as f32, monitor.position().y as f32],
-                work_size: [monitor.size().width as f32, monitor.size().height as f32],
-                dpi_scale: 1.0,
+                main_pos: monitor.position().cast::<f32>().into(),
+                main_size: monitor.size().cast::<f32>().into(),
+                work_pos: monitor.position().cast::<f32>().into(),
+                work_size: monitor.size().cast::<f32>().into(),
+                dpi_scale: monitor.scale_factor() as f32,
             });
         }
         imgui
@@ -468,31 +468,30 @@ impl Renderer {
                 } else {
                     return;
                 };
-                println!("{:?}", *event);
 
                 match *event {
-                    winit::event::WindowEvent::Resized(new_size) => {
-                        let new_size = new_size.to_logical::<f32>(window.scale_factor());
+                    winit::event::WindowEvent::Resized(size) => {
+                        let size_phy = size.cast::<f32>();
+                        let size_log = size_phy.to_logical::<f32>(viewport.dpi_scale as f64);
+
+                        viewport.size = size_log.into();
+                        viewport.work_size = size_log.into();
                         unsafe {
                             (*(viewport.platform_user_data.cast::<ViewportData>())).size =
-                                [new_size.width, new_size.height];
+                                size_phy.into();
                         }
-
                         viewport.platform_request_resize = true;
-
                         if window_id == main_window.id() {
-                            imgui.io_mut().display_size = [new_size.width, new_size.height];
+                            imgui.io_mut().display_size = size_log.into();
                         }
                     }
                     winit::event::WindowEvent::Moved(_) => unsafe {
-                        let new_pos = window
-                            .inner_position()
-                            .unwrap()
-                            .to_logical::<f32>(window.scale_factor())
-                            .cast::<f32>();
+                        let pos_phy = window.inner_position().unwrap().cast::<f32>();
+                        let pos_log = pos_phy.to_logical::<f32>(viewport.dpi_scale as f64);
+                        viewport.pos = pos_log.into();
+                        viewport.work_pos = pos_log.into();
                         (*(viewport.platform_user_data.cast::<ViewportData>())).pos =
-                            [new_pos.x, new_pos.y];
-
+                            pos_phy.into();
                         viewport.platform_request_move = true;
                     },
                     winit::event::WindowEvent::CloseRequested if window_id != main_window.id() => {
@@ -538,28 +537,23 @@ impl Renderer {
                             .io_mut()
                             .add_key_event(Key::ModSuper, modifiers.logo());
                     }
-                    winit::event::WindowEvent::CursorMoved { position, .. } => {
+                    winit::event::WindowEvent::CursorMoved { position: pos, .. } => {
+                        let dpi_scale = viewport.dpi_scale as f64;
                         if imgui
                             .io()
                             .config_flags
                             .contains(ConfigFlags::VIEWPORTS_ENABLE)
                         {
-                            let position = position.to_logical::<f32>(window.scale_factor());
-                            // let window_pos = window
-                            //     .inner_position()
-                            //     .unwrap_or_default()
-                            //     .to_logical::<f32>(window.scale_factor())
-                            //     .cast::<f32>();
-                            let window_pos =
+                            let pos_log = pos.to_logical::<f32>(dpi_scale);
+                            let window_pos_phy =
                                 window.inner_position().unwrap_or_default().cast::<f32>();
+                            let window_pos_log = window_pos_phy.to_logical::<f32>(dpi_scale);
                             imgui.io_mut().add_mouse_pos_event([
-                                position.x as f32 + window_pos.x,
-                                position.y as f32 + window_pos.y,
+                                window_pos_phy.x + pos_log.x,
+                                window_pos_phy.y + pos_log.y,
                             ]);
                         } else {
-                            imgui
-                                .io_mut()
-                                .add_mouse_pos_event([position.x as f32, position.y as f32]);
+                            imgui.io_mut().add_mouse_pos_event(pos.cast::<f32>().into());
                         }
                     }
                     winit::event::WindowEvent::MouseWheel {
@@ -642,12 +636,16 @@ impl Renderer {
                 }
                 ViewportEvent::SetPos(id, pos) => {
                     if let Some((_, _, _, wnd)) = self.extra_windows.get(&id) {
-                        wnd.set_outer_position(PhysicalPosition::new(pos[0], pos[1]));
+                        let pos_log = LogicalPosition::<f32>::from(pos);
+                        let pos_phy = pos_log.to_physical::<f32>(wnd.scale_factor());
+                        wnd.set_outer_position(pos_phy);
                     }
                 }
                 ViewportEvent::SetSize(id, size) => {
                     if let Some((_, _, _, wnd)) = self.extra_windows.get(&id) {
-                        wnd.set_inner_size(PhysicalSize::new(size[0], size[1]));
+                        let size_log = LogicalSize::<f32>::from(size);
+                        let size_phy = size_log.to_physical::<f32>(wnd.scale_factor());
+                        wnd.set_inner_size(size_phy);
                     }
                 }
                 ViewportEvent::SetVisible(id) => {
@@ -715,9 +713,15 @@ impl Renderer {
         ),
         RendererError,
     > {
+        let pos_phy = PhysicalPosition::<f32>::from(unsafe {
+            (*(viewport.platform_user_data.cast::<ViewportData>())).pos
+        });
+        let size_phy = PhysicalSize::<f32>::from(unsafe {
+            (*(viewport.platform_user_data.cast::<ViewportData>())).size
+        });
         let window_builder = WindowBuilder::new()
-            .with_position(PhysicalPosition::new(viewport.pos[0], viewport.pos[1]))
-            .with_inner_size(PhysicalSize::new(viewport.size[0], viewport.size[1]))
+            .with_position(pos_phy)
+            .with_inner_size(size_phy)
             .with_visible(false)
             .with_resizable(true)
             .with_decorations(!viewport.flags.contains(ViewportFlags::NO_DECORATION));
@@ -753,8 +757,8 @@ impl Renderer {
 
         let surface_attribs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
             window.raw_window_handle(),
-            NonZeroU32::new(viewport.size[0] as u32).unwrap(),
-            NonZeroU32::new(viewport.size[1] as u32).unwrap(),
+            NonZeroU32::new(size_phy.width as u32).unwrap(),
+            NonZeroU32::new(size_phy.height as u32).unwrap(),
         );
         let surface = unsafe {
             glutin_config
@@ -820,7 +824,7 @@ impl Renderer {
     }
 
     fn render_window(
-        window: &Window,
+        _window: &Window,
         glow: &glow::Context,
         draw_data: &imgui::DrawData,
         gl_objects: &GlObjects,
@@ -954,9 +958,13 @@ fn handle_key_modifier(io: &mut imgui::Io, key: VirtualKeyCode, down: bool) {
 
 impl imgui::PlatformViewportBackend for PlatformBackend {
     fn create_window(&mut self, viewport: &mut imgui::Viewport) {
+        let pos_log = LogicalPosition::<f32>::from(viewport.pos);
+        let pos_phy = pos_log.to_physical::<f32>(viewport.dpi_scale as f64);
+        let size_log = LogicalSize::<f32>::from(viewport.size);
+        let size_phy = size_log.to_physical::<f32>(viewport.dpi_scale as f64);
         viewport.platform_user_data = Box::into_raw(Box::new(ViewportData {
-            pos: viewport.pos,
-            size: viewport.size,
+            pos: pos_phy.into(),
+            size: size_phy.into(),
             focus: false,
             minimized: false,
         }))
@@ -986,23 +994,29 @@ impl imgui::PlatformViewportBackend for PlatformBackend {
     }
 
     fn set_window_pos(&mut self, viewport: &mut imgui::Viewport, pos: [f32; 2]) {
+        // TODO
         self.event_queue
             .borrow_mut()
             .push_back(ViewportEvent::SetPos(viewport.id, pos));
     }
 
     fn get_window_pos(&mut self, viewport: &mut imgui::Viewport) -> [f32; 2] {
-        unsafe { (*(viewport.platform_user_data.cast::<ViewportData>())).pos }
+        // TODO
+        viewport.pos
+        // unsafe { (*(viewport.platform_user_data.cast::<ViewportData>())).pos }
     }
 
     fn set_window_size(&mut self, viewport: &mut imgui::Viewport, size: [f32; 2]) {
+        // TODO
         self.event_queue
             .borrow_mut()
             .push_back(ViewportEvent::SetSize(viewport.id, size));
     }
 
     fn get_window_size(&mut self, viewport: &mut imgui::Viewport) -> [f32; 2] {
-        unsafe { (*(viewport.platform_user_data.cast::<ViewportData>())).size }
+        // TODO
+        viewport.size
+        // unsafe { (*(viewport.platform_user_data.cast::<ViewportData>())).size }
     }
 
     fn set_window_focus(&mut self, viewport: &mut imgui::Viewport) {

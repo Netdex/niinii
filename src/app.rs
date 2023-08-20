@@ -257,7 +257,7 @@ impl App {
                     self.show_settings = true;
                 }
             }
-            if let Some(_menu) = ui.begin_menu("View") {
+            if let Some(_menu) = ui.begin_menu("Gloss") {
                 self.gloss.show_menu(ctx, ui);
             }
             if let Some(_menu) = ui.begin_menu("Debug") {
@@ -310,11 +310,11 @@ impl App {
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
-        let io = ui.io();
+        let _io = ui.io();
 
         let _dockspace = ui.dockspace_over_viewport();
 
-        let mut niinii = ui
+        let niinii = ui
             .window("niinii")
             .opened(run)
             .menu_bar(true)
@@ -322,11 +322,11 @@ impl App {
         if !self.settings().overlay_mode
             && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
         {
-            niinii = niinii
-                .position([0.0, 0.0], Condition::Always)
-                .size(io.display_size, Condition::Always)
-                .bring_to_front_on_focus(false)
-                .no_decoration()
+            // niinii = niinii
+            //     .position([0.0, 0.0], Condition::Always)
+            //     .size(io.display_size, Condition::Always)
+            //     .bring_to_front_on_focus(false)
+            //     .no_decoration()
         };
         niinii.build(|| {
             self.show_menu(ctx, ui);

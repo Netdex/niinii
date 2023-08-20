@@ -46,6 +46,7 @@ pub fn stroke_token_with_offsets(
     }
     draw_list.add_text(pos, ui.style_color(fore), text);
 }
+
 pub fn stroke_token_with_color(
     ui: &Ui,
     draw_list: &DrawListMut,
@@ -67,11 +68,26 @@ pub fn stroke_token_with_color(
     ];
     stroke_token_with_offsets(ui, draw_list, text, pos, thick, fore, back, &offsets);
 }
-pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, thick: f32) {
-    let tokens = text.split_whitespace();
+
+pub fn stroke_text_with_highlight(
+    ui: &Ui,
+    draw_list: &DrawListMut,
+    text: &str,
+    thick: f32,
+    highlight: Option<StyleColor>,
+) {
+    ui.new_line();
+    let tokens = text.split_inclusive(char::is_whitespace);
     for token in tokens {
         let sz = ui.calc_text_size(token);
-        wrap_line(ui, sz[0]);
+        wrap_line_with_spacing(ui, sz[0], 0.0);
+        let p = ui.cursor_screen_pos();
+        if let Some(highlight) = highlight {
+            draw_list
+                .add_rect(p, [p[0] + sz[0], p[1] + sz[1]], ui.style_color(highlight))
+                .filled(true)
+                .build();
+        }
         stroke_token_with_color(
             ui,
             draw_list,
@@ -83,6 +99,10 @@ pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, thick: f32) {
         );
         ui.dummy(sz)
     }
+}
+
+pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, thick: f32) {
+    stroke_text_with_highlight(ui, draw_list, text, thick, None)
 }
 
 pub fn draw_kanji_text(
@@ -197,7 +217,7 @@ pub fn draw_kanji_text(
         )
 }
 
-pub fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
+pub fn wrap_line_with_spacing(ui: &Ui, expected_width: f32, spacing: f32) -> bool {
     let max_width = ui.window_content_region_max()[0];
     let visible_x = ui.window_pos()[0] + max_width;
     let last_x = ui.item_rect_max()[0];
@@ -205,32 +225,16 @@ pub fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
     let next_x = last_x + style.item_spacing[0] + expected_width;
     // don't wrap if it will fit on the current line, or if it won't even fit on an empty line
     if next_x < visible_x || expected_width >= max_width {
-        ui.same_line();
+        ui.same_line_with_spacing(0.0, spacing);
         false
     } else {
         true
     }
 }
 
-pub fn marker(ui: &Ui, draw_list: &DrawListMut, text: impl AsRef<str>, color: &[f32; 4]) {
-    let lang = text.as_ref();
-    let text = format!("[{}]", lang);
-    let p = ui.cursor_screen_pos();
-    let sz = ui.calc_text_size(&text);
-    draw_list
-        .add_rect(p, [p[0] + sz[0], p[1] + sz[1]], *color)
-        .filled(true)
-        .build();
-    stroke_token_with_color(
-        ui,
-        draw_list,
-        &text,
-        p,
-        1.0,
-        StyleColor::Text,
-        StyleColor::TitleBg,
-    );
-    ui.dummy(sz);
+pub fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
+    let spacing = unsafe { ui.style().item_spacing[0] };
+    wrap_line_with_spacing(ui, expected_width, spacing)
 }
 
 pub fn checkbox_option<T: Default, U>(

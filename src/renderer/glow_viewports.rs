@@ -58,8 +58,7 @@ impl GlowRenderer {
             .insert(ConfigFlags::VIEWPORTS_ENABLE);
 
         let mut ctx = Context::new(ContextFlags::empty());
-        // let dpi_scale = imgui.main_viewport().dpi_scale.into();
-        let dpi_scale = 2.0;
+        let dpi_scale = window.scale_factor();
         ctx.update_fonts(&mut imgui, dpi_scale);
 
         let context_attribs =

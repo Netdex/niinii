@@ -2264,6 +2264,7 @@ dependencies = [
  "imgui-sys",
  "imgui-winit-glow-renderer-viewports",
  "imgui-winit-support",
+ "itertools",
  "lazy_static",
  "log",
  "num-derive",

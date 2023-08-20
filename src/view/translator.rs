@@ -11,7 +11,8 @@ use crate::{
 };
 
 use super::mixins::{
-    checkbox_option, checkbox_option_with_default, combo_enum, marker, stroke_text,
+    checkbox_option, checkbox_option_with_default, combo_enum, stroke_text,
+    stroke_text_with_highlight,
 };
 
 pub struct TranslatorView<'a>(pub &'a Translator, pub &'a mut Settings);
@@ -106,14 +107,69 @@ impl ViewTranslator for ChatGptTranslator {
                 [ui.content_region_avail()[0], 200.0],
             )
             .build();
-            for message in context.iter() {
+
+            enum Interaction {
+                Delete(usize),
+                Swap(usize, usize),
+            }
+            let mut interact = None;
+            for (idx, message) in context.iter_mut().enumerate() {
+                let _id = ui.push_id_ptr(message);
                 ui.table_next_column();
-                ui.text(format!("{:?}", message.role));
+                ui.group(|| {
+                    ui.set_next_item_width(ui.current_font_size() * 6.0);
+                    combo_enum(ui, "##role", &mut message.role);
+                    if ui.button_with_size("Delete", [ui.current_font_size() * 6.0, 0.0]) {
+                        interact = Some(Interaction::Delete(idx));
+                    }
+                });
+                if let Some(_tooltip) = ui
+                    .drag_drop_source_config("##dd_message")
+                    .flags(DragDropFlags::SOURCE_ALLOW_NULL_ID)
+                    .begin_payload(idx)
+                {
+                    ui.text(format!("{:?}", message));
+                }
+                if let Some(target) = ui.drag_drop_target() {
+                    if let Some(Ok(payload)) =
+                        target.accept_payload::<usize, _>("##dd_message", DragDropFlags::empty())
+                    {
+                        interact = Some(Interaction::Swap(payload.data, idx));
+                    }
+                }
+
                 ui.table_next_column();
-                if let Some(content) = &message.content {
-                    ui.text_wrapped(content);
+                if let Some(content) = &mut message.content {
+                    ui.input_text_multiline(
+                        "##content",
+                        content,
+                        [
+                            ui.content_region_avail()[0],
+                            ui.frame_height_with_spacing() * 2.0,
+                        ],
+                    )
+                    .build();
                 }
             }
+            match interact {
+                Some(Interaction::Delete(idx)) => {
+                    context.remove(idx);
+                }
+                Some(Interaction::Swap(src, dst)) => {
+                    context.swap(src, dst);
+                }
+                _ => {}
+            }
+            ui.separator();
+            ui.table_next_column();
+            if ui.button_with_size("Add", [ui.current_font_size() * 6.0, 0.0]) {
+                context.push_back(openai_chat::chat::Message {
+                    content: Some(String::new()),
+                    ..Default::default()
+                })
+            }
+            ui.table_next_column();
+            ui.text_disabled("Drag and drop rows by the first column to reorder them");
         }
     }
 }
@@ -146,20 +202,22 @@ impl ViewTranslation for ChatGptTranslation {
                 let context = context.lock().unwrap();
 
                 let draw_list = ui.get_window_draw_list();
-                marker(
+                stroke_text_with_highlight(
                     ui,
                     &draw_list,
-                    "ChatGPT",
-                    &ui.style_color(StyleColor::NavHighlight),
+                    "[ChatGPT]",
+                    1.0,
+                    Some(StyleColor::NavHighlight),
                 );
                 ui.same_line();
 
                 if let Some(content) = context.back().and_then(|x| x.content.as_ref()) {
-                    marker(
+                    stroke_text_with_highlight(
                         ui,
                         &draw_list,
                         content,
-                        &ui.style_color(StyleColor::TextSelectedBg),
+                        1.0,
+                        Some(StyleColor::TextSelectedBg),
                     );
                 }
             }
@@ -170,11 +228,12 @@ impl ViewTranslation for ChatGptTranslation {
                     .iter()
                     .filter_map(|(k, &v)| if v { Some(k) } else { None })
                 {
-                    marker(
+                    stroke_text_with_highlight(
                         ui,
                         &draw_list,
                         k.as_ref(),
-                        &ui.style_color(StyleColor::PlotLinesHovered),
+                        1.0,
+                        Some(StyleColor::PlotLinesHovered),
                     );
                     if ui.is_item_hovered() {
                         ui.tooltip_text(format!("{:.1}%", moderation.category_scores[k] * 100.0))
@@ -214,11 +273,12 @@ impl ViewTranslation for DeepLTranslation {
     fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         let draw_list = ui.get_window_draw_list();
-        marker(
+        stroke_text_with_highlight(
             ui,
             &draw_list,
-            "DeepL",
-            &ui.style_color(StyleColor::TextSelectedBg),
+            "[DeepL]",
+            1.0,
+            Some(StyleColor::TextSelectedBg),
         );
         ui.same_line();
         stroke_text(ui, &draw_list, &self.deepl_text, 1.0);

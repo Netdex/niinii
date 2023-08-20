@@ -87,6 +87,9 @@ impl<'a> SettingsView<'a> {
         {
             if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT) {
                 combo_enum(ui, "Renderer*", &mut settings.renderer_type);
+                ui.same_line();
+                mixins::help_marker(ui, "Renderer backend (Direct3D11 recommended)");
+
                 ui.checkbox("##", &mut settings.use_force_dpi);
                 ui.same_line();
                 ui.disabled(!settings.use_force_dpi, || {

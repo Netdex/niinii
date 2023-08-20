@@ -39,7 +39,7 @@ pub enum Model {
     Gpt35Turbo16k0613,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
