@@ -1,21 +1,19 @@
-use hudhook::hooks::{dx9::ImguiDx9Hooks, ImguiRenderLoop, ImguiRenderLoopFlags};
-use hudhook::log::*;
-use hudhook::reexports::*;
+use hudhook::hooks::{dx9::ImguiDx9Hooks, ImguiRenderLoop};
 use hudhook::*;
 
 use std::sync::Mutex;
 
 use imgui::*;
 
-use app::App;
-use backend::{
-    env::{Env, EnvFlags},
-    renderer::Renderer,
+use crate::app::App;
+use crate::renderer::{
+    context::{Context, ContextFlags},
+    Renderer,
 };
-use view::settings::Settings;
+use crate::settings::Settings;
 
 struct State {
-    env: Env,
+    ctx: Context,
     app: App,
 }
 
@@ -25,23 +23,22 @@ struct HudHookRenderer {
 
 impl HudHookRenderer {
     fn new() -> Self {
-        hudhook::utils::alloc_console();
-        hudhook::utils::simplelog();
-        // env_logger::init();
+        hudhook::alloc_console().unwrap();
+        hudhook::enable_console_colors();
 
         let settings = Settings::from_file();
-        let env = Env::new(EnvFlags::SHARED_RENDER_CONTEXT);
+        let env = Context::new(ContextFlags::SHARED_RENDER_CONTEXT);
         let app = App::new(settings);
         Self {
-            state: Mutex::new(State { env, app }),
+            state: Mutex::new(State { ctx: env, app }),
         }
     }
 }
 
 impl ImguiRenderLoop for HudHookRenderer {
-    fn initialize(&mut self, ctx: &mut Context) {
+    fn initialize(&mut self, ctx: &mut imgui::Context) {
         let mut state = self.state.lock().unwrap();
-        let State { env, app } = &mut *state;
+        let State { ctx: env, app } = &mut *state;
 
         Self::configure_imgui(ctx, app.settings());
         env.update_fonts(ctx, 1.0);
@@ -51,13 +48,13 @@ impl ImguiRenderLoop for HudHookRenderer {
         io.want_capture_mouse
     }
 
-    fn render(&mut self, ui: &mut Ui, _flags: &ImguiRenderLoopFlags) {
+    fn render(&mut self, ui: &mut Ui) {
         let mut state = self.state.lock().unwrap();
-        let State { env, app } = &mut *state;
+        let State { ctx: env, app } = &mut *state;
         let mut run = true;
         app.ui(env, ui, &mut run);
         if !run {
-            hudhook::lifecycle::eject();
+            hudhook::eject();
         }
     }
 }

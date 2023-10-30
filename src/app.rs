@@ -267,7 +267,8 @@ impl App {
                 if ui.menu_item("Demo") {
                     self.show_imgui_demo = true;
                 }
-                if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
+                if cfg!(feature = "hook")
+                    && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
                     && ui.menu_item("Inject")
                 {
                     self.show_inject = true;

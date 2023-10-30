@@ -20,17 +20,21 @@ impl InjectView {
         }
     }
 
-    fn inject_by_process_name(_name: impl AsRef<str>) {
-        // let proc_name = name.as_ref();
-        // let dll_path = std::env::current_exe()
-        //     .ok()
-        //     .and_then(|x| x.parent().map(ToOwned::to_owned))
-        //     .map(|x| x.join("libniinii.dll"))
-        //     .and_then(|x| x.canonicalize().ok())
-        //     .unwrap();
-        // hudhook::inject::Process::by_name(proc_name)
-        //     .unwrap()
-        //     .inject(dll_path)
-        //     .unwrap();
+    #[cfg(feature = "hook")]
+    fn inject_by_process_name(name: impl AsRef<str>) {
+        let proc_name = name.as_ref();
+        let dll_path = std::env::current_exe()
+            .ok()
+            .and_then(|x| x.parent().map(ToOwned::to_owned))
+            .map(|x| x.join("libniinii.dll"))
+            .and_then(|x| x.canonicalize().ok())
+            .unwrap();
+        hudhook::inject::Process::by_name(proc_name)
+            .unwrap()
+            .inject(dll_path)
+            .unwrap();
     }
+
+    #[cfg(not(feature = "hook"))]
+    fn inject_by_process_name(_name: impl AsRef<str>) {}
 }

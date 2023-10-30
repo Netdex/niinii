@@ -188,56 +188,56 @@ impl GlossView {
 
                 let clause = clauses.get(clause_idx as usize);
                 if let Some(clause) = clause {
-                    if clause.score() > 0 {
-                        let romanized = clause.romanized();
-                        for (idx, rz) in romanized.iter().enumerate() {
-                            let underline_mode = if clauses.len() > 1 {
-                                if idx == romanized.len() - 1 {
-                                    UnderlineMode::Normal
-                                } else {
-                                    UnderlineMode::Pad
-                                }
+                    // if clause.score() > 0 {
+                    let romanized = clause.romanized();
+                    for (idx, rz) in romanized.iter().enumerate() {
+                        let underline_mode = if clauses.len() > 1 {
+                            if idx == romanized.len() - 1 {
+                                UnderlineMode::Normal
                             } else {
-                                UnderlineMode::None
-                            };
-                            let ul_hover = self.add_romanized(
-                                ctx,
-                                ui,
-                                settings,
-                                rz,
-                                settings.ruby_text_type,
-                                underline_mode,
-                            );
-                            if ul_hover {
-                                let scroll = ui.io().mouse_wheel as i32;
-                                clause_idx -= scroll;
-                                clause_idx = clause_idx.clamp(0, clauses.len() as i32 - 1);
-                                if scroll != 0 {
-                                    selected_clause.insert(segment.clone(), clause_idx);
-                                }
-                                ui.tooltip(|| {
-                                    ui.text(format!(
-                                        "Alternate #{}/{} score={} (scroll to cycle)",
-                                        clause_idx + 1,
-                                        clauses.len(),
-                                        clause.score()
-                                    ));
-                                    ui.separator();
-                                    let _wrap_token = ui
-                                        .push_text_wrap_pos_with_pos(ui.current_font_size() * 20.0);
-                                    let romaji = clause
-                                        .romanized()
-                                        .iter()
-                                        .map(|x| x.romaji())
-                                        .collect::<Vec<&str>>()
-                                        .join(" ");
-                                    ui.text_wrapped(romaji);
-                                });
+                                UnderlineMode::Pad
                             }
+                        } else {
+                            UnderlineMode::None
+                        };
+                        let ul_hover = self.add_romanized(
+                            ctx,
+                            ui,
+                            settings,
+                            rz,
+                            settings.ruby_text_type,
+                            underline_mode,
+                        );
+                        if ul_hover {
+                            let scroll = ui.io().mouse_wheel as i32;
+                            clause_idx -= scroll;
+                            clause_idx = clause_idx.clamp(0, clauses.len() as i32 - 1);
+                            if scroll != 0 {
+                                selected_clause.insert(segment.clone(), clause_idx);
+                            }
+                            ui.tooltip(|| {
+                                ui.text(format!(
+                                    "Alternate #{}/{} score={} (scroll to cycle)",
+                                    clause_idx + 1,
+                                    clauses.len(),
+                                    clause.score()
+                                ));
+                                ui.separator();
+                                let _wrap_token =
+                                    ui.push_text_wrap_pos_with_pos(ui.current_font_size() * 20.0);
+                                let romaji = clause
+                                    .romanized()
+                                    .iter()
+                                    .map(|x| x.romaji())
+                                    .collect::<Vec<&str>>()
+                                    .join(" ");
+                                ui.text_wrapped(romaji);
+                            });
                         }
-                    } else {
-                        self.add_skipped(ctx, ui, settings, &clause.text(), false);
                     }
+                    // } else {
+                    //     self.add_skipped(ctx, ui, settings, &clause.text(), false);
+                    // }
                 }
             }
         }

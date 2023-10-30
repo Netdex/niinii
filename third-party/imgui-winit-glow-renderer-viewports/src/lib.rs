@@ -547,7 +547,7 @@ impl Renderer {
                             let pos_log = pos.to_logical::<f32>(dpi_scale);
                             let window_pos_phy =
                                 window.inner_position().unwrap_or_default().cast::<f32>();
-                            let window_pos_log = window_pos_phy.to_logical::<f32>(dpi_scale);
+                            let _window_pos_log = window_pos_phy.to_logical::<f32>(dpi_scale);
                             imgui.io_mut().add_mouse_pos_event([
                                 window_pos_phy.x + pos_log.x,
                                 window_pos_phy.y + pos_log.y,
