@@ -37,6 +37,8 @@ pub enum Model {
     Gpt35Turbo16k,
     #[serde(rename = "gpt-3.5-turbo-16k-0613")]
     Gpt35Turbo16k0613,
+    #[serde(rename = "gpt-3.5-turbo-1106")]
+    Gpt35Turbo1106,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
