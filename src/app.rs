@@ -14,7 +14,7 @@ use crate::{
     view::{
         gloss::GlossView,
         inject::InjectView,
-        mixins::help_marker,
+        mixins::{help_marker, ellipses},
         settings::SettingsView,
         translator::{TranslationUsageView, TranslatorView},
     },
@@ -145,6 +145,7 @@ impl App {
             ..
         } = self;
 
+        gloss.set_translation(None);
         gloss.set_translation_pending(true);
 
         let text = text.into();
@@ -285,11 +286,9 @@ impl App {
                     }
                 }
             }
-            if cfg!(feature = "voicevox") {
-                if ui.menu_item("Speak") {
-                    if let Some(gloss) = self.gloss.ast() {
-                        self.request_tts(ui, &gloss.original_text.clone());
-                    }
+            if cfg!(feature = "voicevox") && ui.menu_item("Speak") {
+                if let Some(gloss) = self.gloss.ast() {
+                    self.request_tts(ui, &gloss.original_text.clone());
                 }
             }
         }
@@ -313,7 +312,7 @@ impl App {
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
         let _io = ui.io();
 
-        let _dockspace = ui.dockspace_over_viewport();
+        ui.dockspace_over_viewport();
 
         let niinii = ui
             .window("niinii")
@@ -331,10 +330,12 @@ impl App {
         };
         niinii.build(|| {
             self.show_menu(ctx, ui);
+            self.show_error_modal(ctx, ui);
+            self.poll(ui, ctx);
 
             let disabled = matches!(self.state, State::Processing);
             if self.settings().show_manual_input {
-                let _disable_input = ui.begin_disabled(disabled);
+                let disable_input = ui.begin_disabled(disabled);
                 if ui
                     .input_text_multiline("##", &mut self.input_text, [0.0, 50.0])
                     .enter_returns_true(true)
@@ -345,17 +346,17 @@ impl App {
                 if ui.button_with_size("Gloss", [120.0, 0.0]) {
                     self.request_gloss_text = Some(self.input_text.clone());
                 }
+                drop(disable_input);
                 ui.same_line();
 
                 let enable_tl = self.gloss.ast().map_or(false, |ast| ast.translatable);
-                {
-                    let mut _disable_tl = ui.begin_disabled(!enable_tl);
-                    if ui.button_with_size("Translate", [120.0, 0.0]) {
-                        if let Some(gloss) = self.gloss.ast() {
-                            self.request_translation(ui, &gloss.original_text.clone());
-                        }
+                let disable_tl = ui.begin_disabled(!enable_tl);
+                if ui.button_with_size("Translate", [120.0, 0.0]) {
+                    if let Some(gloss) = self.gloss.ast() {
+                        self.request_translation(ui, &gloss.original_text.clone());
                     }
                 }
+                drop(disable_tl);
                 if !enable_tl
                     && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED)
                 {
@@ -368,15 +369,16 @@ impl App {
 
             self.gloss.ui(ctx, ui, &self.settings);
 
-            if let State::Processing = &self.state {
-                ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
-            }
-            self.show_error_modal(ctx, ui);
-            self.poll(ui, ctx);
-
             ui.new_line();
             if ctx.font_atlas_dirty() {
-                ui.text_disabled("(rebuilding font atlas...)")
+                ui.text_disabled("(rebuilding font atlas");
+                ui.same_line_with_spacing(0.0, 0.0);
+                ellipses(ui, StyleColor::TextDisabled);
+                ui.same_line_with_spacing(0.0, 0.0);
+                ui.text_disabled(")");
+            }
+            if let State::Processing = &self.state {
+                ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
             }
         });
 

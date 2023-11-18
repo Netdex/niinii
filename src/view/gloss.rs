@@ -279,7 +279,11 @@ impl GlossView {
                 if let Some(translation) = translation {
                     TranslationView(translation).ui(ui);
                 } else if *translation_pending {
-                    ui.text_disabled("(waiting for translation...)")
+                    ui.text_disabled("(waiting for translation");
+                    ui.same_line_with_spacing(0.0, 0.0);
+                    ellipses(ui, StyleColor::TextDisabled);
+                    ui.same_line_with_spacing(0.0, 0.0);
+                    ui.text_disabled(")");
                 }
             }
             Some(View::Text(text)) => {

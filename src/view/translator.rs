@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use enum_dispatch::enum_dispatch;
 use imgui::*;
 
@@ -11,7 +13,7 @@ use crate::{
 };
 
 use super::mixins::{
-    checkbox_option, checkbox_option_with_default, combo_enum, stroke_text,
+    checkbox_option, checkbox_option_with_default, combo_enum, ellipses, stroke_text,
     stroke_text_with_highlight,
 };
 
@@ -198,7 +200,9 @@ impl ViewTranslation for ChatGptTranslation {
     fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         match self {
-            ChatGptTranslation::Translated { context, .. } => {
+            ChatGptTranslation::Translated {
+                context, completed, ..
+            } => {
                 let context = context.lock().unwrap();
 
                 let draw_list = ui.get_window_draw_list();
@@ -219,6 +223,10 @@ impl ViewTranslation for ChatGptTranslation {
                         1.0,
                         Some(StyleColor::TextSelectedBg),
                     );
+                }
+                if !completed.load(Ordering::SeqCst) {
+                    ui.same_line();
+                    ellipses(ui, StyleColor::Text);
                 }
             }
             ChatGptTranslation::Filtered { moderation } => {

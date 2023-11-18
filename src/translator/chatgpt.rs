@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 
 use async_trait::async_trait;
 use enclose::enclose;
@@ -16,13 +19,13 @@ use super::{Error, Translate, Translation};
 
 #[derive(Clone)]
 pub struct ChatGptTranslator {
-    client: Client,
+    client: Client<backon::ConstantBuilder>,
     pub context: Arc<Mutex<MessageBuffer>>,
 }
 impl ChatGptTranslator {
     pub fn new(settings: &Settings) -> Self {
         Self {
-            client: openai_chat::Client::new(&settings.openai_api_key),
+            client: openai_chat::Client::new(&settings.openai_api_key, Default::default()),
             context: Arc::new(Mutex::new(MessageBuffer::new())),
         }
     }
@@ -102,7 +105,8 @@ impl Translate for ChatGptTranslator {
 
         let token = CancellationToken::new();
         let context = &self.context;
-        tokio::spawn(enclose! { (context, token) async move {
+        let completed = Arc::new(AtomicBool::new(false));
+        tokio::spawn(enclose! { (context, completed, token) async move {
             loop {
                 tokio::select! {
                     msg = stream.next() => match msg {
@@ -118,10 +122,13 @@ impl Translate for ChatGptTranslator {
                     _ = token.cancelled() => break
                 }
             }
+            completed.store(true, Ordering::SeqCst);
         }.instrument(tracing::Span::current())});
 
+        // TODO: this should just return a stream, and buffering should be done elsewhere
         Ok(ChatGptTranslation::Translated {
             context: context.clone(),
+            completed,
             max_context_tokens: chatgpt.max_context_tokens,
             _guard: token.drop_guard(),
         }
@@ -132,6 +139,7 @@ impl Translate for ChatGptTranslator {
 pub enum ChatGptTranslation {
     Translated {
         context: Arc<Mutex<MessageBuffer>>,
+        completed: Arc<AtomicBool>,
         max_context_tokens: u32,
         _guard: DropGuard,
     },

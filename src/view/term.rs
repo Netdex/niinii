@@ -155,7 +155,7 @@ impl<'a> TermView<'a> {
                 {
                     for component in compound.components() {
                         ui.table_next_column();
-                        ui.table_header(&component.reading().to_string());
+                        ui.table_header(component.reading());
                         ui.table_next_row();
                         ui.table_next_column();
                         self.add_term(ctx, ui, settings, component, romaji, false);

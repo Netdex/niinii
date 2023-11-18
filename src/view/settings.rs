@@ -65,20 +65,19 @@ impl<'a> SettingsView<'a> {
                 .build();
         }
 
-        if cfg!(feature = "voicevox") {
-            if CollapsingHeader::new("Text-to-speech")
+        if cfg!(feature = "voicevox")
+            && CollapsingHeader::new("Text-to-speech")
                 .default_open(true)
                 .build(ui)
-            {
-                ui.input_text("VOICEVOX*", &mut settings.vv_model_path)
-                    .build();
-                ui.same_line();
-                mixins::help_marker(ui, "Path of VOICEVOX models");
-                checkbox_option(ui, &mut settings.auto_tts_regex, |ui, auto_tts_regex| {
-                    ui.set_next_item_width(ui.current_font_size() * -8.0);
-                    ui.input_text("Auto TTS regex", auto_tts_regex).build();
-                });
-            }
+        {
+            ui.input_text("VOICEVOX*", &mut settings.vv_model_path)
+                .build();
+            ui.same_line();
+            mixins::help_marker(ui, "Path of VOICEVOX models");
+            checkbox_option(ui, &mut settings.auto_tts_regex, |ui, auto_tts_regex| {
+                ui.set_next_item_width(ui.current_font_size() * -8.0);
+                ui.input_text("Auto TTS regex", auto_tts_regex).build();
+            });
         }
 
         if CollapsingHeader::new("Rendering")

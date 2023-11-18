@@ -3,8 +3,9 @@
 //!    You literally wrote it just for this program.
 //! A: Yes, and?
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
+use backon::{BackoffBuilder, Retryable};
 use eventsource_stream::Eventsource;
 use thiserror::Error;
 use tokio_stream::{Stream, StreamExt};
@@ -30,23 +31,21 @@ pub enum Error {
 }
 
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<B> {
     client: reqwest::Client,
-    shared: Arc<Shared>,
-}
-struct Shared {
     token: String,
+    backoff: B,
 }
 
-impl Client {
-    pub fn new(token: impl Into<String>) -> Self {
-        let token = token.into();
+impl<B: BackoffBuilder> Client<B> {
+    pub fn new(token: impl Into<String>, backoff: B) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(5))
                 .build()
                 .unwrap(),
-            shared: Arc::new(Shared { token }),
+            token: token.into(),
+            backoff,
         }
     }
 
@@ -54,14 +53,9 @@ impl Client {
         assert!(!request.stream.unwrap_or(false), "streaming not supported");
         request.stream = Some(false);
 
-        let Self { shared, client } = self;
-        let Shared { token } = &**shared;
         tracing::trace!(?request);
-        let response: chat::Response = client
-            .post("https://api.openai.com/v1/chat/completions")
-            .bearer_auth(token)
-            .json(&request)
-            .send()
+        let response: chat::Response = self
+            .send_request("https://api.openai.com/v1/chat/completions", &request)
             .await?
             .json()
             .await?;
@@ -79,14 +73,9 @@ impl Client {
         assert!(request.stream.unwrap_or(true), "streaming required");
         request.stream = Some(true);
 
-        let Self { shared, client } = self;
-        let Shared { token } = &**shared;
         tracing::trace!(?request);
-        let stream = client
-            .post("https://api.openai.com/v1/chat/completions")
-            .bearer_auth(token)
-            .json(&request)
-            .send()
+        let stream = self
+            .send_request("https://api.openai.com/v1/chat/completions", &request)
             .await?
             .bytes_stream()
             .eventsource();
@@ -116,19 +105,37 @@ impl Client {
         &self,
         request: &moderation::Request,
     ) -> Result<moderation::Result, Error> {
-        let Self { shared, client } = self;
-        let Shared { token } = &**shared;
         tracing::trace!(?request);
-        let mut response: moderation::Response = client
-            .post("https://api.openai.com/v1/moderations")
-            .bearer_auth(token)
-            .json(request)
-            .send()
+        let mut response: moderation::Response = self
+            .send_request("https://api.openai.com/v1/moderations", request)
             .await?
             .json()
             .await?;
         tracing::trace!(?response);
         Ok(response.results.remove(0))
+    }
+
+    async fn send_request(
+        &self,
+        uri: impl reqwest::IntoUrl,
+        request: &impl serde::Serialize,
+    ) -> reqwest::Result<reqwest::Response> {
+        let Self {
+            token,
+            client,
+            backoff,
+        } = self;
+        let uri = uri.into_url()?;
+        let request_builder = || async {
+            let uri = uri.clone();
+            client
+                .post(uri)
+                .bearer_auth(token)
+                .json(&request)
+                .send()
+                .await
+        };
+        Ok(request_builder.retry(backoff).await?)
     }
 }
 
