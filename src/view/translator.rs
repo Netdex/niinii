@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use enum_dispatch::enum_dispatch;
 use imgui::*;
 
@@ -30,7 +28,7 @@ trait ViewTranslator {
 }
 impl ViewTranslator for ChatGptTranslator {
     fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
-        let mut context = self.context.lock().unwrap();
+        let mut context = self.chat.lock().unwrap();
         let chatgpt = &mut settings.chatgpt;
         ui.menu_bar(|| {
             ui.menu("Settings", || {
@@ -39,7 +37,7 @@ impl ViewTranslator for ChatGptTranslator {
             });
             ui.separator();
             if ui.menu_item("Clear") {
-                context.clear();
+                context.context_mut().clear();
             }
         });
         if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
@@ -95,11 +93,13 @@ impl ViewTranslator for ChatGptTranslator {
         if let Some(_t) = ui.begin_table_header_with_flags(
             "context",
             [
+                TableColumnSetup::new(""),
                 TableColumnSetup::new("Role"),
                 TableColumnSetup::new("Message"),
             ],
             TableFlags::SIZING_STRETCH_PROP,
         ) {
+            ui.table_next_column();
             ui.table_next_column();
             ui.text("System");
             ui.table_next_column();
@@ -115,16 +115,12 @@ impl ViewTranslator for ChatGptTranslator {
                 Swap(usize, usize),
             }
             let mut interact = None;
-            for (idx, message) in context.iter_mut().enumerate() {
+            for (idx, message) in context.context_mut().iter_mut().enumerate() {
                 let _id = ui.push_id_ptr(message);
                 ui.table_next_column();
-                ui.group(|| {
-                    ui.set_next_item_width(ui.current_font_size() * 6.0);
-                    combo_enum(ui, "##role", &mut message.role);
-                    if ui.button_with_size("Delete", [ui.current_font_size() * 6.0, 0.0]) {
-                        interact = Some(Interaction::Delete(idx));
-                    }
-                });
+                if ui.button_with_size("\u{00d7}", [ui.frame_height(), 0.0]) {
+                    interact = Some(Interaction::Delete(idx));
+                }
                 if let Some(_tooltip) = ui
                     .drag_drop_source_config("##dd_message")
                     .flags(DragDropFlags::SOURCE_ALLOW_NULL_ID)
@@ -139,39 +135,54 @@ impl ViewTranslator for ChatGptTranslator {
                         interact = Some(Interaction::Swap(payload.data, idx));
                     }
                 }
+                ui.table_next_column();
+                ui.group(|| {
+                    ui.set_next_item_width(ui.current_font_size() * 6.0);
+                    combo_enum(ui, "##role", &mut message.role);
+                });
 
                 ui.table_next_column();
                 if let Some(content) = &mut message.content {
-                    ui.input_text_multiline(
-                        "##content",
-                        content,
-                        [
-                            ui.content_region_avail()[0],
-                            ui.frame_height_with_spacing() * 2.0,
-                        ],
-                    )
-                    .build();
+                    ui.set_next_item_width(ui.content_region_avail()[0]);
+                    ui.input_text("##content", content).build();
                 }
             }
-            match interact {
-                Some(Interaction::Delete(idx)) => {
-                    context.remove(idx);
-                }
-                Some(Interaction::Swap(src, dst)) => {
-                    context.swap(src, dst);
-                }
-                _ => {}
-            }
-            ui.separator();
+
             ui.table_next_column();
-            if ui.button_with_size("Add", [ui.current_font_size() * 6.0, 0.0]) {
-                context.push_back(openai_chat::chat::Message {
+            if ui.button_with_size("+", [ui.frame_height(), 0.0]) {
+                context.context_mut().push_back(openai_chat::chat::Message {
                     content: Some(String::new()),
                     ..Default::default()
                 })
             }
             ui.table_next_column();
-            ui.text_disabled("Drag and drop rows by the first column to reorder them");
+            ui.table_next_column();
+            ui.text_disabled("drag and drop by '\u{00d7}' to reorder");
+
+            for message in context.response() {
+                let _id = ui.push_id_ptr(message);
+                ui.table_next_column();
+                ui.table_next_column();
+                ui.text(format!("{:?}", message.role));
+                // ui.group(|| {
+                //     ui.set_next_item_width(ui.current_font_size() * 6.0);
+                //     combo_enum(ui, "##role", &mut message.role);
+                // });
+                ui.table_next_column();
+                if let Some(content) = &message.content {
+                    ui.text_wrapped(content)
+                }
+            }
+
+            match interact {
+                Some(Interaction::Delete(idx)) => {
+                    context.context_mut().remove(idx);
+                }
+                Some(Interaction::Swap(src, dst)) => {
+                    context.context_mut().swap(src, dst);
+                }
+                _ => {}
+            }
         }
     }
 }
@@ -200,9 +211,7 @@ impl ViewTranslation for ChatGptTranslation {
     fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         match self {
-            ChatGptTranslation::Translated {
-                context, completed, ..
-            } => {
+            ChatGptTranslation::Translated { chat: context, .. } => {
                 let context = context.lock().unwrap();
 
                 let draw_list = ui.get_window_draw_list();
@@ -215,7 +224,7 @@ impl ViewTranslation for ChatGptTranslation {
                 );
                 ui.same_line();
 
-                if let Some(content) = context.back().and_then(|x| x.content.as_ref()) {
+                if let Some(content) = context.response().back().and_then(|x| x.content.as_ref()) {
                     stroke_text_with_highlight(
                         ui,
                         &draw_list,
@@ -224,7 +233,7 @@ impl ViewTranslation for ChatGptTranslation {
                         Some(StyleColor::TextSelectedBg),
                     );
                 }
-                if !completed.load(Ordering::SeqCst) {
+                if context.state() == openai_chat::ChatState::AcceptResponse {
                     ui.same_line();
                     ellipses(ui, StyleColor::Text);
                 }
@@ -252,29 +261,27 @@ impl ViewTranslation for ChatGptTranslation {
             }
         }
     }
-    fn show_usage(&self, _ui: &Ui) {
-        // TODO: the streaming API doesn't have a usage field...
-        // match self {
-        //     ChatGptTranslation::Translated {
-        //         openai_usage,
-        //         max_context_tokens,
-        //         ..
-        //     } => {
-        //         ui.same_line();
-        //         let fraction = openai_usage.prompt_tokens as f32 / *max_context_tokens as f32;
-        //         ProgressBar::new(fraction)
-        //             .overlay_text(format!(
-        //                 "ChatGPT: {}/{} prompt: {} context ({:.2}%)",
-        //                 openai_usage.prompt_tokens,
-        //                 openai_usage.total_tokens,
-        //                 max_context_tokens,
-        //                 fraction
-        //             ))
-        //             .size([350.0, 0.0])
-        //             .build(ui);
-        //     }
-        //     _ => {}
-        // }
+    fn show_usage(&self, ui: &Ui) {
+        match self {
+            ChatGptTranslation::Translated { chat: context, .. } => {
+                let context = context.lock().unwrap();
+                let usage = context.usage();
+                if let Some(usage) = usage {
+                    ui.same_line();
+                    // TODO: use an external source for pricing
+                    let cost = usage.prompt_tokens as f32 * 0.0010 / 1000.0
+                        + usage.completion_tokens as f32 * 0.0020 / 1000.0;
+                    ProgressBar::new(0.0)
+                        .overlay_text(format!(
+                            "{} input + {} output = {} (${:.6})",
+                            usage.prompt_tokens, usage.completion_tokens, usage.total_tokens, cost
+                        ))
+                        .size([350.0, 0.0])
+                        .build(ui);
+                }
+            }
+            _ => {}
+        }
     }
 }
 impl ViewTranslation for DeepLTranslation {
@@ -297,7 +304,7 @@ impl ViewTranslation for DeepLTranslation {
             self.deepl_usage.character_count as f32 / self.deepl_usage.character_limit as f32;
         ProgressBar::new(fraction)
             .overlay_text(format!(
-                "DeepL API usage: {}/{} ({:.2}%)",
+                "usage: {}/{} ({:.2}%)",
                 self.deepl_usage.character_count,
                 self.deepl_usage.character_limit,
                 fraction * 100.0

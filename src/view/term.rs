@@ -127,18 +127,17 @@ impl<'a> TermView<'a> {
 
         match word {
             Word::Plain(plain) => {
-                if let Some(suffix) = plain.suffix() {
-                    ui.bullet();
-                    ui.text(suffix);
-                }
                 // ignore suru
                 if [10285144, 10285148, 10285150, 10285187].contains(&plain.seq().unwrap_or(0)) {
                     return;
                 }
-                // there should be no glosses if there are conjugations
                 self.add_glosses(ctx, ui, plain.gloss());
                 for conj in plain.conj() {
                     self.add_conj(ctx, ui, conj);
+                }
+                if let Some(suffix) = plain.suffix() {
+                    ui.bullet();
+                    ui.text(suffix);
                 }
                 if let Some(counter) = plain.counter() {
                     ui.bullet();

@@ -10,12 +10,12 @@ use eventsource_stream::Eventsource;
 use thiserror::Error;
 use tokio_stream::{Stream, StreamExt};
 
-pub use message_buffer::*;
+pub use chat_buffer::*;
 pub use protocol::*;
 
 use crate::chat::PartialResponse;
 
-mod message_buffer;
+mod chat_buffer;
 mod protocol;
 
 #[derive(Error, Debug)]
@@ -41,7 +41,8 @@ impl<B: BackoffBuilder> Client<B> {
     pub fn new(token: impl Into<String>, backoff: B) -> Self {
         Self {
             client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(10))
+                .connect_timeout(Duration::from_secs(3))
                 .build()
                 .unwrap(),
             token: token.into(),
@@ -69,7 +70,7 @@ impl<B: BackoffBuilder> Client<B> {
     pub async fn stream(
         &self,
         mut request: chat::Request,
-    ) -> Result<impl Stream<Item = Result<chat::PartialCompletion, Error>>, reqwest::Error> {
+    ) -> Result<impl Stream<Item = Result<chat::PartialCompletion, Error>>, Error> {
         assert!(request.stream.unwrap_or(true), "streaming required");
         request.stream = Some(true);
 
@@ -135,7 +136,12 @@ impl<B: BackoffBuilder> Client<B> {
                 .send()
                 .await
         };
-        Ok(request_builder.retry(backoff).await?)
+        Ok(request_builder
+            .retry(backoff)
+            .notify(|err: &reqwest::Error, dur: Duration| {
+                tracing::error!(%err, retry=?dur, "request");
+            })
+            .await?)
     }
 }
 

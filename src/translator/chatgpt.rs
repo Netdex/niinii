@@ -1,13 +1,10 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use enclose::enclose;
 use openai_chat::{
-    chat::{self, Message, Role},
-    moderation, Client, MessageBuffer,
+    chat::{self, Message},
+    moderation, ChatBuffer, Client,
 };
 use tokio_stream::StreamExt;
 use tokio_util::sync::{CancellationToken, DropGuard};
@@ -20,13 +17,13 @@ use super::{Error, Translate, Translation};
 #[derive(Clone)]
 pub struct ChatGptTranslator {
     client: Client<backon::ConstantBuilder>,
-    pub context: Arc<Mutex<MessageBuffer>>,
+    pub chat: Arc<Mutex<ChatBuffer>>,
 }
 impl ChatGptTranslator {
     pub fn new(settings: &Settings) -> Self {
         Self {
             client: openai_chat::Client::new(&settings.openai_api_key, Default::default()),
-            context: Arc::new(Mutex::new(MessageBuffer::new())),
+            chat: Arc::new(Mutex::new(ChatBuffer::new())),
         }
     }
 }
@@ -54,41 +51,25 @@ impl Translate for ChatGptTranslator {
         }
 
         let chat_request = {
-            let mut context = self.context.lock().unwrap();
+            let mut chat = self.chat.lock().unwrap();
             // TODO: experiment with summarizing context
-            while let Some(message) = context.back() {
-                if message.role == Role::Assistant {
-                    break;
-                }
-                context.pop_back();
-            }
-            loop {
-                let estimated_tokens: u32 = context.iter().map(|m| m.estimate_tokens()).sum();
-                if estimated_tokens <= chatgpt.max_context_tokens {
-                    break;
-                }
-                context.pop_front();
-                while let Some(message) = context.front() {
-                    if message.role == Role::User {
-                        break;
-                    }
-                    context.pop_front();
-                }
-            }
-            context.push_back(Message {
-                role: chat::Role::User,
-                content: Some(text.clone()),
-                ..Default::default()
-            });
-            let mut messages = vec![chat::Message {
-                role: chat::Role::System,
-                content: Some(chatgpt.system_prompt.clone()),
-                ..Default::default()
-            }];
-            messages.extend(context.iter().cloned());
+            chat.begin_exchange(
+                Message {
+                    role: chat::Role::System,
+                    content: Some(chatgpt.system_prompt.clone()),
+                    ..Default::default()
+                },
+                Message {
+                    role: chat::Role::User,
+                    content: Some(text.clone()),
+                    ..Default::default()
+                },
+            );
+            chat.enforce_context_limit(chatgpt.max_context_tokens);
+
             chat::Request {
                 model: chatgpt.model,
-                messages,
+                messages: chat.prompt(),
                 temperature: chatgpt.temperature,
                 top_p: chatgpt.top_p,
                 max_tokens: chatgpt.max_tokens,
@@ -97,39 +78,32 @@ impl Translate for ChatGptTranslator {
             }
         };
 
-        let mut stream = self
-            .client
-            .stream(chat_request)
-            .await
-            .map_err(openai_chat::Error::Network)?;
+        let mut stream = self.client.stream(chat_request).await?;
 
         let token = CancellationToken::new();
-        let context = &self.context;
-        let completed = Arc::new(AtomicBool::new(false));
-        tokio::spawn(enclose! { (context, completed, token) async move {
+        let chat = &self.chat;
+        tokio::spawn(enclose! { (chat, token) async move {
             loop {
                 tokio::select! {
                     msg = stream.next() => match msg {
                         Some(Ok(completion)) => {
-                            let mut context = context.lock().unwrap();
+                            let mut chat = chat.lock().unwrap();
                             let message = &completion.choices.first().unwrap().delta;
-                            context.apply_delta(message)
+                            chat.append_partial_response(message)
                         },
                         // TODO: need to pipe this error to the event loop somehow
-                        Some(Err(err)) => tracing::error!(%err),
+                        Some(Err(err)) => tracing::error!(%err, "stream"),
                         _ => break
                     },
                     _ = token.cancelled() => break
                 }
             }
-            completed.store(true, Ordering::SeqCst);
+            let mut chat = chat.lock().unwrap();
+            chat.end_exchange();
         }.instrument(tracing::Span::current())});
 
-        // TODO: this should just return a stream, and buffering should be done elsewhere
         Ok(ChatGptTranslation::Translated {
-            context: context.clone(),
-            completed,
-            max_context_tokens: chatgpt.max_context_tokens,
+            chat: chat.clone(),
             _guard: token.drop_guard(),
         }
         .into())
@@ -138,9 +112,7 @@ impl Translate for ChatGptTranslator {
 
 pub enum ChatGptTranslation {
     Translated {
-        context: Arc<Mutex<MessageBuffer>>,
-        completed: Arc<AtomicBool>,
-        max_context_tokens: u32,
+        chat: Arc<Mutex<ChatBuffer>>,
         _guard: DropGuard,
     },
     Filtered {

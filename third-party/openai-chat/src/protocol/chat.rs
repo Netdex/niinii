@@ -87,9 +87,11 @@ pub struct Message {
 }
 impl Message {
     pub fn estimate_tokens(&self) -> u32 {
+        // https://platform.openai.com/docs/guides/text-generation/managing-tokens
         if let Some(content) = &self.content {
             let bpe = cl100k_base_singleton();
             let bpe = bpe.lock();
+            // every message follows <im_start>{role/name}\n{content}<im_end>\n
             4 + bpe.encode_with_special_tokens(content).len() as u32
         } else {
             0

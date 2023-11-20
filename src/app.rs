@@ -14,7 +14,7 @@ use crate::{
     view::{
         gloss::GlossView,
         inject::InjectView,
-        mixins::{help_marker, ellipses},
+        mixins::{ellipses, help_marker},
         settings::SettingsView,
         translator::{TranslationUsageView, TranslatorView},
     },
@@ -369,7 +369,6 @@ impl App {
 
             self.gloss.ui(ctx, ui, &self.settings);
 
-            ui.new_line();
             if ctx.font_atlas_dirty() {
                 ui.text_disabled("(rebuilding font atlas");
                 ui.same_line_with_spacing(0.0, 0.0);
