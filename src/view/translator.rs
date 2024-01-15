@@ -1,9 +1,11 @@
 use enum_dispatch::enum_dispatch;
 use imgui::*;
+use openai_chat::chat::Model;
 
 use crate::{
     settings::Settings,
     translator::{
+        chat_buffer::ChatState,
         chatgpt::{ChatGptTranslation, ChatGptTranslator},
         deepl::{DeepLTranslation, DeepLTranslator},
         Translation, Translator,
@@ -28,7 +30,7 @@ trait ViewTranslator {
 }
 impl ViewTranslator for ChatGptTranslator {
     fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
-        let mut context = self.chat.lock().unwrap();
+        let mut chat = self.chat.lock().unwrap();
         let chatgpt = &mut settings.chatgpt;
         ui.menu_bar(|| {
             ui.menu("Settings", || {
@@ -36,9 +38,11 @@ impl ViewTranslator for ChatGptTranslator {
                     .build_with_ref(&mut chatgpt.moderation);
             });
             ui.separator();
-            if ui.menu_item("Clear") {
-                context.context_mut().clear();
-            }
+            ui.disabled(chat.state() == ChatState::AcceptResponse, || {
+                if ui.menu_item("Clear") {
+                    chat.clear();
+                }
+            });
         });
         if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
             if let Some(_token) = ui.begin_table("##", 2) {
@@ -115,7 +119,7 @@ impl ViewTranslator for ChatGptTranslator {
                 Swap(usize, usize),
             }
             let mut interact = None;
-            for (idx, message) in context.context_mut().iter_mut().enumerate() {
+            for (idx, message) in chat.context_mut().iter_mut().enumerate() {
                 let _id = ui.push_id_ptr(message);
                 ui.table_next_column();
                 if ui.button_with_size("\u{00d7}", [ui.frame_height(), 0.0]) {
@@ -150,7 +154,7 @@ impl ViewTranslator for ChatGptTranslator {
 
             ui.table_next_column();
             if ui.button_with_size("+", [ui.frame_height(), 0.0]) {
-                context.context_mut().push_back(openai_chat::chat::Message {
+                chat.context_mut().push_back(openai_chat::chat::Message {
                     content: Some(String::new()),
                     ..Default::default()
                 })
@@ -159,15 +163,11 @@ impl ViewTranslator for ChatGptTranslator {
             ui.table_next_column();
             ui.text_disabled("drag and drop by '\u{00d7}' to reorder");
 
-            for message in context.response() {
+            for message in chat.response() {
                 let _id = ui.push_id_ptr(message);
                 ui.table_next_column();
                 ui.table_next_column();
                 ui.text(format!("{:?}", message.role));
-                // ui.group(|| {
-                //     ui.set_next_item_width(ui.current_font_size() * 6.0);
-                //     combo_enum(ui, "##role", &mut message.role);
-                // });
                 ui.table_next_column();
                 if let Some(content) = &message.content {
                     ui.text_wrapped(content)
@@ -176,10 +176,10 @@ impl ViewTranslator for ChatGptTranslator {
 
             match interact {
                 Some(Interaction::Delete(idx)) => {
-                    context.context_mut().remove(idx);
+                    chat.context_mut().remove(idx);
                 }
                 Some(Interaction::Swap(src, dst)) => {
-                    context.context_mut().swap(src, dst);
+                    chat.context_mut().swap(src, dst);
                 }
                 _ => {}
             }
@@ -211,9 +211,8 @@ impl ViewTranslation for ChatGptTranslation {
     fn view(&self, ui: &Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         match self {
-            ChatGptTranslation::Translated { chat: context, .. } => {
-                let context = context.lock().unwrap();
-
+            ChatGptTranslation::Translated { chat, .. } => {
+                let chat = chat.lock().unwrap();
                 let draw_list = ui.get_window_draw_list();
                 stroke_text_with_highlight(
                     ui,
@@ -222,9 +221,8 @@ impl ViewTranslation for ChatGptTranslation {
                     1.0,
                     Some(StyleColor::NavHighlight),
                 );
-                ui.same_line();
-
-                if let Some(content) = context.response().back().and_then(|x| x.content.as_ref()) {
+                for content in chat.response().iter().flat_map(|c| c.content.as_ref()) {
+                    ui.same_line();
                     stroke_text_with_highlight(
                         ui,
                         &draw_list,
@@ -233,9 +231,15 @@ impl ViewTranslation for ChatGptTranslation {
                         Some(StyleColor::TextSelectedBg),
                     );
                 }
-                if context.state() == openai_chat::ChatState::AcceptResponse {
-                    ui.same_line();
-                    ellipses(ui, StyleColor::Text);
+                if chat.state() == ChatState::AcceptResponse {
+                    ui.same_line_with_spacing(0.0, 0.0);
+                    stroke_text_with_highlight(
+                        ui,
+                        &draw_list,
+                        &ellipses(ui),
+                        1.0,
+                        Some(StyleColor::TextSelectedBg),
+                    );
                 }
             }
             ChatGptTranslation::Filtered { moderation } => {
@@ -263,20 +267,22 @@ impl ViewTranslation for ChatGptTranslation {
     }
     fn show_usage(&self, ui: &Ui) {
         match self {
-            ChatGptTranslation::Translated { chat: context, .. } => {
-                let context = context.lock().unwrap();
-                let usage = context.usage();
+            ChatGptTranslation::Translated { model, chat, .. } => {
+                let chat = chat.lock().unwrap();
+                let usage = chat.usage();
                 if let Some(usage) = usage {
                     ui.same_line();
-                    // TODO: use an external source for pricing
-                    let cost = usage.prompt_tokens as f32 * 0.0010 / 1000.0
-                        + usage.completion_tokens as f32 * 0.0020 / 1000.0;
+                    let cost = model.cost(usage.prompt_tokens, usage.completion_tokens);
                     ProgressBar::new(0.0)
                         .overlay_text(format!(
-                            "{} input + {} output = {} (${:.6})",
-                            usage.prompt_tokens, usage.completion_tokens, usage.total_tokens, cost
+                            "{}: {} input + {} output = {} (${:.6})",
+                            <&Model as Into<&'static str>>::into(model),
+                            usage.prompt_tokens,
+                            usage.completion_tokens,
+                            usage.total_tokens,
+                            cost
                         ))
-                        .size([350.0, 0.0])
+                        .size([500.0, 0.0])
                         .build(ui);
                 }
             }

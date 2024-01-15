@@ -34,12 +34,13 @@ pub struct ChatGptSettings {
     pub top_p: Option<f32>,
     pub max_tokens: Option<u32>,
     pub presence_penalty: Option<f32>,
+    pub connection_timeout: u64,
+    pub timeout: u64,
 }
-
 impl Default for ChatGptSettings {
     fn default() -> Self {
         Self {
-            model: Model::Gpt35Turbo0613,
+            model: Default::default(),
             system_prompt: "You will translate the following visual novel script into English."
                 .into(),
             max_context_tokens: 64,
@@ -48,6 +49,8 @@ impl Default for ChatGptSettings {
             top_p: None,
             max_tokens: Some(128),
             presence_penalty: None,
+            connection_timeout: 3000,
+            timeout: 10000,
         }
     }
 }

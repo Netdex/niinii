@@ -10,12 +10,10 @@ use eventsource_stream::Eventsource;
 use thiserror::Error;
 use tokio_stream::{Stream, StreamExt};
 
-pub use chat_buffer::*;
 pub use protocol::*;
 
 use crate::chat::PartialResponse;
 
-mod chat_buffer;
 mod protocol;
 
 #[derive(Error, Debug)]
@@ -34,19 +32,36 @@ pub enum Error {
 pub struct Client<B> {
     client: reqwest::Client,
     token: String,
-    backoff: B,
+    connection_policy: ConnectionPolicy<B>,
+}
+
+#[derive(Clone)]
+pub struct ConnectionPolicy<B> {
+    pub backoff: B,
+    pub timeout: Duration,
+    pub connect_timeout: Duration,
+}
+
+impl<B: Default> Default for ConnectionPolicy<B> {
+    fn default() -> Self {
+        Self {
+            backoff: Default::default(),
+            timeout: Duration::from_secs(10),
+            connect_timeout: Duration::from_secs(3),
+        }
+    }
 }
 
 impl<B: BackoffBuilder> Client<B> {
-    pub fn new(token: impl Into<String>, backoff: B) -> Self {
+    pub fn new(token: impl Into<String>, connection_policy: ConnectionPolicy<B>) -> Self {
         Self {
             client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(10))
-                .connect_timeout(Duration::from_secs(3))
+                .timeout(connection_policy.timeout)
+                .connect_timeout(connection_policy.connect_timeout)
                 .build()
                 .unwrap(),
             token: token.into(),
-            backoff,
+            connection_policy,
         }
     }
 
@@ -124,7 +139,7 @@ impl<B: BackoffBuilder> Client<B> {
         let Self {
             token,
             client,
-            backoff,
+            connection_policy,
         } = self;
         let uri = uri.into_url()?;
         let request_builder = || async {
@@ -137,7 +152,7 @@ impl<B: BackoffBuilder> Client<B> {
                 .await
         };
         Ok(request_builder
-            .retry(backoff)
+            .retry(&connection_policy.backoff)
             .notify(|err: &reqwest::Error, dur: Duration| {
                 tracing::error!(%err, retry=?dur, "request");
             })

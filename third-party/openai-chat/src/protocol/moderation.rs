@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use strum_macros::AsRefStr;
@@ -26,7 +26,7 @@ pub struct Request {
     pub input: String, // Vec<String> + String
 }
 
-#[derive(Debug, Clone, Deserialize, PartialOrd, Ord, PartialEq, Eq, AsRefStr)]
+#[derive(Debug, Clone, Deserialize, PartialOrd, Ord, PartialEq, Eq, Hash, AsRefStr)]
 pub enum Category {
     #[serde(rename = "hate")]
     Hate,
@@ -46,8 +46,8 @@ pub enum Category {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Result {
-    pub categories: BTreeMap<Category, bool>,
-    pub category_scores: BTreeMap<Category, f64>,
+    pub categories: HashMap<Category, bool>,
+    pub category_scores: HashMap<Category, f64>,
     pub flagged: bool,
 }
 

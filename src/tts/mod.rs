@@ -105,6 +105,7 @@ impl TtsEngine {
                 tracing::debug!(version, supported_devices_json);
                 let metas_json = VoicevoxCore::get_metas_json();
                 let model_data: ModelData = serde_json::from_str(metas_json).unwrap();
+                tracing::debug!(?model_data);
                 tx.send(model_data).unwrap();
 
                 let vvcore = VoicevoxCore::new_from_options(
@@ -115,7 +116,7 @@ impl TtsEngine {
                 )
                 .unwrap();
 
-                let speaker_id: u32 = 51;
+                let speaker_id: u32 = 11;
                 tracing::debug!(speaker_id, "load_model");
                 vvcore.load_model(speaker_id).unwrap();
 

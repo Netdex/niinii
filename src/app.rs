@@ -213,6 +213,7 @@ impl App {
                     self.transition(ui, State::Error(err.into()));
                 }
                 Message::Translation(Err(err)) => {
+                    self.gloss.set_translation_pending(false);
                     self.transition(ui, State::Error(err.into()));
                 }
             }
@@ -372,7 +373,7 @@ impl App {
             if ctx.font_atlas_dirty() {
                 ui.text_disabled("(rebuilding font atlas");
                 ui.same_line_with_spacing(0.0, 0.0);
-                ellipses(ui, StyleColor::TextDisabled);
+                ui.text_disabled(ellipses(ui));
                 ui.same_line_with_spacing(0.0, 0.0);
                 ui.text_disabled(")");
             }

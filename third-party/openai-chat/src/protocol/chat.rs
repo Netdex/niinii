@@ -18,29 +18,36 @@ pub struct Error {
     Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter,
 )]
 pub enum Model {
+    #[serde(rename = "gpt-3.5-turbo")]
+    #[default]
+    Gpt35Turbo,
+    #[serde(rename = "gpt-3.5-turbo-0613")]
+    Gpt35Turbo0613,
+    #[serde(rename = "gpt-3.5-turbo-1106")]
+    Gpt35Turbo1106,
     #[serde(rename = "gpt-4")]
     Gpt4,
     #[serde(rename = "gpt-4-0613")]
     Gpt4_0613,
     #[serde(rename = "gpt-4-32k")]
     Gpt4_32k,
-    #[serde(rename = "gpt-4-32k-0613")]
-    Gpt4_32k0613,
-    #[serde(rename = "gpt-3.5-turbo")]
-    #[default]
-    Gpt35Turbo,
-    #[serde(rename = "gpt-3.5-turbo-0301")]
-    Gpt35Turbo0301,
-    #[serde(rename = "gpt-3.5-turbo-0613")]
-    Gpt35Turbo0613,
-    #[serde(rename = "gpt-3.5-turbo-16k")]
-    Gpt35Turbo16k,
-    #[serde(rename = "gpt-3.5-turbo-16k-0613")]
-    Gpt35Turbo16k0613,
-    #[serde(rename = "gpt-3.5-turbo-1106")]
-    Gpt35Turbo1106,
     #[serde(rename = "gpt-4-1106-preview")]
     Gpt4_1106Preview,
+}
+impl Model {
+    /// https://openai.com/pricing
+    pub fn cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
+        let input = input_tokens as f64 / 1000.0;
+        let output = output_tokens as f64 / 1000.0;
+        match self {
+            Model::Gpt35Turbo | Model::Gpt35Turbo0613 | Model::Gpt35Turbo1106 => {
+                input * 0.0010 + output * 0.0020
+            }
+            Model::Gpt4 | Model::Gpt4_0613 => input * 0.03 + output * 0.06,
+            Model::Gpt4_32k => input * 0.06 + output * 0.12,
+            Model::Gpt4_1106Preview => input * 0.01 + output * 0.03,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]

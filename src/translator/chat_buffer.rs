@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 
-use crate::chat::{Message, PartialMessage, Role, Usage};
+use openai_chat::chat::{Message, PartialMessage, Role, Usage};
+
+/// TODO: this code sucks ass, use the Assistants API instead
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ChatState {
@@ -38,6 +40,13 @@ impl ChatBuffer {
         self.usage = None;
     }
 
+    pub fn cancel_exchange(&mut self) {
+        assert_eq!(self.state, ChatState::AcceptResponse);
+
+        self.context.pop_back();
+        self.end_exchange();
+    }
+
     pub fn append_partial_response(&mut self, partial: &PartialMessage) {
         assert_eq!(self.state, ChatState::AcceptResponse);
 
@@ -56,6 +65,8 @@ impl ChatBuffer {
     }
 
     pub fn end_exchange(&mut self) {
+        assert_eq!(self.state, ChatState::AcceptResponse);
+
         self.state = ChatState::AcceptPrompt;
         self.system = None;
         self.usage = Some(self.estimate_usage());
@@ -74,6 +85,13 @@ impl ChatBuffer {
                 self.context.pop_front();
             }
         }
+    }
+
+    pub fn clear(&mut self) {
+        assert_eq!(self.state, ChatState::AcceptPrompt);
+
+        self.context.clear();
+        self.response.clear();
     }
 
     fn context_tokens(&self) -> u32 {

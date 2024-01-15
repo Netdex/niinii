@@ -281,7 +281,7 @@ impl GlossView {
                 } else if *translation_pending {
                     ui.text_disabled("(waiting for translation");
                     ui.same_line_with_spacing(0.0, 0.0);
-                    ellipses(ui, StyleColor::TextDisabled);
+                    ui.text_disabled(ellipses(ui));
                     ui.same_line_with_spacing(0.0, 0.0);
                     ui.text_disabled(")");
                 }

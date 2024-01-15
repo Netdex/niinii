@@ -1,10 +1,13 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use enclose::enclose;
 use openai_chat::{
-    chat::{self, Message},
-    moderation, ChatBuffer, Client,
+    chat::{self, Message, Model},
+    moderation, Client, ConnectionPolicy,
 };
 use tokio_stream::StreamExt;
 use tokio_util::sync::{CancellationToken, DropGuard};
@@ -12,7 +15,7 @@ use tracing::Instrument;
 
 use crate::settings::Settings;
 
-use super::{Error, Translate, Translation};
+use super::{chat_buffer::ChatBuffer, Error, Translate, Translation};
 
 #[derive(Clone)]
 pub struct ChatGptTranslator {
@@ -22,7 +25,14 @@ pub struct ChatGptTranslator {
 impl ChatGptTranslator {
     pub fn new(settings: &Settings) -> Self {
         Self {
-            client: openai_chat::Client::new(&settings.openai_api_key, Default::default()),
+            client: Client::new(
+                &settings.openai_api_key,
+                ConnectionPolicy {
+                    backoff: Default::default(),
+                    timeout: Duration::from_millis(settings.chatgpt.timeout),
+                    connect_timeout: Duration::from_millis(settings.chatgpt.connection_timeout),
+                },
+            ),
             chat: Arc::new(Mutex::new(ChatBuffer::new())),
         }
     }
@@ -78,7 +88,15 @@ impl Translate for ChatGptTranslator {
             }
         };
 
-        let mut stream = self.client.stream(chat_request).await?;
+        let stream = self.client.stream(chat_request).await;
+        let mut stream = match stream {
+            Ok(stream) => stream,
+            Err(err) => {
+                let mut chat = self.chat.lock().unwrap();
+                chat.cancel_exchange();
+                return Err(err.into());
+            }
+        };
 
         let token = CancellationToken::new();
         let chat = &self.chat;
@@ -103,6 +121,7 @@ impl Translate for ChatGptTranslator {
         }.instrument(tracing::Span::current())});
 
         Ok(ChatGptTranslation::Translated {
+            model: chatgpt.model,
             chat: chat.clone(),
             _guard: token.drop_guard(),
         }
@@ -112,6 +131,7 @@ impl Translate for ChatGptTranslator {
 
 pub enum ChatGptTranslation {
     Translated {
+        model: Model,
         chat: Arc<Mutex<ChatBuffer>>,
         _guard: DropGuard,
     },

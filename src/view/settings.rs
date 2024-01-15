@@ -63,6 +63,10 @@ impl<'a> SettingsView<'a> {
             ui.input_text("OpenAI API key", &mut settings.openai_api_key)
                 .password(true)
                 .build();
+            ui.slider_config("OpenAI connection timeout (ms)*", 100, 10000)
+                .build(&mut settings.chatgpt.connection_timeout);
+            ui.slider_config("OpenAI timeout (ms)*", 100, 10000)
+                .build(&mut settings.chatgpt.timeout);
         }
 
         if cfg!(feature = "voicevox")

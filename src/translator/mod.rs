@@ -11,6 +11,7 @@ use self::{
 
 pub mod chatgpt;
 pub mod deepl;
+pub mod chat_buffer;
 
 #[derive(Error, Debug)]
 pub enum Error {

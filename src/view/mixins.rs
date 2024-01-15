@@ -317,12 +317,9 @@ pub fn spinner(ui: &Ui, radius: f32, thickness: f32, color: StyleColor) {
         .build();
 }
 
-pub fn ellipses(ui: &Ui, color: StyleColor) {
+pub fn ellipses(ui: &Ui) -> &str {
     let now = ui.time();
-    let interval = (now * 5_f64) as usize % 3 + 1;
-    let pos = ui.cursor_pos();
-    ui.text_colored(ui.style_color(color), ".".repeat(interval));
-    ui.set_cursor_pos(pos);
-    let size = ui.calc_text_size("...");
-    ui.dummy(size);
+    let pattern = ["   ", ".  ", ".. ", "..."];
+    let i = (now * 5_f64) as usize % pattern.len();
+    pattern[i]
 }
