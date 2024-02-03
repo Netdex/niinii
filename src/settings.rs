@@ -150,7 +150,7 @@ impl Settings {
             .map(|style| unsafe { std::ptr::read(style.as_ptr() as *const _) })
     }
 
-    const CONFIG_FILE: &str = "niinii.toml";
+    const CONFIG_FILE: &'static str = "niinii.toml";
     pub fn from_file() -> Self {
         let user_config = dirs::config_dir().map(|x| x.join("niinii").join(Self::CONFIG_FILE));
         let settings: Settings = std::fs::read_to_string(Self::CONFIG_FILE)

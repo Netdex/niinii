@@ -5,7 +5,6 @@ use openai_chat::chat::Model;
 use crate::{
     settings::Settings,
     translator::{
-        chat_buffer::ChatState,
         chatgpt::{ChatGptTranslation, ChatGptTranslator},
         deepl::{DeepLTranslation, DeepLTranslator},
         Translation, Translator,
@@ -38,7 +37,7 @@ impl ViewTranslator for ChatGptTranslator {
                     .build_with_ref(&mut chatgpt.moderation);
             });
             ui.separator();
-            ui.disabled(chat.state() == ChatState::AcceptResponse, || {
+            ui.disabled(chat.pending_response(), || {
                 if ui.menu_item("Clear") {
                     chat.clear();
                 }
@@ -231,7 +230,7 @@ impl ViewTranslation for ChatGptTranslation {
                         Some(StyleColor::TextSelectedBg),
                     );
                 }
-                if chat.state() == ChatState::AcceptResponse {
+                if chat.pending_response() {
                     ui.same_line_with_spacing(0.0, 0.0);
                     stroke_text_with_highlight(
                         ui,

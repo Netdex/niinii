@@ -5,14 +5,14 @@ use openai_chat::chat::{Message, PartialMessage, Role, Usage};
 /// TODO: this code sucks ass, use the Assistants API instead
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ChatState {
+enum State {
     AcceptPrompt,
     AcceptResponse,
 }
 
 #[derive(Debug)]
 pub struct ChatBuffer {
-    state: ChatState,
+    state: State,
     system: Option<Message>,
     context: VecDeque<Message>,
     response: VecDeque<Message>,
@@ -21,7 +21,7 @@ pub struct ChatBuffer {
 impl ChatBuffer {
     pub fn new() -> Self {
         ChatBuffer {
-            state: ChatState::AcceptPrompt,
+            state: State::AcceptPrompt,
             system: None,
             context: VecDeque::new(),
             response: VecDeque::new(),
@@ -30,25 +30,25 @@ impl ChatBuffer {
     }
 
     pub fn begin_exchange(&mut self, system: Message, request: Message) {
-        assert_eq!(self.state, ChatState::AcceptPrompt);
+        assert_eq!(self.state, State::AcceptPrompt);
 
         self.system = Some(system);
         self.context.extend(self.response.drain(..));
         self.context.push_back(request);
 
-        self.state = ChatState::AcceptResponse;
+        self.state = State::AcceptResponse;
         self.usage = None;
     }
 
     pub fn cancel_exchange(&mut self) {
-        assert_eq!(self.state, ChatState::AcceptResponse);
+        assert_eq!(self.state, State::AcceptResponse);
 
         self.context.pop_back();
         self.end_exchange();
     }
 
     pub fn append_partial_response(&mut self, partial: &PartialMessage) {
-        assert_eq!(self.state, ChatState::AcceptResponse);
+        assert_eq!(self.state, State::AcceptResponse);
 
         if let Some(role) = &partial.role {
             let message = Message {
@@ -65,9 +65,9 @@ impl ChatBuffer {
     }
 
     pub fn end_exchange(&mut self) {
-        assert_eq!(self.state, ChatState::AcceptResponse);
+        assert_eq!(self.state, State::AcceptResponse);
 
-        self.state = ChatState::AcceptPrompt;
+        self.state = State::AcceptPrompt;
         self.system = None;
         self.usage = Some(self.estimate_usage());
     }
@@ -88,7 +88,7 @@ impl ChatBuffer {
     }
 
     pub fn clear(&mut self) {
-        assert_eq!(self.state, ChatState::AcceptPrompt);
+        assert_eq!(self.state, State::AcceptPrompt);
 
         self.context.clear();
         self.response.clear();
@@ -126,9 +126,6 @@ impl ChatBuffer {
     pub fn response(&self) -> &VecDeque<Message> {
         &self.response
     }
-    pub fn state(&self) -> ChatState {
-        self.state
-    }
     pub fn usage(&self) -> Option<&Usage> {
         self.usage.as_ref()
     }
@@ -139,5 +136,9 @@ impl ChatBuffer {
         }
         messages.extend(self.context.iter().cloned());
         messages
+    }
+
+    pub fn pending_response(&self) -> bool {
+        self.state == State::AcceptResponse
     }
 }
