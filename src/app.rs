@@ -110,6 +110,8 @@ impl App {
                 self.transition(ui, State::Processing);
                 self.gloss.set_text(text.clone());
 
+                self.request_translation(ui, text.clone());
+
                 let Self {
                     channel_tx, parser, ..
                 } = self;
@@ -172,7 +174,7 @@ impl App {
                     if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
                         ctx.add_unknown_glyphs_from_root(&ast.root);
                     }
-                    let should_translate = self.settings.auto_translate && !ast.empty();
+                    // let should_translate = self.settings.auto_translate && !ast.empty();
                     let text = ast.original_text.clone();
                     self.gloss.set_ast(ast);
                     if let Some(auto_tts_regex) = &self.settings.auto_tts_regex {
@@ -188,12 +190,12 @@ impl App {
                             }
                         }
                     }
-                    if should_translate {
-                        self.request_translation(ui, &text);
-                    } else {
-                        self.transition(ui, State::Completed);
-                        self.gloss.set_translation(None);
-                    }
+                    // if should_translate {
+                    //     self.request_translation(ui, &text);
+                    // } else {
+                    //     self.transition(ui, State::Completed);
+                    //     self.gloss.set_translation(None);
+                    // }
                 }
                 Message::Translation(Ok(translation)) => {
                     self.gloss.set_translation(Some(translation));

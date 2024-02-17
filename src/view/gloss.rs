@@ -15,15 +15,13 @@ use crate::view::{raw::RawView, term::TermView};
 
 enum View {
     Text(String),
-    Interpret {
-        ast: SyntaxTree,
-        translation: Option<Translation>,
-        translation_pending: bool,
-    },
+    Interpret { ast: SyntaxTree },
 }
 
 pub struct GlossView {
     view: Option<View>,
+    translation: Option<Translation>,
+    translation_pending: bool,
     show_term_window: RefCell<HashSet<Romanized>>,
     selected_clause: RefCell<HashMap<Segment, i32>>,
     show_raw: bool,
@@ -33,6 +31,8 @@ impl GlossView {
     pub fn new() -> Self {
         Self {
             view: None,
+            translation: None,
+            translation_pending: false,
             show_term_window: RefCell::new(HashSet::new()),
             selected_clause: RefCell::new(HashMap::new()),
             show_raw: false,
@@ -45,11 +45,7 @@ impl GlossView {
     }
 
     pub fn set_ast(&mut self, ast: SyntaxTree) {
-        self.view = Some(View::Interpret {
-            ast,
-            translation: None,
-            translation_pending: false,
-        });
+        self.view = Some(View::Interpret { ast });
     }
     pub fn ast(&self) -> Option<&SyntaxTree> {
         if let Some(View::Interpret { ast, .. }) = &self.view {
@@ -60,25 +56,13 @@ impl GlossView {
     }
 
     pub fn set_translation_pending(&mut self, pending: bool) {
-        if let Some(View::Interpret {
-            translation_pending,
-            ..
-        }) = &mut self.view
-        {
-            *translation_pending = pending;
-        }
+        self.translation_pending = pending;
     }
     pub fn set_translation(&mut self, tl: Option<Translation>) {
-        if let Some(View::Interpret { translation, .. }) = &mut self.view {
-            *translation = tl;
-        }
+        self.translation = tl;
     }
     pub fn translation(&self) -> Option<&Translation> {
-        if let Some(View::Interpret { translation, .. }) = &self.view {
-            translation.as_ref()
-        } else {
-            None
-        }
+        self.translation.as_ref()
     }
 
     fn term_window(
@@ -252,11 +236,7 @@ impl GlossView {
     pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
         ui.text(""); // hack to align line position
         match &self.view {
-            Some(View::Interpret {
-                ast: gloss,
-                translation,
-                translation_pending,
-            }) => {
+            Some(View::Interpret { ast: gloss }) => {
                 self.add_root(ctx, ui, settings, &gloss.root);
 
                 if self.show_raw {
@@ -275,21 +255,21 @@ impl GlossView {
                             IndexView::new(gloss).ui(ctx, ui, settings);
                         });
                 }
-                ui.new_line();
-                if let Some(translation) = translation {
-                    TranslationView(translation).ui(ui);
-                } else if *translation_pending {
-                    ui.text_disabled("(waiting for translation");
-                    ui.same_line_with_spacing(0.0, 0.0);
-                    ui.text_disabled(ellipses(ui));
-                    ui.same_line_with_spacing(0.0, 0.0);
-                    ui.text_disabled(")");
-                }
             }
             Some(View::Text(text)) => {
                 self.add_skipped(ctx, ui, settings, text, true);
             }
             _ => {}
+        }
+        ui.new_line();
+        if let Some(translation) = &self.translation {
+            TranslationView(translation).ui(ui);
+        } else if self.translation_pending {
+            ui.text_disabled("(waiting for translation");
+            ui.same_line_with_spacing(0.0, 0.0);
+            ui.text_disabled(ellipses(ui));
+            ui.same_line_with_spacing(0.0, 0.0);
+            ui.text_disabled(")");
         }
 
         // show all term windows, close if requested (this is actually witchcraft)
