@@ -235,7 +235,7 @@ impl ViewTranslation for ChatGptTranslation {
                     stroke_text_with_highlight(
                         ui,
                         &draw_list,
-                        &ellipses(ui),
+                        ellipses(ui),
                         1.0,
                         Some(StyleColor::TextSelectedBg),
                     );
@@ -265,27 +265,24 @@ impl ViewTranslation for ChatGptTranslation {
         }
     }
     fn show_usage(&self, ui: &Ui) {
-        match self {
-            ChatGptTranslation::Translated { model, chat, .. } => {
-                let chat = chat.lock().unwrap();
-                let usage = chat.usage();
-                if let Some(usage) = usage {
-                    ui.same_line();
-                    let cost = model.cost(usage.prompt_tokens, usage.completion_tokens);
-                    ProgressBar::new(0.0)
-                        .overlay_text(format!(
-                            "{}: {} input + {} output = {} (${:.6})",
-                            <&Model as Into<&'static str>>::into(model),
-                            usage.prompt_tokens,
-                            usage.completion_tokens,
-                            usage.total_tokens,
-                            cost
-                        ))
-                        .size([500.0, 0.0])
-                        .build(ui);
-                }
+        if let ChatGptTranslation::Translated { model, chat, .. } = self {
+            let chat = chat.lock().unwrap();
+            let usage = chat.usage();
+            if let Some(usage) = usage {
+                ui.same_line();
+                let cost = model.cost(usage.prompt_tokens, usage.completion_tokens);
+                ProgressBar::new(0.0)
+                    .overlay_text(format!(
+                        "{}: {} input + {} output = {} (${:.6})",
+                        <&Model as Into<&'static str>>::into(model),
+                        usage.prompt_tokens,
+                        usage.completion_tokens,
+                        usage.total_tokens,
+                        cost
+                    ))
+                    .size([500.0, 0.0])
+                    .build(ui);
             }
-            _ => {}
         }
     }
 }

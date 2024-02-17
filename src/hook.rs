@@ -26,9 +26,10 @@ impl HudHookRenderer {
         hudhook::alloc_console().unwrap();
         hudhook::enable_console_colors();
 
+        // TODO: need to instantiate a tokio runtime here
         let settings = Settings::from_file();
         let env = Context::new(ContextFlags::SHARED_RENDER_CONTEXT);
-        let app = App::new(settings);
+        // let app = App::new(settings).await;
         Self {
             state: Mutex::new(State { ctx: env, app }),
         }

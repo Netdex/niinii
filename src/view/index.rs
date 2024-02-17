@@ -39,7 +39,7 @@ impl<'a> IndexView<'a> {
         }
     }
     fn add_clause(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings, clause: &Clause) {
-        for (_idx, romanized) in clause.romanized().iter().enumerate() {
+        for romanized in clause.romanized() {
             let _id_token = ui.push_id_ptr(romanized);
             if !romanized.term().text().chars().any(|c| is_kanji(&c)) {
                 continue;

@@ -42,10 +42,18 @@ pub enum Category {
     Violence,
     #[serde(rename = "violence/graphic")]
     ViolenceGraphic,
+    #[serde(rename = "harassment")]
+    Harassment,
+    #[serde(rename = "harassment/threatening")]
+    HarassmentThreatening,
+    #[serde(rename = "self-harm/intent")]
+    SelfHarmIntent,
+    #[serde(rename = "self-harm/instructions")]
+    SelfHarmInstructions,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Result {
+pub struct Moderation {
     pub categories: HashMap<Category, bool>,
     pub category_scores: HashMap<Category, f64>,
     pub flagged: bool,
@@ -55,5 +63,5 @@ pub struct Result {
 pub struct Response {
     pub id: String,
     pub model: String,
-    pub results: Vec<Result>,
+    pub results: Vec<Moderation>,
 }

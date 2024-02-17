@@ -23,7 +23,11 @@ pub struct SyntaxTree {
     pub root: Root,
     pub kanji_info: HashMap<char, Kanji>,
     pub jmdict_data: JmDictData,
-    pub translatable: bool,
+}
+impl SyntaxTree {
+    pub fn empty(&self) -> bool {
+        self.root.is_flat()
+    }
 }
 
 #[derive(Clone)]
@@ -71,13 +75,10 @@ impl Parser {
             ichiran.jmdict_data()
         )?;
 
-        let translatable = !root.is_flat();
-
         Ok(SyntaxTree {
             root,
             kanji_info,
             jmdict_data,
-            translatable,
             original_text: text.to_string(),
         })
     }

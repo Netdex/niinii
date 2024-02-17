@@ -36,13 +36,21 @@ fn main() -> std::io::Result<()> {
 
     let settings = Settings::from_file();
 
-    let mut app = App::new(settings);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let _runtime_guard = runtime.enter();
+
+    let mut app = runtime.block_on(App::new(settings));
+
     tracing::info!(renderer=?app.settings().renderer_type);
     let mut renderer: Box<dyn Renderer> = match app.settings().renderer_type {
         RendererType::Glow => Box::new(GlowRenderer::new(app.settings())),
         #[cfg(windows)]
         RendererType::Direct3D11 => Box::new(D3D11Renderer::new(app.settings())),
     };
+
     renderer.main_loop(&mut app);
 
     app.settings().write_to_file()?;

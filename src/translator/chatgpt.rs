@@ -136,6 +136,6 @@ pub enum ChatGptTranslation {
         _guard: DropGuard,
     },
     Filtered {
-        moderation: moderation::Result,
+        moderation: moderation::Moderation,
     },
 }

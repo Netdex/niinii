@@ -45,7 +45,6 @@ enum State {
 }
 
 pub struct App {
-    runtime: tokio::runtime::Runtime,
     channel_tx: mpsc::UnboundedSender<Message>,
     channel_rx: mpsc::UnboundedReceiver<Message>,
 
@@ -62,26 +61,20 @@ pub struct App {
 
     settings: Settings,
     state: State,
-    glossator: Parser,
+    parser: Parser,
     translator: Translator,
     tts: TtsEngine,
     gloss: GlossView,
 }
 
 impl App {
-    pub fn new(settings: Settings) -> Self {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-
+    pub async fn new(settings: Settings) -> Self {
         let (channel_tx, channel_rx) = tokio::sync::mpsc::unbounded_channel();
-        let glossator = runtime.block_on(Parser::new(&settings));
+        let parser = Parser::new(&settings).await;
         let translator = Translator::new(&settings);
         let tts = TtsEngine::new(&settings);
 
         App {
-            runtime,
             channel_tx,
             channel_rx,
             input_text: "".into(),
@@ -95,7 +88,7 @@ impl App {
             show_translator: false,
             settings,
             state: State::Completed,
-            glossator,
+            parser,
             translator,
             tts,
             gloss: GlossView::new(),
@@ -118,17 +111,14 @@ impl App {
                 self.gloss.set_text(text.clone());
 
                 let Self {
-                    channel_tx,
-                    glossator,
-                    ..
+                    channel_tx, parser, ..
                 } = self;
                 let variants = if self.settings.more_variants { 5 } else { 1 };
-                self.runtime
-                    .spawn(enclose! { (channel_tx, glossator) async move {
-                        let span = tracing::debug_span!("parse");
-                        let ast = glossator.parse(&text, variants).instrument(span).await;
-                        let _ = channel_tx.send(Message::Gloss(ast));
-                    }});
+                tokio::spawn(enclose! { (channel_tx, parser) async move {
+                    let span = tracing::debug_span!("parse");
+                    let ast = parser.parse(&text, variants).instrument(span).await;
+                    let _ = channel_tx.send(Message::Gloss(ast));
+                }});
             }
             Err(err) => self.transition(ui, State::Error(Error::Gloss(err.into()))),
         }
@@ -150,7 +140,7 @@ impl App {
 
         let text = text.into();
 
-        self.runtime.spawn(
+        tokio::spawn(
             enclose! { (mut translator, mut settings, channel_tx) async move {
                 let span = tracing::debug_span!("translation");
                 let translation = translator.translate(&settings, text).instrument(span).await;
@@ -182,7 +172,7 @@ impl App {
                     if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
                         ctx.add_unknown_glyphs_from_root(&ast.root);
                     }
-                    let should_translate = self.settings.auto_translate && ast.translatable;
+                    let should_translate = self.settings.auto_translate && !ast.empty();
                     let text = ast.original_text.clone();
                     self.gloss.set_ast(ast);
                     if let Some(auto_tts_regex) = &self.settings.auto_tts_regex {
@@ -280,7 +270,7 @@ impl App {
             let _disable_state = ui.begin_disabled(matches!(self.state, State::Processing));
             {
                 let mut _disable_tl =
-                    ui.begin_disabled(!self.gloss.ast().map_or(false, |ast| ast.translatable));
+                    ui.begin_disabled(!self.gloss.ast().map_or(false, |ast| !ast.empty()));
                 if ui.menu_item("Translate") {
                     if let Some(gloss) = self.gloss.ast() {
                         self.request_translation(ui, &gloss.original_text.clone());
@@ -350,7 +340,7 @@ impl App {
                 drop(disable_input);
                 ui.same_line();
 
-                let enable_tl = self.gloss.ast().map_or(false, |ast| ast.translatable);
+                let enable_tl = self.gloss.ast().map_or(false, |ast| !ast.empty());
                 let disable_tl = ui.begin_disabled(!enable_tl);
                 if ui.button_with_size("Translate", [120.0, 0.0]) {
                     if let Some(gloss) = self.gloss.ast() {
