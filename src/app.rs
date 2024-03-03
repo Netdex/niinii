@@ -193,13 +193,13 @@ impl App {
                     // if should_translate {
                     //     self.request_translation(ui, &text);
                     // } else {
-                    //     self.transition(ui, State::Completed);
+                    self.transition(ui, State::Completed);
                     //     self.gloss.set_translation(None);
                     // }
                 }
                 Message::Translation(Ok(translation)) => {
                     self.gloss.set_translation(Some(translation));
-                    self.transition(ui, State::Completed)
+                    // self.transition(ui, State::Completed)
                 }
                 Message::Gloss(Err(err)) => {
                     self.transition(ui, State::Error(err.into()));

@@ -29,7 +29,7 @@ trait ViewTranslator {
 }
 impl ViewTranslator for ChatGptTranslator {
     fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
-        let mut chat = self.chat.lock().unwrap();
+        let mut chat = self.chat.blocking_lock();
         let chatgpt = &mut settings.chatgpt;
         ui.menu_bar(|| {
             ui.menu("Settings", || {
@@ -211,7 +211,7 @@ impl ViewTranslation for ChatGptTranslation {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         match self {
             ChatGptTranslation::Translated { chat, .. } => {
-                let chat = chat.lock().unwrap();
+                let chat = chat.blocking_lock();
                 let draw_list = ui.get_window_draw_list();
                 stroke_text_with_highlight(
                     ui,
@@ -266,7 +266,7 @@ impl ViewTranslation for ChatGptTranslation {
     }
     fn show_usage(&self, ui: &Ui) {
         if let ChatGptTranslation::Translated { model, chat, .. } = self {
-            let chat = chat.lock().unwrap();
+            let chat = chat.blocking_lock();
             let usage = chat.usage();
             if let Some(usage) = usage {
                 ui.same_line();

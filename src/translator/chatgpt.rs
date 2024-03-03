@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use enclose::enclose;
@@ -9,6 +6,7 @@ use openai_chat::{
     chat::{self, Message, Model},
     moderation, Client, ConnectionPolicy,
 };
+use tokio::sync::{Mutex, Semaphore};
 use tokio_stream::StreamExt;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::Instrument;
@@ -21,6 +19,7 @@ use super::{chat_buffer::ChatBuffer, Error, Translate, Translation};
 pub struct ChatGptTranslator {
     client: Client<backon::ConstantBuilder>,
     pub chat: Arc<Mutex<ChatBuffer>>,
+    semaphore: Arc<Semaphore>,
 }
 impl ChatGptTranslator {
     pub fn new(settings: &Settings) -> Self {
@@ -34,6 +33,7 @@ impl ChatGptTranslator {
                 },
             ),
             chat: Arc::new(Mutex::new(ChatBuffer::new())),
+            semaphore: Arc::new(Semaphore::const_new(1)),
         }
     }
 }
@@ -60,8 +60,9 @@ impl Translate for ChatGptTranslator {
             }
         }
 
+        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
         let chat_request = {
-            let mut chat = self.chat.lock().unwrap();
+            let mut chat = self.chat.lock().await;
             // TODO: experiment with summarizing context
             chat.begin_exchange(
                 Message {
@@ -77,7 +78,7 @@ impl Translate for ChatGptTranslator {
             );
             chat.enforce_context_limit(chatgpt.max_context_tokens);
 
-            chat::Request {
+            let chat_request = chat::Request {
                 model: chatgpt.model,
                 messages: chat.prompt(),
                 temperature: chatgpt.temperature,
@@ -85,14 +86,15 @@ impl Translate for ChatGptTranslator {
                 max_tokens: chatgpt.max_tokens,
                 presence_penalty: chatgpt.presence_penalty,
                 ..Default::default()
-            }
+            };
+            chat_request
         };
 
         let stream = self.client.stream(chat_request).await;
         let mut stream = match stream {
             Ok(stream) => stream,
             Err(err) => {
-                let mut chat = self.chat.lock().unwrap();
+                let mut chat = self.chat.lock().await;
                 chat.cancel_exchange();
                 return Err(err.into());
             }
@@ -101,23 +103,30 @@ impl Translate for ChatGptTranslator {
         let token = CancellationToken::new();
         let chat = &self.chat;
         tokio::spawn(enclose! { (chat, token) async move {
+            let _permit = permit;
             loop {
                 tokio::select! {
                     msg = stream.next() => match msg {
                         Some(Ok(completion)) => {
-                            let mut chat = chat.lock().unwrap();
+                            let mut chat = chat.lock().await;
                             let message = &completion.choices.first().unwrap().delta;
                             chat.append_partial_response(message)
                         },
                         // TODO: need to pipe this error to the event loop somehow
                         Some(Err(err)) => tracing::error!(%err, "stream"),
-                        _ => break
+                        _ => {
+                            let mut chat = chat.lock().await;
+                            chat.end_exchange();
+                            break
+                        }
                     },
-                    _ = token.cancelled() => break
+                    _ = token.cancelled() => {
+                        let mut chat = chat.lock().await;
+                        chat.cancel_exchange();
+                        break
+                    }
                 }
             }
-            let mut chat = chat.lock().unwrap();
-            chat.end_exchange();
         }.instrument(tracing::Span::current())});
 
         Ok(ChatGptTranslation::Translated {
