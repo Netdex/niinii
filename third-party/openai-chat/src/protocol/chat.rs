@@ -23,24 +23,13 @@ pub enum Model {
     #[default]
     #[serde(rename = "gpt-3.5-turbo")]
     Gpt35Turbo,
-    #[serde(rename = "gpt-3.5-turbo-0613")]
-    Gpt35Turbo0613,
-    #[serde(rename = "gpt-3.5-turbo-1106")]
-    Gpt35Turbo1106,
     #[serde(rename = "gpt-3.5-turbo-0125")]
     Gpt35Turbo0125,
 
-    #[serde(rename = "gpt-4")]
-    Gpt4,
-    #[serde(rename = "gpt-4-0613")]
-    Gpt4_0613,
-    #[serde(rename = "gpt-4-32k")]
-    Gpt4_32k,
-
-    #[serde(rename = "gpt-4-1106-preview")]
-    Gpt4_1106Preview,
-    #[serde(rename = "gpt-4-0125-preview")]
-    Gpt4_0125Preview,
+    #[serde(rename = "gpt-4o")]
+    Gpt4o,
+    #[serde(rename = "gpt-4o-2024-05-13")]
+    Gpt4o20240513,
 }
 impl Model {
     /// https://openai.com/pricing
@@ -48,13 +37,8 @@ impl Model {
         let input = input_tokens as f64 / 1000.0;
         let output = output_tokens as f64 / 1000.0;
         match self {
-            Model::Gpt35Turbo
-            | Model::Gpt35Turbo0613
-            | Model::Gpt35Turbo1106
-            | Model::Gpt35Turbo0125 => input * 0.0005 + output * 0.0015,
-            Model::Gpt4 | Model::Gpt4_0613 => input * 0.03 + output * 0.06,
-            Model::Gpt4_32k => input * 0.06 + output * 0.12,
-            Model::Gpt4_1106Preview | Model::Gpt4_0125Preview => input * 0.01 + output * 0.03,
+            Model::Gpt35Turbo | Model::Gpt35Turbo0125 => input * 0.50e-6 + output * 1.50e-6,
+            Model::Gpt4o | Model::Gpt4o20240513 => input * 5.00e-6 + output * 15.00e-6,
         }
     }
 }
