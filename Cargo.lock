@@ -1623,6 +1623,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
+name = "hudhook"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b05a34bc3a174ceed011f8233730fd9ecdcdd13008e8e00c2546c8508bd3519"
+dependencies = [
+ "bitflags 2.6.0",
+ "cc",
+ "gl_generator",
+ "imgui",
+ "memoffset",
+ "once_cell",
+ "parking_lot",
+ "tracing",
+ "tracing-subscriber",
+ "windows",
+]
+
+[[package]]
 name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2310,6 +2328,7 @@ dependencies = [
  "glow",
  "glutin",
  "glutin-winit",
+ "hudhook",
  "ichiran",
  "imgui",
  "imgui-dx11-renderer",
@@ -4015,6 +4034,7 @@ version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
 dependencies = [
+ "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
