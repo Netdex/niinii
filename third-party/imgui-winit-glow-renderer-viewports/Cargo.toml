@@ -1,6 +1,6 @@
 [package]
 name = "imgui-winit-glow-renderer-viewports"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2021"
 description = "combined platform + renderer using the docking branch viewport feature"
 homepage = "https://github.com/imgui-rs/imgui-rs"
@@ -11,11 +11,11 @@ license = "MIT/Apache-2.0"
 
 [dependencies]
 # imgui = { version = "0.11.0", path="../imgui", features=["docking"] }
-imgui = { version = "0.11.0", features=["docking"] }
+imgui = { version = "0.12.0", features=["docking"] }
 
-glow = "0.12.0"
-glutin = "0.30.3"
+glow = "0.13.1"
+glutin = "0.31.1"
 raw-window-handle = "0.5"
-winit = "0.27.5"
+winit = "0.29.3"
 thiserror = "1.0.38"
-glutin-winit = "0.2.1"
+glutin-winit = "0.4.2"

@@ -5,6 +5,8 @@ use std::time::Instant;
 use std::{ptr, rc::Weak};
 
 use imgui_winit_support::WinitPlatform;
+use raw_window_handle::HasRawWindowHandle;
+use raw_window_handle::RawWindowHandle;
 use winapi::{
     shared::{
         dxgi::*,
@@ -24,10 +26,12 @@ use winapi::{
     },
     Interface as _,
 };
+use winit::platform::pump_events::PumpStatus;
+use winit::window::WindowLevel;
 use winit::{
     event::{DeviceId, Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    platform::{run_return::EventLoopExtRunReturn, windows::WindowExtWindows},
+    event_loop::EventLoop,
+    platform::pump_events::EventLoopExtPumpEvents,
 };
 use wio::com::ComPtr;
 
@@ -74,7 +78,7 @@ pub struct D3D11Renderer {
 }
 impl D3D11Renderer {
     pub fn new(settings: &Settings) -> Self {
-        let event_loop = EventLoop::new();
+        let event_loop = EventLoop::new().unwrap();
         let window = Self::create_window_builder(settings)
             .build(&event_loop)
             .unwrap();
@@ -82,7 +86,10 @@ impl D3D11Renderer {
             window.set_cursor_hittest(false).unwrap();
         }
 
-        let hwnd = window.hwnd();
+        let hwnd = match window.raw_window_handle() {
+            RawWindowHandle::Win32(handle) => handle.hwnd,
+            _ => unreachable!(),
+        };
 
         let (swapchain, device, context) = unsafe { create_device(hwnd as _) }.unwrap();
         let main_rtv = unsafe { create_render_target(&swapchain, &device) };
@@ -104,7 +111,7 @@ impl D3D11Renderer {
         // let mut winit_wnd_proc: winuser::WNDPROC = None;
         if settings.overlay_mode {
             // this has to be after renderer is created or else we segfault
-            window.set_always_on_top(true);
+            window.set_window_level(WindowLevel::AlwaysOnTop);
             unsafe {
                 low_level_mouse_proc.replace(SetWindowsHookExA(
                     WH_MOUSE_LL,
@@ -151,81 +158,86 @@ impl Renderer for D3D11Renderer {
         let mut last_frame = Instant::now();
         let mut event_loop = self.shared.event_loop.replace(None).unwrap();
 
-        event_loop.run_return(|event, _, control_flow| {
-            let Inner {
-                window,
-                platform,
-                imgui,
-                ctx,
-                renderer,
-                context,
-                main_rtv,
-                swapchain,
-                device,
-                ..
-            } = &mut *self.shared.inner.borrow_mut();
-            match event {
-                Event::NewEvents(_) => {
-                    let now = Instant::now();
-                    imgui
-                        .io_mut()
-                        .update_delta_time(now.duration_since(last_frame));
-                    last_frame = now;
-                }
-                Event::MainEventsCleared => {
-                    let io = imgui.io_mut();
-                    platform
-                        .prepare_frame(io, window)
-                        .expect("failed to start frame");
-                    window.request_redraw();
-                }
-                Event::RedrawRequested(_) => {
-                    unsafe {
-                        context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
-                        context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
+        loop {
+            let timeout = None;
+            let status = event_loop.pump_events(timeout, |event, window_target| {
+                let Inner {
+                    window,
+                    platform,
+                    imgui,
+                    ctx,
+                    renderer,
+                    context,
+                    main_rtv,
+                    swapchain,
+                    device,
+                    ..
+                } = &mut *self.shared.inner.borrow_mut();
+                match event {
+                    Event::NewEvents(_) => {
+                        let now = Instant::now();
+                        imgui
+                            .io_mut()
+                            .update_delta_time(now.duration_since(last_frame));
+                        last_frame = now;
                     }
+                    Event::AboutToWait => {
+                        let io = imgui.io_mut();
+                        platform
+                            .prepare_frame(io, window)
+                            .expect("failed to start frame");
+                        window.request_redraw();
+                    }
+                    Event::WindowEvent {
+                        event: winit::event::WindowEvent::RedrawRequested,
+                        ..
+                    } => {
+                        unsafe {
+                            context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
+                            context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
+                        }
 
-                    let now = std::time::Instant::now();
-                    if ctx.update_fonts(imgui, platform.hidpi_factor()) {
-                        unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
-                        let elapsed = now.elapsed();
-                        tracing::info!("rebuilt font atlas (took {:?})", elapsed);
+                        let now = std::time::Instant::now();
+                        if ctx.update_fonts(imgui, platform.hidpi_factor()) {
+                            unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
+                            let elapsed = now.elapsed();
+                            tracing::info!("rebuilt font atlas (took {:?})", elapsed);
+                        }
+                        let ui = imgui.frame();
+                        let mut run = true;
+                        app.ui(ctx, ui, &mut run);
+                        if !run {
+                            window_target.exit()
+                        }
+                        platform.prepare_render(ui, window);
+                        let draw_data = imgui.render();
+                        renderer.render(draw_data).unwrap();
+                        unsafe {
+                            swapchain.Present(1, 0);
+                        }
                     }
-                    let ui = imgui.frame();
-                    let mut run = true;
-                    app.ui(ctx, ui, &mut run);
-                    if !run {
-                        *control_flow = ControlFlow::Exit;
-                    }
-                    platform.prepare_render(ui, window);
-                    let draw_data = imgui.render();
-                    renderer.render(draw_data).unwrap();
-                    unsafe {
-                        swapchain.Present(1, 0);
+                    Event::WindowEvent {
+                        event: WindowEvent::CloseRequested,
+                        ..
+                    } => window_target.exit(),
+                    Event::WindowEvent {
+                        event: WindowEvent::Resized(winit::dpi::PhysicalSize { height, width }),
+                        ..
+                    } => unsafe {
+                        ptr::drop_in_place(main_rtv);
+                        swapchain.ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+                        ptr::write(main_rtv, create_render_target(swapchain, device));
+                        platform.handle_event(imgui.io_mut(), window, &event);
+                    },
+                    event => {
+                        platform.handle_event(imgui.io_mut(), window, &event);
                     }
                 }
-                // Event::RedrawEventsCleared => {
-                //     *control_flow = ControlFlow::Wait;
-                // }
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => *control_flow = winit::event_loop::ControlFlow::Exit,
-                Event::WindowEvent {
-                    event: WindowEvent::Resized(winit::dpi::PhysicalSize { height, width }),
-                    ..
-                } => unsafe {
-                    ptr::drop_in_place(main_rtv);
-                    swapchain.ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-                    ptr::write(main_rtv, create_render_target(swapchain, device));
-                    platform.handle_event(imgui.io_mut(), window, &event);
-                },
-                Event::LoopDestroyed => (),
-                event => {
-                    platform.handle_event(imgui.io_mut(), window, &event);
-                }
+            });
+            if let PumpStatus::Exit(_) = status {
+                break;
             }
-        });
+        }
     }
 }
 impl D3D11Renderer {
@@ -391,12 +403,14 @@ unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM)
                         ..
                     } = &mut *inner;
 
-                    let hwnd = window.hwnd();
+                    let hwnd = match window.raw_window_handle() {
+                        RawWindowHandle::Win32(handle) => handle.hwnd,
+                        _ => unreachable!(),
+                    };
 
                     // if the window is transparent, we need to fake mouse move
                     // events so it knows when it wants to capture the mouse
                     if !*last_want_capture_mouse {
-                        use winit::event::ModifiersState;
                         let wparam = wparam as UINT;
                         if wparam == winuser::WM_MOUSEMOVE {
                             use winit::dpi::PhysicalPosition;
@@ -415,7 +429,6 @@ unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM)
                                     event: WindowEvent::CursorMoved {
                                         device_id: DeviceId::dummy(),
                                         position,
-                                        modifiers: ModifiersState::empty(),
                                     },
                                 },
                             );

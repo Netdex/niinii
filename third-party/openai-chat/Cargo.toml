@@ -10,8 +10,8 @@ edition = "2021"
 tokio = { version = "1" }
 tokio-stream = { version = "0.1", features = ["sync"] }
 
-reqwest = { version = "0.11", features = ["blocking", "json", "stream"] }
-tiktoken-rs = "0.4"
+reqwest = { version = "0.12", features = ["blocking", "json", "stream"] }
+tiktoken-rs = "0.5"
 backon = "0.4.1"
 
 log = "0.4"
@@ -24,9 +24,9 @@ csv = "1.1"
 regex = "1"
 lazy_static = "1.4.0"
 num-traits = "0.2"
-num-derive = "0.3"
-strum = "0.25"
-strum_macros = "0.25"
+num-derive = "0.4"
+strum = "0.26"
+strum_macros = "0.26"
 derive_more = { version = "=1.0.0-beta.6", features = ["display"] }
 
 eventsource-stream = { path = "../eventsource-stream" }

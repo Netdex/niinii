@@ -1,13 +1,15 @@
+//! As of imgui-rs 0.12.0, the glow viewports renderer doesn't seem to be
+//! DPI-aware. Or at least, I can't figure out how it's support to work, since
+//! WinitPlatform isn't part of the API like with the other renderers.
+
 use std::{ffi::CString, num::NonZeroU32, time::Instant};
 
 use glow::HasContext;
 use glutin::{
     config::ConfigTemplateBuilder,
-    context::ContextAttributesBuilder,
+    context::{ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentGlContext},
     display::GetGlDisplay,
-    prelude::{
-        GlDisplay, NotCurrentGlContextSurfaceAccessor, PossiblyCurrentContextGlSurfaceAccessor,
-    },
+    prelude::GlDisplay,
     surface::{GlSurface, SurfaceAttributesBuilder, WindowSurface},
 };
 use glutin_winit::DisplayBuilder;
@@ -15,7 +17,9 @@ use imgui::ConfigFlags;
 use imgui_winit_glow_renderer_viewports::Renderer as GlowViewportsRenderer;
 use raw_window_handle::HasRawWindowHandle;
 use winit::{
-    event::WindowEvent, event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn,
+    event::WindowEvent,
+    event_loop::{ControlFlow, EventLoop},
+    platform::pump_events::{EventLoopExtPumpEvents, PumpStatus},
     window::Window,
 };
 
@@ -39,7 +43,7 @@ pub struct GlowRenderer {
 impl GlowRenderer {
     pub fn new(settings: &Settings) -> Self {
         let window_builder = Self::create_window_builder(settings);
-        let event_loop = EventLoop::new();
+        let event_loop = EventLoop::new().unwrap();
 
         let template_builder = ConfigTemplateBuilder::new();
         let (window, gl_config) = DisplayBuilder::new()
@@ -115,6 +119,8 @@ impl GlowRenderer {
 }
 impl Renderer for GlowRenderer {
     fn main_loop(&mut self, app: &mut App) {
+        use winit::event::Event;
+
         let GlowRenderer {
             event_loop,
             window,
@@ -127,81 +133,89 @@ impl Renderer for GlowRenderer {
             glutin_surface: surface,
         } = self;
         let mut last_frame = Instant::now();
-        event_loop.run_return(move |event, window_target, control_flow| {
-            control_flow.set_poll();
+        let timeout = None;
+        loop {
+            let status = event_loop.pump_events(timeout, |event, window_target| {
+                window_target.set_control_flow(ControlFlow::Poll);
+                renderer.handle_event(imgui, window, &event);
 
-            renderer.handle_event(imgui, window, &event);
-
-            match event {
-                winit::event::Event::NewEvents(_) => {
-                    let now = Instant::now();
-                    imgui.io_mut().update_delta_time(now - last_frame);
-                    last_frame = now;
-                }
-                winit::event::Event::WindowEvent {
-                    window_id,
-                    event: WindowEvent::CloseRequested,
-                } if window_id == window.id() => {
-                    control_flow.set_exit();
-                }
-                winit::event::Event::WindowEvent {
-                    window_id,
-                    event: WindowEvent::Resized(new_size),
-                } if window_id == window.id() => {
-                    surface.resize(
-                        context,
-                        NonZeroU32::new(new_size.width).unwrap(),
-                        NonZeroU32::new(new_size.height).unwrap(),
-                    );
-                }
-                winit::event::Event::MainEventsCleared => {
-                    window.request_redraw();
-                }
-                winit::event::Event::RedrawRequested(_) => {
-                    let ui = imgui.frame();
-
-                    let mut run = true;
-                    app.ui(ctx, ui, &mut run);
-                    if !run {
-                        *control_flow = winit::event_loop::ControlFlow::Exit;
+                match event {
+                    Event::NewEvents(_) => {
+                        let now = Instant::now();
+                        imgui.io_mut().update_delta_time(now - last_frame);
+                        last_frame = now;
                     }
-
-                    ui.end_frame_early();
-
-                    renderer.prepare_render(imgui, window);
-
-                    imgui.update_platform_windows();
-                    renderer
-                        .update_viewports(imgui, window_target, glow)
-                        .unwrap();
-
-                    let draw_data = imgui.render();
-
-                    if let Err(e) = context.make_current(surface) {
-                        // For some reason make_current randomly throws errors on windows.
-                        // Until the reason for this is found, we just print it out instead of panicing.
-                        eprintln!("Failed to make current: {e}");
+                    Event::WindowEvent {
+                        window_id,
+                        event: WindowEvent::CloseRequested,
+                    } if window_id == window.id() => {
+                        window_target.exit();
                     }
-
-                    unsafe {
-                        glow.disable(glow::SCISSOR_TEST);
-                        glow.clear(glow::COLOR_BUFFER_BIT);
+                    Event::WindowEvent {
+                        window_id,
+                        event: WindowEvent::Resized(new_size),
+                    } if window_id == window.id() => {
+                        surface.resize(
+                            context,
+                            NonZeroU32::new(new_size.width).unwrap(),
+                            NonZeroU32::new(new_size.height).unwrap(),
+                        );
                     }
+                    Event::AboutToWait => {
+                        window.request_redraw();
+                    }
+                    Event::WindowEvent {
+                        event: WindowEvent::RedrawRequested,
+                        ..
+                    } => {
+                        let ui = imgui.frame();
 
-                    renderer
-                        .render(window, glow, draw_data)
-                        .expect("Failed to render main viewport");
+                        let mut run = true;
+                        app.ui(ctx, ui, &mut run);
+                        if !run {
+                            window_target.exit();
+                        }
 
-                    surface
-                        .swap_buffers(context)
-                        .expect("Failed to swap buffers");
+                        ui.end_frame_early();
 
-                    renderer
-                        .render_viewports(glow, imgui)
-                        .expect("Failed to render viewports");
+                        renderer.prepare_render(imgui, window);
+
+                        imgui.update_platform_windows();
+                        renderer
+                            .update_viewports(imgui, window_target, glow)
+                            .unwrap();
+
+                        let draw_data = imgui.render();
+
+                        if let Err(e) = context.make_current(surface) {
+                            // For some reason make_current randomly throws errors on windows.
+                            // Until the reason for this is found, we just print it out instead of panicing.
+                            eprintln!("Failed to make current: {e}");
+                        }
+
+                        unsafe {
+                            glow.disable(glow::SCISSOR_TEST);
+                            glow.clear(glow::COLOR_BUFFER_BIT);
+                        }
+
+                        renderer
+                            .render(window, glow, draw_data)
+                            .expect("Failed to render main viewport");
+
+                        surface
+                            .swap_buffers(context)
+                            .expect("Failed to swap buffers");
+
+                        renderer
+                            .render_viewports(glow, imgui)
+                            .expect("Failed to render viewports");
+                    }
+                    _ => {}
                 }
-                _ => {}
+            });
+            if let PumpStatus::Exit(_) = status {
+                break;
             }
-        });
+        }
     }
 }

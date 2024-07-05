@@ -110,7 +110,9 @@ impl App {
                 self.transition(ui, State::Processing);
                 self.gloss.set_text(text.clone());
 
-                self.request_translation(ui, text.clone());
+                if self.settings.auto_translate {
+                    self.request_translation(ui, text.clone());
+                }
 
                 let Self {
                     channel_tx, parser, ..
