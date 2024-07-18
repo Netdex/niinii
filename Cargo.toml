@@ -19,15 +19,15 @@ hook = ["dep:hudhook"]
 # imgui-winit-support = { path = "../imgui-rs/imgui-winit-support" }
 # imgui-glow-renderer = { path = "../imgui-rs/imgui-glow-renderer" }
 
-# imgui = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-# imgui-sys = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-# imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
-# imgui-glow-renderer = { git = "https://github.com/Netdex/imgui-rs", branch = "hidpi-rounded-fix" }
+imgui = { git = "https://github.com/Netdex/imgui-rs", branch = "trunk-0.12.0-niinii" }
+imgui-sys = { git = "https://github.com/Netdex/imgui-rs", branch = "trunk-0.12.0-niinii" }
+imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "trunk-0.12.0-niinii" }
+imgui-glow-renderer = { git = "https://github.com/Netdex/imgui-rs", branch = "trunk-0.12.0-niinii" }
+imgui-winit-glow-renderer-viewports = { git = "https://github.com/Netdex/imgui-rs", branch = "trunk-0.12.0-niinii" }
 # imgui-dx9-renderer = { git = "https://github.com/Netdex/imgui-dx9-renderer" }
 # imgui-dx11-renderer = { git = "https://github.com/Netdex/imgui-dx11-renderer" }
 # imgui-dx9-renderer = { path = "../imgui-dx9-renderer" }
 # imgui-dx11-renderer = { path = "../imgui-dx11-renderer" }
-# imgui-winit-glow-renderer-viewports = { path = "third-party/imgui-winit-glow-renderer-viewports" }
 # hudhook = { git = "https://github.com/veeenu/hudhook.git" }
 
 [dependencies]
