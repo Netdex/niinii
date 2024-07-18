@@ -20,7 +20,6 @@ pub struct Error {
     Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter,
 )]
 pub enum Model {
-    #[default]
     #[serde(rename = "gpt-3.5-turbo")]
     Gpt35Turbo,
     #[serde(rename = "gpt-3.5-turbo-0125")]
@@ -30,6 +29,12 @@ pub enum Model {
     Gpt4o,
     #[serde(rename = "gpt-4o-2024-05-13")]
     Gpt4o20240513,
+
+    #[default]
+    #[serde(rename = "gpt-4o-mini")]
+    Gpt4oMini,
+    #[serde(rename = "gpt-4o-mini-2024-07-18")]
+    Gpt4oMini20240718,
 }
 impl Model {
     /// https://openai.com/pricing
@@ -39,6 +44,7 @@ impl Model {
         match self {
             Model::Gpt35Turbo | Model::Gpt35Turbo0125 => input * 0.50e-6 + output * 1.50e-6,
             Model::Gpt4o | Model::Gpt4o20240513 => input * 5.00e-6 + output * 15.00e-6,
+            Model::Gpt4oMini | Model::Gpt4oMini20240718 => input * 0.15e-6 + output * 0.60e-6,
         }
     }
 }
