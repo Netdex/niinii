@@ -10,7 +10,7 @@ use glutin::{
     context::{ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentGlContext},
     display::GetGlDisplay,
     prelude::GlDisplay,
-    surface::{GlSurface, SurfaceAttributesBuilder, WindowSurface},
+    surface::{GlSurface, SurfaceAttributesBuilder, SwapInterval, WindowSurface},
 };
 use glutin_winit::DisplayBuilder;
 use imgui::ConfigFlags;
@@ -19,7 +19,7 @@ use raw_window_handle::HasRawWindowHandle;
 use winit::{
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
-    platform::pump_events::{EventLoopExtPumpEvents, PumpStatus},
+    platform::run_on_demand::EventLoopExtRunOnDemand,
     window::Window,
 };
 
@@ -42,7 +42,7 @@ pub struct GlowRenderer {
 }
 impl GlowRenderer {
     pub fn new(settings: &Settings) -> Self {
-        let window_builder = Self::create_window_builder(settings);
+        let window_builder = winit::window::WindowBuilder::new().with_title("niinii");
         let event_loop = EventLoop::new().unwrap();
 
         let template_builder = ConfigTemplateBuilder::new();
@@ -88,6 +88,10 @@ impl GlowRenderer {
         };
 
         let context = context.make_current(&surface).unwrap();
+        // enable vsync
+        surface
+            .set_swap_interval(&context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
+            .unwrap();
 
         let glow = unsafe {
             glow::Context::from_loader_function(|name| {
@@ -98,16 +102,9 @@ impl GlowRenderer {
 
         let renderer = GlowViewportsRenderer::new(&mut imgui, &window, &glow).unwrap();
 
-        // let dpi = match settings.use_force_dpi {
-        //     true => Some(settings.force_dpi),
-        //     false => None,
-        // };
-        // let platform = Self::create_platform(&mut imgui, window.window(), dpi);
-
         Self {
             event_loop,
             window,
-            // platform,
             imgui,
             ctx,
             renderer,
@@ -133,10 +130,10 @@ impl Renderer for GlowRenderer {
             glutin_surface: surface,
         } = self;
         let mut last_frame = Instant::now();
-        let timeout = None;
-        loop {
-            let status = event_loop.pump_events(timeout, |event, window_target| {
-                window_target.set_control_flow(ControlFlow::Poll);
+
+        event_loop
+            .run_on_demand(|event, window_target| {
+                window_target.set_control_flow(ControlFlow::Wait);
                 renderer.handle_event(imgui, window, &event);
 
                 match event {
@@ -155,11 +152,11 @@ impl Renderer for GlowRenderer {
                         window_id,
                         event: WindowEvent::Resized(new_size),
                     } if window_id == window.id() => {
-                        surface.resize(
-                            context,
-                            NonZeroU32::new(new_size.width).unwrap(),
-                            NonZeroU32::new(new_size.height).unwrap(),
-                        );
+                        let width = NonZeroU32::new(new_size.width);
+                        let height = NonZeroU32::new(new_size.height);
+                        if let Some((width, height)) = width.zip(height) {
+                            surface.resize(context, width, height);
+                        }
                     }
                     Event::AboutToWait => {
                         window.request_redraw();
@@ -212,10 +209,7 @@ impl Renderer for GlowRenderer {
                     }
                     _ => {}
                 }
-            });
-            if let PumpStatus::Exit(_) = status {
-                break;
-            }
-        }
+            })
+            .unwrap();
     }
 }

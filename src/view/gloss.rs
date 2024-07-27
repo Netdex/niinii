@@ -27,6 +27,11 @@ pub struct GlossView {
     show_raw: bool,
     show_glossary: bool,
 }
+impl Default for GlossView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl GlossView {
     pub fn new() -> Self {
         Self {
@@ -108,14 +113,16 @@ impl GlossView {
             ui,
             ctx,
             skipped,
-            false,
-            !preview && settings.stroke_text,
-            preview,
-            UnderlineMode::None,
             if settings.ruby_text_type == RubyTextType::None {
                 RubyTextMode::None
             } else {
                 RubyTextMode::Pad
+            },
+            KanjiStyle {
+                highlight: false,
+                stroke: !preview && settings.stroke_text,
+                preview,
+                underline: UnderlineMode::None,
             },
         );
     }
@@ -141,11 +148,13 @@ impl GlossView {
             ui,
             ctx,
             term.text(),
-            true,
-            settings.stroke_text,
-            false,
-            underline,
             fg_text,
+            KanjiStyle {
+                highlight: true,
+                stroke: settings.stroke_text,
+                preview: false,
+                underline,
+            },
         );
 
         if ui.is_item_hovered() {

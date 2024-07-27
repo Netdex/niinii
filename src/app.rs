@@ -226,8 +226,8 @@ impl App {
         if self.settings.watch_clipboard {
             if let Some(clipboard) = ui.clipboard_text() {
                 if clipboard != self.last_clipboard {
-                    self.input_text = clipboard.clone();
-                    self.last_clipboard = clipboard.clone();
+                    self.input_text.clone_from(&clipboard);
+                    self.last_clipboard.clone_from(&clipboard);
                     self.request_gloss_text = Some(clipboard);
                 }
             }
@@ -305,8 +305,6 @@ impl App {
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
-        let _io = ui.io();
-
         ui.dockspace_over_viewport();
 
         let niinii = ui
@@ -314,15 +312,15 @@ impl App {
             .opened(run)
             .menu_bar(true)
             .draw_background(!self.settings().transparent);
-        if !self.settings().overlay_mode
-            && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
-        {
-            // niinii = niinii
-            //     .position([0.0, 0.0], Condition::Always)
-            //     .size(io.display_size, Condition::Always)
-            //     .bring_to_front_on_focus(false)
-            //     .no_decoration()
-        };
+        // if !self.settings().overlay_mode
+        //     && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
+        // {
+        //     niinii = niinii
+        //         .position([0.0, 0.0], Condition::Always)
+        //         .size(io.display_size, Condition::Always)
+        //         .bring_to_front_on_focus(false)
+        //         .no_decoration()
+        // };
         niinii.build(|| {
             self.show_menu(ctx, ui);
             self.show_error_modal(ctx, ui);

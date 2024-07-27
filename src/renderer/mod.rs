@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use imgui_winit_support::WinitPlatform;
-use winit::window;
+use winit::window::{self, WindowLevel};
 
 use crate::support::clipboard;
 use crate::{app::App, settings::Settings};
@@ -30,12 +30,14 @@ pub trait Renderer {
 
         window::WindowBuilder::new()
             .with_title("niinii")
-            // .with_inner_size(glutin::dpi::LogicalSize::new(768, 768))
             .with_transparent(true)
-            // .with_drag_and_drop(false)
             .with_maximized(maximized)
             .with_decorations(decorations)
-            // .with_always_on_top(on_top) // can't set this here?
+            // .with_window_level(if on_top {
+            //     WindowLevel::AlwaysOnTop
+            // } else {
+            //     WindowLevel::Normal
+            // })
             .with_fullscreen(fullscreen)
     }
 

@@ -2,7 +2,7 @@ use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    chat::{Function, Message, Model},
+    chat::{Message, Model},
     Response,
 };
 
@@ -23,7 +23,6 @@ pub struct ThreadId(pub(crate) String);
 pub enum Tool {
     CodeInterpreter,
     Retrieval,
-    Function { function: Function },
 }
 
 #[derive(Debug, Clone, Deserialize)]

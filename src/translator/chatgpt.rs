@@ -78,7 +78,7 @@ impl Translate for ChatGptTranslator {
             );
             chat.enforce_context_limit(chatgpt.max_context_tokens);
 
-            let chat_request = chat::Request {
+            chat::Request {
                 model: chatgpt.model,
                 messages: chat.prompt(),
                 temperature: chatgpt.temperature,
@@ -86,8 +86,7 @@ impl Translate for ChatGptTranslator {
                 max_tokens: chatgpt.max_tokens,
                 presence_penalty: chatgpt.presence_penalty,
                 ..Default::default()
-            };
-            chat_request
+            }
         };
 
         let stream = self.client.stream(chat_request).await;

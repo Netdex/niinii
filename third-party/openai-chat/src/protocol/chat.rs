@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use strum_macros::{EnumIter, IntoStaticStr};
 use thiserror::Error;
 use tiktoken_rs::cl100k_base_singleton;
@@ -59,29 +58,6 @@ pub enum Role {
     Function,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum FunctionUsage {
-    None,
-    Auto,
-    Name(String),
-}
-
-#[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Function {
-    name: String,
-    description: Option<String>,
-    #[serde(skip_serializing_if = "Value::is_null")]
-    parameters: Value,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct FunctionCall {
-    name: String,
-    arguments: Value,
-}
-
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -89,7 +65,6 @@ pub struct Message {
     pub role: Role,
     pub content: Option<String>,
     pub name: Option<String>,
-    pub function_call: Option<FunctionCall>,
 }
 impl Message {
     pub fn estimate_tokens(&self) -> u32 {
@@ -110,7 +85,6 @@ impl Default for Message {
             role: Role::User,
             content: Default::default(),
             name: None,
-            function_call: None,
         }
     }
 }
@@ -120,9 +94,6 @@ impl Default for Message {
 pub struct Request {
     pub model: Model,
     pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub functions: Vec<Function>,
-    pub function_call: Option<FunctionUsage>,
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub n: Option<u32>,

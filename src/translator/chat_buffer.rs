@@ -18,6 +18,11 @@ pub struct ChatBuffer {
     response: VecDeque<Message>,
     usage: Option<Usage>,
 }
+impl Default for ChatBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl ChatBuffer {
     pub fn new() -> Self {
         ChatBuffer {

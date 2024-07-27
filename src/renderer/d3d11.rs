@@ -26,12 +26,11 @@ use winapi::{
     },
     Interface as _,
 };
-use winit::platform::pump_events::PumpStatus;
+use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
 use winit::window::WindowLevel;
 use winit::{
     event::{DeviceId, Event, WindowEvent},
     event_loop::EventLoop,
-    platform::pump_events::EventLoopExtPumpEvents,
 };
 use wio::com::ComPtr;
 
@@ -158,9 +157,8 @@ impl Renderer for D3D11Renderer {
         let mut last_frame = Instant::now();
         let mut event_loop = self.shared.event_loop.replace(None).unwrap();
 
-        loop {
-            let timeout = None;
-            let status = event_loop.pump_events(timeout, |event, window_target| {
+        event_loop
+            .run_on_demand(|event, window_target| {
                 let Inner {
                     window,
                     platform,
@@ -233,11 +231,8 @@ impl Renderer for D3D11Renderer {
                         platform.handle_event(imgui.io_mut(), window, &event);
                     }
                 }
-            });
-            if let PumpStatus::Exit(_) = status {
-                break;
-            }
-        }
+            })
+            .unwrap();
     }
 }
 impl D3D11Renderer {

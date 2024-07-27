@@ -1,5 +1,5 @@
 #![cfg(windows)]
-#![allow(clippy::drop_copy)] // we use it for discarding defer closures, makes it look nicer as a one liner
+#![allow(dropping_copy_types)] // we use it for discarding defer closures, makes it look nicer as a one liner
 // #![no_std]
 //! This crate offers a DirectX 11 renderer for the [imgui-rs](https://docs.rs/imgui/*/imgui/) rust bindings.
 

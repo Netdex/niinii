@@ -103,11 +103,13 @@ impl<'a> TermView<'a> {
                         ui,
                         ctx,
                         &text,
-                        kanji.is_some(),
-                        false,
-                        false,
-                        UnderlineMode::None,
                         RubyTextMode::None,
+                        KanjiStyle {
+                            highlight: kanji.is_some(),
+                            stroke: false,
+                            preview: false,
+                            underline: UnderlineMode::None,
+                        },
                     );
                 }
 

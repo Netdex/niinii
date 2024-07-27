@@ -29,16 +29,20 @@ pub enum RubyTextMode<'a> {
     None,
 }
 
+pub struct StrokeStyle {
+    thick: f32,
+    fore: StyleColor,
+    back: StyleColor,
+}
 pub fn stroke_token_with_offsets(
     ui: &Ui,
     draw_list: &DrawListMut,
     text: &str,
     pos: [f32; 2],
-    thick: f32,
-    fore: StyleColor,
-    back: StyleColor,
     offsets: &[[f32; 2]],
+    style: StrokeStyle,
 ) {
+    let StrokeStyle { thick, fore, back } = style;
     for off in offsets {
         draw_list.add_text(
             [pos[0] + off[0] * thick, pos[1] + off[1] * thick],
@@ -54,9 +58,7 @@ pub fn stroke_token_with_color(
     draw_list: &DrawListMut,
     text: &str,
     pos: [f32; 2],
-    thick: f32,
-    fore: StyleColor,
-    back: StyleColor,
+    style: StrokeStyle,
 ) {
     let offsets = [
         [-1.0, -1.0],
@@ -68,7 +70,7 @@ pub fn stroke_token_with_color(
         [0.0, -1.0],
         [0.0, 1.0],
     ];
-    stroke_token_with_offsets(ui, draw_list, text, pos, thick, fore, back, &offsets);
+    stroke_token_with_offsets(ui, draw_list, text, pos, &offsets, style);
 }
 
 pub fn stroke_text_with_highlight(
@@ -95,9 +97,11 @@ pub fn stroke_text_with_highlight(
             draw_list,
             token,
             ui.cursor_screen_pos(),
-            thick,
-            StyleColor::Text,
-            StyleColor::TitleBg,
+            StrokeStyle {
+                thick,
+                fore: StyleColor::Text,
+                back: StyleColor::TitleBg,
+            },
         );
         ui.dummy(sz)
     }
@@ -107,16 +111,25 @@ pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, thick: f32) {
     stroke_text_with_highlight(ui, draw_list, text, thick, None)
 }
 
+pub struct KanjiStyle {
+    pub highlight: bool,
+    pub stroke: bool,
+    pub preview: bool,
+    pub underline: UnderlineMode,
+}
 pub fn draw_kanji_text(
     ui: &Ui,
     ctx: &Context,
     text: &str,
-    highlight: bool,
-    stroke: bool,
-    preview: bool,
-    underline: UnderlineMode,
     ruby_text: RubyTextMode,
+    style: KanjiStyle,
 ) -> bool {
+    let KanjiStyle {
+        highlight,
+        stroke,
+        preview,
+        underline,
+    } = style;
     let ruby_sz = match ruby_text {
         RubyTextMode::Text(text) => ui.calc_text_size(text),
         RubyTextMode::Pad => [0.0, ui.text_line_height()],
@@ -148,9 +161,11 @@ pub fn draw_kanji_text(
                 &draw_list,
                 text,
                 pos,
-                thick,
-                StyleColor::Text,
-                StyleColor::TitleBg,
+                StrokeStyle {
+                    thick,
+                    fore: StyleColor::Text,
+                    back: StyleColor::TitleBg,
+                },
             );
         } else {
             draw_list.add_text(pos, ui.style_color(StyleColor::Text), text);
@@ -200,10 +215,12 @@ pub fn draw_kanji_text(
             &draw_list,
             text,
             [cx, y],
-            2.0,
-            StyleColor::TextDisabled,
-            StyleColor::MenuBarBg,
             &[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            StrokeStyle {
+                thick: 2.0,
+                fore: StyleColor::TextDisabled,
+                back: StyleColor::MenuBarBg,
+            },
         )
     } else {
         maybe_stroke_text(text, [cx, y], 1.5);
