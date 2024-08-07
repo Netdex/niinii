@@ -1,6 +1,8 @@
+use core::slice;
 use std::{
     collections::{HashMap, HashSet},
     io::Read,
+    mem::size_of,
 };
 
 use bitflags::bitflags;
@@ -93,12 +95,6 @@ impl Context {
     fn has_font_glyph(&self, code: u32) -> bool {
         self.added_font_glyphs.contains(&code)
     }
-    unsafe fn get_font_glyph_ranges(&mut self) -> &'static mut [u32] {
-        let font_glyph_ranges = &mut self.font_glyph_ranges[0..self.font_glyph_range_size + 1];
-        // /!\ DANGER /!\
-        // Env will always outlive the ImGui Context, so this is safe.
-        std::mem::transmute(font_glyph_ranges)
-    }
     fn add_font(&mut self, style: TextStyle, font_id: FontId) {
         self.fonts.insert(style, font_id);
     }
@@ -115,9 +111,18 @@ impl Context {
         imgui.fonts().clear();
         imgui.io_mut().font_global_scale = (1.0 / scaling_factor) as f32;
 
+        let glyph_ranges = unsafe {
+            let glyph_ranges = &mut self.font_glyph_ranges[0..self.font_glyph_range_size + 1];
+            // can't safely pass a reference so make a copy and leak it
+            let ptr = sys::igMemAlloc(glyph_ranges.len() * size_of::<u32>()) as *mut u32;
+            assert!(!ptr.is_null());
+            std::ptr::copy_nonoverlapping(glyph_ranges.as_ptr(), ptr, glyph_ranges.len());
+            slice::from_raw_parts(ptr.cast(), glyph_ranges.len())
+        };
+
         let ext_font_config = [FontConfig {
             rasterizer_multiply: if hidpi_factor < 1.0 { 1.0 } else { 1.75 },
-            glyph_ranges: FontGlyphRanges::from_slice(unsafe { self.get_font_glyph_ranges() }),
+            glyph_ranges: FontGlyphRanges::from_slice(glyph_ranges),
             oversample_h: if hidpi_factor < 1.0 { 3 } else { 2 },
             oversample_v: if hidpi_factor < 1.0 { 2 } else { 1 },
             ..Default::default()

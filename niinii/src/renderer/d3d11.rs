@@ -78,9 +78,31 @@ pub struct D3D11Renderer {
 impl D3D11Renderer {
     pub fn new(settings: &Settings) -> Self {
         let event_loop = EventLoop::new().unwrap();
-        let window = Self::create_window_builder(settings)
+
+        // let on_top = settings.on_top || settings.overlay_mode;
+        let maximized = settings.overlay_mode;
+        let decorations = !settings.overlay_mode;
+        let fullscreen = if settings.overlay_mode {
+            Some(winit::window::Fullscreen::Borderless(None))
+        } else {
+            None
+        };
+
+        let window = winit::window::WindowBuilder::new()
+            .with_title("niinii")
+            .with_transparent(true)
+            .with_maximized(maximized)
+            .with_decorations(decorations)
+            // we set this later, or else we segfault ¯\_(ツ)_/¯
+            // .with_window_level(if on_top {
+            //     WindowLevel::AlwaysOnTop
+            // } else {
+            //     WindowLevel::Normal
+            // })
+            .with_fullscreen(fullscreen)
             .build(&event_loop)
             .unwrap();
+
         if settings.overlay_mode {
             window.set_cursor_hittest(false).unwrap();
         }
@@ -152,7 +174,7 @@ impl D3D11Renderer {
     }
 }
 impl Renderer for D3D11Renderer {
-    fn main_loop(&mut self, app: &mut App) {
+    fn run(&mut self, app: &mut App) {
         let clear_color = [0.00, 0.00, 0.00, 0.00];
         let mut last_frame = Instant::now();
         let mut event_loop = self.shared.event_loop.replace(None).unwrap();

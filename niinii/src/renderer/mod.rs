@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use imgui_winit_support::WinitPlatform;
-use winit::window::{self, WindowLevel};
 
 use crate::support::clipboard;
 use crate::{app::App, settings::Settings};
@@ -13,33 +12,7 @@ pub mod glow_viewports;
 mod ranges;
 
 pub trait Renderer {
-    fn main_loop(&mut self, _app: &mut App) {}
-
-    fn create_window_builder(settings: &Settings) -> window::WindowBuilder
-    where
-        Self: Sized,
-    {
-        // let on_top = settings.on_top || settings.overlay_mode;
-        let maximized = settings.overlay_mode;
-        let decorations = !settings.overlay_mode;
-        let fullscreen = if settings.overlay_mode {
-            Some(window::Fullscreen::Borderless(None))
-        } else {
-            None
-        };
-
-        window::WindowBuilder::new()
-            .with_title("niinii")
-            .with_transparent(true)
-            .with_maximized(maximized)
-            .with_decorations(decorations)
-            // .with_window_level(if on_top {
-            //     WindowLevel::AlwaysOnTop
-            // } else {
-            //     WindowLevel::Normal
-            // })
-            .with_fullscreen(fullscreen)
-    }
+    fn run(&mut self, _app: &mut App) {}
 
     fn configure_imgui(imgui: &mut imgui::Context, settings: &Settings)
     where

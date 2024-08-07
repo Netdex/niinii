@@ -51,7 +51,7 @@ fn main() -> std::io::Result<()> {
         RendererType::Direct3D11 => Box::new(D3D11Renderer::new(app.settings())),
     };
 
-    renderer.main_loop(&mut app);
+    renderer.run(&mut app);
 
     app.settings().write_to_file()?;
 

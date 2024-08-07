@@ -13,14 +13,14 @@ use glutin::{
     surface::{GlSurface, SurfaceAttributesBuilder, SwapInterval, WindowSurface},
 };
 use glutin_winit::DisplayBuilder;
-use imgui::ConfigFlags;
+use imgui::{ConfigFlags, ViewportFlags};
 use imgui_winit_glow_renderer_viewports::Renderer as GlowViewportsRenderer;
 use raw_window_handle::HasRawWindowHandle;
 use winit::{
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
-    platform::run_on_demand::EventLoopExtRunOnDemand,
-    window::Window,
+    platform::{run_on_demand::EventLoopExtRunOnDemand, windows::WindowBuilderExtWindows},
+    window::{Window, WindowBuilder, WindowLevel},
 };
 
 use crate::{app::App, settings::Settings};
@@ -88,7 +88,6 @@ impl GlowRenderer {
         };
 
         let context = context.make_current(&surface).unwrap();
-        // enable vsync
         surface
             .set_swap_interval(&context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
             .unwrap();
@@ -100,7 +99,25 @@ impl GlowRenderer {
             })
         };
 
-        let renderer = GlowViewportsRenderer::new(&mut imgui, &window, &glow).unwrap();
+        let on_top = settings.on_top;
+        let renderer = GlowViewportsRenderer::new(
+            &mut imgui,
+            &window,
+            &glow,
+            Some(Box::new(move |viewport: &imgui::Viewport| {
+                WindowBuilder::new()
+                    .with_resizable(true)
+                    .with_transparent(true)
+                    .with_skip_taskbar(viewport.flags.contains(ViewportFlags::NO_TASK_BAR_ICON))
+                    .with_decorations(!viewport.flags.contains(ViewportFlags::NO_DECORATION))
+                    .with_window_level(if on_top {
+                        WindowLevel::AlwaysOnTop
+                    } else {
+                        WindowLevel::Normal
+                    })
+            })),
+        )
+        .unwrap();
 
         Self {
             event_loop,
@@ -115,13 +132,12 @@ impl GlowRenderer {
     }
 }
 impl Renderer for GlowRenderer {
-    fn main_loop(&mut self, app: &mut App) {
+    fn run(&mut self, app: &mut App) {
         use winit::event::Event;
 
         let GlowRenderer {
             event_loop,
             window,
-            // platform,
             imgui,
             ctx,
             renderer,

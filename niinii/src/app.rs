@@ -305,22 +305,17 @@ impl App {
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
-        ui.dockspace_over_viewport();
+        if self.settings().overlay_mode
+            && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
+        {
+            ui.dockspace_over_viewport();
+        };
 
         let niinii = ui
             .window("niinii")
             .opened(run)
             .menu_bar(true)
             .draw_background(!self.settings().transparent);
-        // if !self.settings().overlay_mode
-        //     && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
-        // {
-        //     niinii = niinii
-        //         .position([0.0, 0.0], Condition::Always)
-        //         .size(io.display_size, Condition::Always)
-        //         .bring_to_front_on_focus(false)
-        //         .no_decoration()
-        // };
         niinii.build(|| {
             self.show_menu(ctx, ui);
             self.show_error_modal(ctx, ui);
