@@ -55,17 +55,20 @@ impl ChatBuffer {
     pub fn append_partial_response(&mut self, partial: &PartialMessage) {
         assert_eq!(self.state, State::AcceptResponse);
 
-        if let Some(role) = &partial.role {
+        if let Some(last) = self.response.back_mut() {
+            if let Some(content) = &mut last.content {
+                content.push_str(&partial.content)
+            }
+        } else {
             let message = Message {
-                role: role.clone(),
+                // I would use the role from the response instead of hardcoding
+                // 'Assistant' here, but llama.cpp doesn't put a role in the
+                // response unlike OpenAI.
+                role: Role::Assistant,
                 content: Some(partial.content.clone()),
                 ..Default::default()
             };
             self.response.push_back(message)
-        } else if let Some(last) = self.response.back_mut() {
-            if let Some(content) = &mut last.content {
-                content.push_str(&partial.content)
-            }
         }
     }
 

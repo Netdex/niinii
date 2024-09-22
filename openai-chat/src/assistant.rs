@@ -112,7 +112,7 @@ impl<B: BackoffBuilder> Client<B> {
             .shared
             .request_with_body(
                 Method::POST,
-                "https://api.openai.com/v1/assistants",
+                self.shared.api_endpoint.join("/v1/assistants").unwrap(),
                 &request,
             )
             .await?

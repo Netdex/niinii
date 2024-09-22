@@ -32,6 +32,7 @@ pub struct Client<B> {
 }
 struct Shared<B> {
     client: reqwest::Client,
+    api_endpoint: reqwest::Url,
     token: String,
     connection_policy: ConnectionPolicy<B>,
 }
@@ -54,7 +55,11 @@ impl<B: Default> Default for ConnectionPolicy<B> {
 }
 
 impl<B: BackoffBuilder> Client<B> {
-    pub fn new(token: impl Into<String>, connection_policy: ConnectionPolicy<B>) -> Self {
+    pub fn new(
+        token: impl Into<String>,
+        api_endpoint: impl reqwest::IntoUrl,
+        connection_policy: ConnectionPolicy<B>,
+    ) -> Self {
         Self {
             shared: Arc::new(Shared {
                 client: reqwest::Client::builder()
@@ -62,6 +67,7 @@ impl<B: BackoffBuilder> Client<B> {
                     .connect_timeout(connection_policy.connect_timeout)
                     .build()
                     .unwrap(),
+                api_endpoint: api_endpoint.into_url().unwrap(),
                 token: token.into(),
                 connection_policy,
             }),
@@ -96,6 +102,7 @@ impl<B: BackoffBuilder> Shared<B> {
             token,
             client,
             connection_policy,
+            ..
         } = self;
         let uri = uri.into_url()?;
         let request_builder = || async {

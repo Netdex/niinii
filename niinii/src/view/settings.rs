@@ -60,8 +60,10 @@ impl<'a> SettingsView<'a> {
             ui.input_text("DeepL API key", &mut settings.deepl_api_key)
                 .password(true)
                 .build();
-            ui.input_text("OpenAI API key", &mut settings.openai_api_key)
+            ui.input_text("OpenAI API key*", &mut settings.openai_api_key)
                 .password(true)
+                .build();
+            ui.input_text("OpenAI API endpoint*", &mut settings.chatgpt.api_endpoint)
                 .build();
             ui.slider_config("OpenAI connection timeout (ms)*", 100, 10000)
                 .build(&mut settings.chatgpt.connection_timeout);

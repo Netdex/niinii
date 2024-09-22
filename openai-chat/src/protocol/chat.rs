@@ -38,8 +38,8 @@ pub enum Model {
 impl Model {
     /// https://openai.com/pricing
     pub fn cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-        let input = input_tokens as f64 / 1000.0;
-        let output = output_tokens as f64 / 1000.0;
+        let input = input_tokens as f64;
+        let output = output_tokens as f64;
         match self {
             Model::Gpt35Turbo | Model::Gpt35Turbo0125 => input * 0.50e-6 + output * 1.50e-6,
             Model::Gpt4o | Model::Gpt4o20240513 => input * 5.00e-6 + output * 15.00e-6,

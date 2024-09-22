@@ -26,6 +26,7 @@ impl ChatGptTranslator {
         Self {
             client: Client::new(
                 &settings.openai_api_key,
+                &settings.chatgpt.api_endpoint,
                 ConnectionPolicy {
                     backoff: Default::default(),
                     timeout: Duration::from_millis(settings.chatgpt.timeout),
@@ -112,8 +113,13 @@ impl Translate for ChatGptTranslator {
                             chat.append_partial_response(message)
                         },
                         // TODO: need to pipe this error to the event loop somehow
-                        Some(Err(err)) => tracing::error!(%err, "stream"),
-                        _ => {
+                        Some(Err(err)) => {
+                            tracing::error!(%err, "stream");
+                            let mut chat = chat.lock().await;
+                            chat.cancel_exchange();
+                            break
+                        },
+                        None => {
                             let mut chat = chat.lock().await;
                             chat.end_exchange();
                             break

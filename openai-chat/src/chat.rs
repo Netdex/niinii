@@ -74,7 +74,10 @@ impl<B: BackoffBuilder> Client<B> {
             .shared
             .request_with_body(
                 Method::POST,
-                "https://api.openai.com/v1/chat/completions",
+                self.shared
+                    .api_endpoint
+                    .join("/v1/chat/completions")
+                    .unwrap(),
                 &request,
             )
             .await?
@@ -96,7 +99,10 @@ impl<B: BackoffBuilder> Client<B> {
             .shared
             .request_with_body(
                 Method::POST,
-                "https://api.openai.com/v1/chat/completions",
+                self.shared
+                    .api_endpoint
+                    .join("/v1/chat/completions")
+                    .unwrap(),
                 &request,
             )
             .await?
@@ -146,6 +152,7 @@ mod tests {
             ..Default::default()
         };
         let response = client.chat(request).await.unwrap();
+        println!("{:#?}", response);
         let content = &response
             .choices
             .first()
@@ -169,9 +176,9 @@ mod tests {
             }],
             ..Default::default()
         };
-        let mut response = client.stream(request).await.unwrap();
-        while let Some(msg) = response.next().await {
-            msg.unwrap();
+        let mut stream = client.stream(request).await.unwrap();
+        while let Some(msg) = stream.next().await {
+            println!("{:?}", msg);
         }
     }
 }

@@ -26,6 +26,7 @@ pub enum TranslatorType {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ChatGptSettings {
+    pub api_endpoint: String,
     pub model: Model,
     pub system_prompt: String,
     pub max_context_tokens: u32,
@@ -40,6 +41,7 @@ pub struct ChatGptSettings {
 impl Default for ChatGptSettings {
     fn default() -> Self {
         Self {
+            api_endpoint: "https://api.openai.com".into(),
             model: Default::default(),
             system_prompt: "You will translate the following visual novel script into English."
                 .into(),
