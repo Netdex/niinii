@@ -32,7 +32,7 @@ pub struct Client<B> {
 }
 struct Shared<B> {
     client: reqwest::Client,
-    api_endpoint: reqwest::Url,
+    api_base: reqwest::Url,
     token: String,
     connection_policy: ConnectionPolicy<B>,
 }
@@ -67,7 +67,7 @@ impl<B: BackoffBuilder> Client<B> {
                     .connect_timeout(connection_policy.connect_timeout)
                     .build()
                     .unwrap(),
-                api_endpoint: api_endpoint.into_url().unwrap(),
+                api_base: api_endpoint.into_url().unwrap(),
                 token: token.into(),
                 connection_policy,
             }),
@@ -79,23 +79,23 @@ impl<B: BackoffBuilder> Shared<B> {
     async fn request_with_body(
         &self,
         method: reqwest::Method,
-        uri: impl reqwest::IntoUrl,
+        path: impl AsRef<str>,
         request: &impl serde::Serialize,
     ) -> reqwest::Result<reqwest::Response> {
-        self.request(method, uri, Some(request)).await
+        self.request(method, path, Some(request)).await
     }
     async fn request_without_body(
         &self,
         method: reqwest::Method,
-        uri: impl reqwest::IntoUrl,
+        path: impl AsRef<str>,
     ) -> reqwest::Result<reqwest::Response> {
-        self.request(method, uri, None::<&()>).await // disgusting
+        self.request(method, path, None::<&()>).await
     }
 
     async fn request(
         &self,
         method: reqwest::Method,
-        uri: impl reqwest::IntoUrl,
+        path: impl AsRef<str>,
         request: Option<&impl serde::Serialize>,
     ) -> reqwest::Result<reqwest::Response> {
         let Shared {
@@ -104,7 +104,7 @@ impl<B: BackoffBuilder> Shared<B> {
             connection_policy,
             ..
         } = self;
-        let uri = uri.into_url()?;
+        let uri = self.api_base.join(path.as_ref()).unwrap();
         let request_builder = || async {
             let method = method.clone();
             let uri = uri.clone();

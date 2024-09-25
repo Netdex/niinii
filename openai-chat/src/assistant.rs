@@ -110,11 +110,7 @@ impl<B: BackoffBuilder> Client<B> {
         tracing::trace!(?request);
         let response: CreateAssistantResponse = self
             .shared
-            .request_with_body(
-                Method::POST,
-                self.shared.api_endpoint.join("/v1/assistants").unwrap(),
-                &request,
-            )
+            .request_with_body(Method::POST, "/v1/assistants", &request)
             .await?
             .json()
             .await?;

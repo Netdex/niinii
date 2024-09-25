@@ -64,7 +64,6 @@ impl Translate for ChatGptTranslator {
         let permit = self.semaphore.clone().acquire_owned().await.unwrap();
         let chat_request = {
             let mut chat = self.chat.lock().await;
-            // TODO: experiment with summarizing context
             chat.begin_exchange(
                 Message {
                     role: chat::Role::System,
@@ -103,6 +102,8 @@ impl Translate for ChatGptTranslator {
         let token = CancellationToken::new();
         let chat = &self.chat;
         tokio::spawn(enclose! { (chat, token) async move {
+            // Hold permit: We are not allowed to begin another translation
+            // request until this one is complete.
             let _permit = permit;
             loop {
                 tokio::select! {
@@ -112,7 +113,6 @@ impl Translate for ChatGptTranslator {
                             let message = &completion.choices.first().unwrap().delta;
                             chat.append_partial_response(message)
                         },
-                        // TODO: need to pipe this error to the event loop somehow
                         Some(Err(err)) => {
                             tracing::error!(%err, "stream");
                             let mut chat = chat.lock().await;

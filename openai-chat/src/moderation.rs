@@ -10,11 +10,7 @@ impl<B: BackoffBuilder> Client<B> {
         tracing::trace!(?request);
         let mut response: Response = self
             .shared
-            .request_with_body(
-                Method::POST,
-                "https://api.openai.com/v1/moderations",
-                request,
-            )
+            .request_with_body(Method::POST, "/v1/moderations", request)
             .await?
             .json()
             .await?;

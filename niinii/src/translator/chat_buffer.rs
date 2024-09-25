@@ -2,8 +2,6 @@ use std::collections::VecDeque;
 
 use openai_chat::chat::{Message, PartialMessage, Role, Usage};
 
-/// TODO: this code sucks ass, use the Assistants API instead
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum State {
     AcceptPrompt,
@@ -36,6 +34,9 @@ impl ChatBuffer {
 
     pub fn begin_exchange(&mut self, system: Message, request: Message) {
         assert_eq!(self.state, State::AcceptPrompt);
+        // TODO: This would be better if it returned a transaction which we
+        // operate upon and requires finalization, so we don't have to cancel
+        // a transaction in progress.
 
         self.system = Some(system);
         self.context.extend(self.response.drain(..));

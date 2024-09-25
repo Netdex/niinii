@@ -72,14 +72,7 @@ impl<B: BackoffBuilder> Client<B> {
         tracing::trace!(?request);
         let response: chat::ChatResponse = self
             .shared
-            .request_with_body(
-                Method::POST,
-                self.shared
-                    .api_endpoint
-                    .join("/v1/chat/completions")
-                    .unwrap(),
-                &request,
-            )
+            .request_with_body(Method::POST, "/v1/chat/completions", &request)
             .await?
             .json()
             .await?;
@@ -97,14 +90,7 @@ impl<B: BackoffBuilder> Client<B> {
         tracing::trace!(?request);
         let stream = self
             .shared
-            .request_with_body(
-                Method::POST,
-                self.shared
-                    .api_endpoint
-                    .join("/v1/chat/completions")
-                    .unwrap(),
-                &request,
-            )
+            .request_with_body(Method::POST, "/v1/chat/completions", &request)
             .await?
             .bytes_stream()
             .eventsource();
