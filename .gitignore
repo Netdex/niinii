@@ -1,5 +1,5 @@
 # niinii runtime files
-/compat
+/data
 imgui.ini
 niinii.toml
 

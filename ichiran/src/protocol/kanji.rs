@@ -140,9 +140,8 @@ mod tests {
     use crate::tests::fixture;
 
     #[tokio::test]
-    #[ignore]
     async fn test_match() {
-        let (ichiran, _pg) = fixture::ichiran().await;
+        let ichiran = fixture::ichiran().await;
 
         let a = ichiran.kanji(&['来']).await.unwrap();
         let a = a.get(&'来').unwrap();

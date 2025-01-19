@@ -8,7 +8,6 @@ use std::{sync::Arc, time::Duration};
 use backon::{BackoffBuilder, Retryable};
 use thiserror::Error;
 
-pub mod assistant;
 pub mod chat;
 pub mod moderation;
 
@@ -54,7 +53,7 @@ impl<B: Default> Default for ConnectionPolicy<B> {
     }
 }
 
-impl<B: BackoffBuilder> Client<B> {
+impl<B: BackoffBuilder + Clone> Client<B> {
     pub fn new(
         token: impl Into<String>,
         api_endpoint: impl reqwest::IntoUrl,
@@ -75,7 +74,7 @@ impl<B: BackoffBuilder> Client<B> {
     }
 }
 
-impl<B: BackoffBuilder> Shared<B> {
+impl<B: BackoffBuilder + Clone> Shared<B> {
     async fn request_with_body(
         &self,
         method: reqwest::Method,
@@ -120,7 +119,7 @@ impl<B: BackoffBuilder> Shared<B> {
             .await
         };
         request_builder
-            .retry(&connection_policy.backoff)
+            .retry(connection_policy.backoff.clone())
             .notify(|err: &reqwest::Error, dur: Duration| {
                 tracing::error!(%err, retry=?dur, "request");
             })

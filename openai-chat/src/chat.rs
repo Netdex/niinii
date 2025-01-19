@@ -65,7 +65,7 @@ impl From<Request> for chat::Request {
     }
 }
 
-impl<B: BackoffBuilder> Client<B> {
+impl<B: BackoffBuilder + Clone> Client<B> {
     pub async fn chat(&self, request: Request) -> Result<chat::Completion, Error> {
         let request: chat::Request = request.into();
 

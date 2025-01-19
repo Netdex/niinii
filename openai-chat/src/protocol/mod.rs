@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use thiserror::Error;
 
-pub mod assistant;
 pub mod chat;
 pub mod moderation;
 

@@ -82,11 +82,7 @@ impl Drop for PostgresDaemon {
                     match pgctl_proc {
                         Ok(mut pgctl_proc) => {
                             let fut = pgctl_proc.wait();
-                            // there might not be a live executor at this point
-                            let _ = match tokio::runtime::Handle::try_current() {
-                                Ok(handle) => handle.block_on(fut),
-                                Err(_) => futures::executor::block_on(fut),
-                            };
+                            futures::executor::block_on(fut).unwrap();
                             tracing::info!("stopped");
                         }
                         Err(err) => {

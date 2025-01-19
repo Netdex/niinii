@@ -5,7 +5,7 @@ pub use crate::protocol::moderation::{Category, Moderation, Request, Response};
 
 use crate::{Client, Error};
 
-impl<B: BackoffBuilder> Client<B> {
+impl<B: BackoffBuilder + Clone> Client<B> {
     pub async fn moderation(&self, request: &Request) -> Result<Moderation, Error> {
         tracing::trace!(?request);
         let mut response: Response = self

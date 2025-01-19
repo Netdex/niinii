@@ -2,10 +2,9 @@
 Rust wrapper around ichiran-cli.
 
 ## Testing
-Unit tests assume a fixed location for ichiran-cli and postgres relative to the
-project root. 
+Unit tests assume a fixed location for ichiran-cli relative to the
+project root. The postgresql daemon must be running.
 
-Tests must not be run in parallel since they share a database.
 ```
-cargo test -- --test-threads 1
+cargo test
 ```

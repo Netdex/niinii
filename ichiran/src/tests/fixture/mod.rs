@@ -1,17 +1,10 @@
 use std::path::PathBuf;
 
-use crate::{pgdaemon::PostgresDaemon, Ichiran};
+use crate::Ichiran;
 
-pub async fn ichiran() -> (Ichiran, PostgresDaemon) {
+pub async fn ichiran() -> Ichiran {
     let ichiran_path =
-        PathBuf::from("../../compat/ichiran-cli").with_extension(std::env::consts::EXE_EXTENSION);
+        PathBuf::from("../data/ichiran-cli").with_extension(std::env::consts::EXE_EXTENSION);
     let ichiran = Ichiran::new(ichiran_path);
-    let conn_params = ichiran.conn_params().await.unwrap();
-    let pgdaemon = PostgresDaemon::new(
-        "../../compat/pgsql/bin",
-        "../../compat/pgsql/data",
-        conn_params,
-        true,
-    );
-    (ichiran, pgdaemon)
+    ichiran
 }

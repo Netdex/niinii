@@ -233,6 +233,7 @@ pub struct Gloss {
     pos: String,
     gloss: String,
     info: Option<String>,
+    field: Option<String>,
 }
 impl Gloss {
     /// Get part-of-speech info.
@@ -389,14 +390,14 @@ mod tests {
             pos: "[n,n-adv,prt]".to_owned(),
             gloss: "".to_owned(),
             info: None,
+            field: None,
         };
         assert_eq!(gloss.pos_split(), vec!["n", "n-adv", "prt"]);
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_match() {
-        let (ichiran, _pg) = fixture::ichiran().await;
+        let ichiran = fixture::ichiran().await;
         let nikaime = ichiran.romanize("2回目", 1).await.unwrap();
         let nikaime_gold = Root(vec![Segment::Clauses(vec![Clause(
             vec![Romanized(
@@ -413,6 +414,7 @@ mod tests {
                         pos: "[ctr]".into(),
                         gloss: "counter for occurrences".into(),
                         info: None,
+                        field: None,
                     }],
                     conj: vec![],
                     counter: Some(Counter {
@@ -429,9 +431,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
-    async fn test_deserialize() {
-        let (ichiran, _pg) = fixture::ichiran().await;
+    async fn test_romanize() {
+        let ichiran = fixture::ichiran().await;
         let _furaseteiru = ichiran.romanize("降らせている", 1).await.unwrap();
         let _naidesho = ichiran.romanize("ないでしょ", 1).await.unwrap();
     }
