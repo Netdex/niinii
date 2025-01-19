@@ -112,7 +112,10 @@ impl<B: BackoffBuilder + Clone> Client<B> {
                     Some(response)
                 }
             }
-            Err(err) => Some(Err(err.into())),
+            Err(err) => {
+                tracing::error!(?err);
+                Some(Err(err.into()))
+            }
         }))
     }
 }

@@ -112,6 +112,8 @@ impl App {
 
                 if self.settings.auto_translate {
                     self.request_translation(ui, text.clone());
+                } else {
+                    self.gloss.set_translation(None);
                 }
 
                 let Self {
@@ -129,8 +131,6 @@ impl App {
     }
 
     fn request_translation(&mut self, ui: &Ui, text: impl Into<String>) {
-        self.transition(ui, State::Processing);
-
         let Self {
             translator,
             settings,

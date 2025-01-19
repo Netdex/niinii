@@ -11,7 +11,20 @@ use libniinii::{
 };
 use tracing_subscriber::fmt::format::FmtSpan;
 
+#[cfg(windows)]
+fn enable_ansi_support() {
+    let win32_ansi = nu_ansi_term::enable_ansi_support();
+    match win32_ansi {
+        Err(err) => {
+            eprintln!("Failed to enable Windows ANSI support: {:?}", err);
+        }
+        _ => {}
+    }
+}
 fn main() -> std::io::Result<()> {
+    #[cfg(windows)]
+    enable_ansi_support();
+
     let with_ansi = std::env::var("RUST_LOG_STYLE")
         .map(|val| val != "never")
         .unwrap_or(true);

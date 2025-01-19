@@ -29,5 +29,5 @@ resolver = "2"
 opt-level = 3
 [profile.dev.package.miniz_oxide]
 opt-level = 3
-[profile.dev.package.adler]
+[profile.dev.package.adler2]
 opt-level = 3

@@ -231,7 +231,9 @@ impl ViewTranslation for ChatGptTranslation {
                     );
                 }
                 if chat.pending_response() {
-                    if !chat.response().is_empty() {
+                    if chat.response().is_empty() {
+                        ui.same_line();
+                    } else {
                         ui.same_line_with_spacing(0.0, 0.0);
                     }
                     stroke_text_with_highlight(
