@@ -1,9 +1,9 @@
 # niinii
 `This project is a work-in-progress.`
 
-[![image](https://i.imgur.com/9sDcn8v.png)](https://www.youtube.com/watch?v=Z6Aj2BYqklg)
+[![image](https://i.imgur.com/9sDcn8v.png)](https://www.youtube.com/watch?v=Ap2jXEkhURM)
 
-[Demonstration](https://www.youtube.com/watch?v=Z6Aj2BYqklg)
+[Demonstration](https://www.youtube.com/watch?v=Ap2jXEkhURM)
 
 niinii (knee-knee) is a graphical frontend for glossing Japanese text. Useful
 for assisted reading of text for language learning purposes. A primary use case
