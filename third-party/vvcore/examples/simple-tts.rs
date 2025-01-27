@@ -12,7 +12,7 @@ fn main() -> Result<(), vvcore::ResultCode> {
     let wav = vvc.tts_simple(text, speaker)?;
 
     let mut file = std::fs::File::create("audio.wav").unwrap();
-    file.write_all(&wav.as_slice()).unwrap();
+    file.write_all(wav.as_slice()).unwrap();
 
     Ok(())
 }

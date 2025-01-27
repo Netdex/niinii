@@ -9,7 +9,7 @@ use super::mixins::{self, checkbox_option, combo_enum};
 
 pub struct SettingsView<'a>(pub &'a mut Settings);
 
-impl<'a> SettingsView<'a> {
+impl SettingsView<'_> {
     pub fn ui(&mut self, ctx: &mut Context, ui: &Ui) {
         let settings = &mut self.0;
         if CollapsingHeader::new("Ichiran")

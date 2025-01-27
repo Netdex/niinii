@@ -61,8 +61,8 @@ impl PostgresDaemon {
 }
 impl Drop for PostgresDaemon {
     fn drop(&mut self) {
-        match &mut self.pg_proc {
-            Ok(pg_proc) => match pg_proc.try_wait() {
+        if let Ok(pg_proc) = &mut self.pg_proc {
+            match pg_proc.try_wait() {
                 Ok(Some(status)) => tracing::warn!(?status, "exited"),
                 Ok(None) => {
                     tracing::info!(pid = ?pg_proc.id(), "stopping");
@@ -91,8 +91,7 @@ impl Drop for PostgresDaemon {
                     }
                 }
                 Err(err) => tracing::error!(%err, "wait failed"),
-            },
-            Err(_) => (),
+            }
         }
     }
 }

@@ -12,7 +12,7 @@ pub struct TermView<'a> {
     jmdict_data: &'a JmDictData,
     kanji_info: &'a HashMap<char, Kanji>,
     romaji: &'a Romanized,
-    wrap_x: f32,
+    wrap_w: f32,
 }
 impl<'a> TermView<'a> {
     pub fn new(
@@ -25,13 +25,12 @@ impl<'a> TermView<'a> {
             jmdict_data,
             kanji_info,
             romaji,
-            wrap_x: wrap_w,
+            wrap_w,
         }
     }
 
     fn add_pos(&self, _ctx: &mut Context, ui: &Ui, pos: &str) {
         ui.text_colored(ui.style_color(StyleColor::NavHighlight), pos);
-        // ui.text_colored([0., 1., 1., 1.], pos);
         if ui.is_item_hovered() {
             if let Some(kwpos) = self.jmdict_data.kwpos_by_kw.get(pos) {
                 ui.tooltip_text(kwpos.descr.as_str());
@@ -243,7 +242,8 @@ impl<'a> TermView<'a> {
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
-        let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_x);
+        // TODO: figure out ないでしょ layout issue with compound + alternative
+        let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_w);
         self.add_term(
             ctx,
             ui,

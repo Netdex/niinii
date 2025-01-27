@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use imgui::{DrawListMut, StyleColor, Ui};
+use imgui::{DrawListMut, MouseCursor, StyleColor, Ui};
 use strum::IntoEnumIterator;
 
 use crate::renderer::context::{Context, TextStyle};
@@ -339,4 +339,16 @@ pub fn ellipses(ui: &Ui) -> &str {
     let pattern = ["   ", ".  ", ".. ", "..."];
     let i = (now * 5_f64) as usize % pattern.len();
     pattern[i]
+}
+
+pub fn drag_handle(ui: &Ui) {
+    let table_row_bg = ui.style_color(StyleColor::TableRowBg);
+    let _t1 = ui.push_style_color(StyleColor::Button, table_row_bg);
+    let _t2 = ui.push_style_color(StyleColor::ButtonHovered, table_row_bg);
+    let _t3 = ui.push_style_color(StyleColor::ButtonActive, table_row_bg);
+    let _t4 = ui.push_style_color(StyleColor::Text, ui.style_color(StyleColor::TextDisabled));
+    ui.button("\u{250b}\u{250b}");
+    if ui.is_item_hovered() {
+        ui.set_mouse_cursor(Some(MouseCursor::Hand));
+    }
 }

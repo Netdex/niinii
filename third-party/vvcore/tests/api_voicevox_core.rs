@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 use vvcore::AccelerationMode;
 use vvcore::VoicevoxCore;
 

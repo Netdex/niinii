@@ -14,11 +14,8 @@ use tracing_subscriber::fmt::format::FmtSpan;
 #[cfg(windows)]
 fn enable_ansi_support() {
     let win32_ansi = nu_ansi_term::enable_ansi_support();
-    match win32_ansi {
-        Err(err) => {
-            eprintln!("Failed to enable Windows ANSI support: {:?}", err);
-        }
-        _ => {}
+    if let Err(err) = win32_ansi {
+        eprintln!("Failed to enable Windows ANSI support: {:?}", err);
     }
 }
 fn main() -> std::io::Result<()> {

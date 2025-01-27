@@ -83,13 +83,13 @@ impl<B: BackoffBuilder + Clone> Shared<B> {
     ) -> reqwest::Result<reqwest::Response> {
         self.request(method, path, Some(request)).await
     }
-    async fn request_without_body(
-        &self,
-        method: reqwest::Method,
-        path: impl AsRef<str>,
-    ) -> reqwest::Result<reqwest::Response> {
-        self.request(method, path, None::<&()>).await
-    }
+    // async fn request_without_body(
+    //     &self,
+    //     method: reqwest::Method,
+    //     path: impl AsRef<str>,
+    // ) -> reqwest::Result<reqwest::Response> {
+    //     self.request(method, path, None::<&()>).await
+    // }
 
     async fn request(
         &self,

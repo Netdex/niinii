@@ -65,6 +65,7 @@ impl GlossView {
     }
     pub fn set_translation(&mut self, tl: Option<Translation>) {
         self.translation = tl;
+        self.translation_pending = false;
     }
     pub fn translation(&self) -> Option<&Translation> {
         self.translation.as_ref()
@@ -243,7 +244,7 @@ impl GlossView {
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
-        ui.text(""); // hack to align line position
+        ui.text(""); // anchor for line wrapping
         match &self.view {
             Some(View::Interpret { ast: gloss }) => {
                 self.add_root(ctx, ui, settings, &gloss.root);

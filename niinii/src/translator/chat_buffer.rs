@@ -135,6 +135,9 @@ impl ChatBuffer {
     pub fn response(&self) -> &VecDeque<Message> {
         &self.response
     }
+    pub fn response_mut(&mut self) -> &mut VecDeque<Message> {
+        &mut self.response
+    }
     pub fn usage(&self) -> Option<&Usage> {
         self.usage.as_ref()
     }

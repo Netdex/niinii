@@ -52,7 +52,6 @@ pub struct App {
     last_clipboard: String,
     request_gloss_text: Option<String>,
 
-    show_imgui_demo: bool,
     show_settings: bool,
     show_metrics_window: bool,
     show_style_editor: bool,
@@ -80,7 +79,6 @@ impl App {
             input_text: "".into(),
             last_clipboard: "".into(),
             request_gloss_text: None,
-            show_imgui_demo: false,
             show_settings: false,
             show_metrics_window: false,
             show_style_editor: false,
@@ -130,7 +128,7 @@ impl App {
         }
     }
 
-    fn request_translation(&mut self, ui: &Ui, text: impl Into<String>) {
+    fn request_translation(&mut self, _ui: &Ui, text: impl Into<String>) {
         let Self {
             translator,
             settings,
@@ -176,7 +174,6 @@ impl App {
                     if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
                         ctx.add_unknown_glyphs_from_root(&ast.root);
                     }
-                    // let should_translate = self.settings.auto_translate && !ast.empty();
                     let text = ast.original_text.clone();
                     self.gloss.set_ast(ast);
                     if let Some(auto_tts_regex) = &self.settings.auto_tts_regex {
@@ -192,19 +189,13 @@ impl App {
                             }
                         }
                     }
-                    // if should_translate {
-                    //     self.request_translation(ui, &text);
-                    // } else {
                     self.transition(ui, State::Completed);
-                    //     self.gloss.set_translation(None);
-                    // }
-                }
-                Message::Translation(Ok(translation)) => {
-                    self.gloss.set_translation(Some(translation));
-                    // self.transition(ui, State::Completed)
                 }
                 Message::Gloss(Err(err)) => {
                     self.transition(ui, State::Error(err.into()));
+                }
+                Message::Translation(Ok(translation)) => {
+                    self.gloss.set_translation(Some(translation));
                 }
                 Message::Translation(Err(err)) => {
                     self.gloss.set_translation_pending(false);
@@ -260,9 +251,6 @@ impl App {
                 if ui.menu_item("Debugger") {
                     self.show_metrics_window = true;
                 }
-                if ui.menu_item("Demo") {
-                    self.show_imgui_demo = true;
-                }
                 if cfg!(feature = "hook")
                     && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
                     && ui.menu_item("Inject")
@@ -274,10 +262,10 @@ impl App {
             let _disable_state = ui.begin_disabled(matches!(self.state, State::Processing));
             {
                 let mut _disable_tl =
-                    ui.begin_disabled(!self.gloss.ast().map_or(false, |ast| !ast.empty()));
+                    ui.begin_disabled(self.gloss.ast().is_none_or(|ast| ast.empty()));
                 if ui.menu_item("Translate") {
                     if let Some(gloss) = self.gloss.ast() {
-                        self.request_translation(ui, &gloss.original_text.clone());
+                        self.request_translation(ui, gloss.original_text.clone());
                     }
                 }
             }
@@ -337,11 +325,11 @@ impl App {
                 drop(disable_input);
                 ui.same_line();
 
-                let enable_tl = self.gloss.ast().map_or(false, |ast| !ast.empty());
+                let enable_tl = self.gloss.ast().is_some_and(|ast| !ast.empty());
                 let disable_tl = ui.begin_disabled(!enable_tl);
                 if ui.button_with_size("Translate", [120.0, 0.0]) {
                     if let Some(gloss) = self.gloss.ast() {
-                        self.request_translation(ui, &gloss.original_text.clone());
+                        self.request_translation(ui, gloss.original_text.clone());
                     }
                 }
                 drop(disable_tl);
@@ -358,6 +346,7 @@ impl App {
             self.gloss.ui(ctx, ui, &self.settings);
 
             if ctx.font_atlas_dirty() {
+                ui.new_line();
                 ui.text_disabled("(rebuilding font atlas");
                 ui.same_line_with_spacing(0.0, 0.0);
                 ui.text_disabled(ellipses(ui));
@@ -369,9 +358,6 @@ impl App {
             }
         });
 
-        if self.show_imgui_demo {
-            ui.show_demo_window(&mut self.show_imgui_demo);
-        }
         if self.show_settings {
             self.show_settings(ctx, ui);
         }

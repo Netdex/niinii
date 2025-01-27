@@ -3,7 +3,7 @@ use imgui::*;
 use crate::{settings::Settings, tts::TtsEngine};
 
 pub struct TtsEngineView<'a>(pub &'a TtsEngine, pub &'a mut Settings);
-impl<'a> TtsEngineView<'a> {
+impl TtsEngineView<'_> {
     pub fn ui(&mut self, ui: &Ui) {
         let TtsEngineView(tts_engine, settings) = self;
         tts_engine.show_tts(ui, settings);

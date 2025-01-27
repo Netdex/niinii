@@ -2,7 +2,6 @@ use core::slice;
 use std::{
     collections::{HashMap, HashSet},
     io::Read,
-    mem::size_of,
 };
 
 use bitflags::bitflags;
@@ -114,7 +113,7 @@ impl Context {
         let glyph_ranges = unsafe {
             let glyph_ranges = &mut self.font_glyph_ranges[0..self.font_glyph_range_size + 1];
             // can't safely pass a reference so make a copy and leak it
-            let ptr = sys::igMemAlloc(glyph_ranges.len() * size_of::<u32>()) as *mut u32;
+            let ptr = sys::igMemAlloc(std::mem::size_of_val(glyph_ranges)) as *mut u32;
             assert!(!ptr.is_null());
             std::ptr::copy_nonoverlapping(glyph_ranges.as_ptr(), ptr, glyph_ranges.len());
             slice::from_raw_parts(ptr.cast(), glyph_ranges.len())
@@ -169,7 +168,7 @@ impl Context {
     }
     pub fn add_unknown_glyphs_from_root(&mut self, root: &Root) {
         struct RootVisitor<'a>(&'a mut Context);
-        impl<'a> RootVisitor<'a> {
+        impl RootVisitor<'_> {
             fn visit_conj(&mut self, conj: &Conjugation) {
                 if let Some(reading) = conj.reading() {
                     self.0.add_unknown_glyphs(reading);

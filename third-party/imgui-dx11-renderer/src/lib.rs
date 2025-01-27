@@ -497,7 +497,7 @@ impl Renderer {
 
         let local_layout = [
             D3D11_INPUT_ELEMENT_DESC {
-                SemanticName: "POSITION\0".as_ptr().cast(),
+                SemanticName: c"POSITION".as_ptr().cast(),
                 SemanticIndex: 0,
                 Format: DXGI_FORMAT_R32G32_FLOAT,
                 InputSlot: 0,
@@ -506,7 +506,7 @@ impl Renderer {
                 InstanceDataStepRate: 0,
             },
             D3D11_INPUT_ELEMENT_DESC {
-                SemanticName: "TEXCOORD\0".as_ptr().cast(),
+                SemanticName: c"TEXCOORD".as_ptr().cast(),
                 SemanticIndex: 0,
                 Format: DXGI_FORMAT_R32G32_FLOAT,
                 InputSlot: 0,
@@ -515,7 +515,7 @@ impl Renderer {
                 InstanceDataStepRate: 0,
             },
             D3D11_INPUT_ELEMENT_DESC {
-                SemanticName: "COLOR\0".as_ptr().cast(),
+                SemanticName: c"COLOR".as_ptr().cast(),
                 SemanticIndex: 0,
                 Format: DXGI_FORMAT_R8G8B8A8_UNORM,
                 InputSlot: 0,

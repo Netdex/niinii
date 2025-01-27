@@ -55,20 +55,20 @@ mod tests {
         assert_eq!(
             basic_split("6月20日は国連が決めた「世界難民の日」です。国連のUNHCRとユニクロの会社は、世界の難民が働いて、自分で生活ができるように助けたいと考えています。"),
             vec![
-                (Split::Text, "6月20日は国連が決めた".into()),
-                (Split::Skip, "「".into()),
-                (Split::Text, "世界難民の日".into()),
-                (Split::Skip, "」".into()),
-                (Split::Text, "です".into()),
-                (Split::Skip, "。".into()),
-                (Split::Text, "国連の".into()),
-                (Split::Skip, "UNHCR".into()),
-                (Split::Text, "とユニクロの会社は".into()),
-                (Split::Skip, "、".into()),
-                (Split::Text, "世界の難民が働いて".into()),
-                (Split::Skip, "、".into()),
-                (Split::Text, "自分で生活ができるように助けたいと考えています".into()),
-                (Split::Skip, "。".into())
+                (Split::Text, "6月20日は国連が決めた"),
+                (Split::Skip, "「"),
+                (Split::Text, "世界難民の日"),
+                (Split::Skip, "」"),
+                (Split::Text, "です"),
+                (Split::Skip, "。"),
+                (Split::Text, "国連の"),
+                (Split::Skip, "UNHCR"),
+                (Split::Text, "とユニクロの会社は"),
+                (Split::Skip, "、"),
+                (Split::Text, "世界の難民が働いて"),
+                (Split::Skip, "、"),
+                (Split::Text, "自分で生活ができるように助けたいと考えています"),
+                (Split::Skip, "。")
             ])
     }
 }

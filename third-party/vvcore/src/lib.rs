@@ -30,6 +30,8 @@
 //! file.write_all(&wav.as_slice()).unwrap();
 //! ```
 
+#![allow(warnings)]
+
 pub mod api;
 
 pub use self::api::{

@@ -6,10 +6,7 @@ use tokio_stream::{Stream, StreamExt};
 pub use crate::protocol::chat::{Message, Model, PartialMessage, Role, Usage};
 
 use crate::{
-    protocol::{
-        self,
-        chat::{self, StreamResponse},
-    },
+    protocol::chat::{self, StreamResponse},
     Client, Error,
 };
 

@@ -5,11 +5,11 @@ use crate::renderer::context::{Context, TextStyle};
 
 pub struct KanjiView<'a> {
     kanji: &'a Kanji,
-    wrap_x: f32,
+    wrap_w: f32,
 }
 impl<'a> KanjiView<'a> {
-    pub fn new(kanji: &'a Kanji, wrap_x: f32) -> Self {
-        KanjiView { kanji, wrap_x }
+    pub fn new(kanji: &'a Kanji, wrap_w: f32) -> Self {
+        KanjiView { kanji, wrap_w }
     }
 
     fn add_kanji(&mut self, ctx: &mut Context, ui: &Ui, kanji: &Kanji) {
@@ -88,7 +88,7 @@ impl<'a> KanjiView<'a> {
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &Ui) {
-        let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_x);
+        let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_w);
         self.add_kanji(ctx, ui, self.kanji);
     }
 }

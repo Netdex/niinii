@@ -2,6 +2,8 @@ pub const FONT_BASIC_RANGES_UTF8: &[u32] = &[
     0x0020, 0x00FF, // Basic Latin + Latin Supplement
     0x0100, 0x017F, // Latin Extended-A
     0x2000, 0x206F, // General Punctuation
+    0x2200, 0x22FF, // Mathematical Operators
+    0x2500, 0x25FF, // Box Drawing and Geometric Shapes
     0x3000, 0x30FF, // CJK Symbols and Punctuations, Hiragana, Katakana
     0x31F0, 0x31FF, // Katakana Phonetic Extensions
     0xFF00, 0xFFEF, // Half-width characters

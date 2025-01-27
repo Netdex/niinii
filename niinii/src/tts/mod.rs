@@ -19,6 +19,7 @@ pub enum Error {
     NotSupported,
 }
 
+#[allow(dead_code)]
 enum Request {
     Text(String),
     Stop,
