@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use enclose::enclose;
 use fancy_regex::Regex;
 use imgui::*;
@@ -7,16 +9,18 @@ use tracing::Instrument;
 use crate::{
     parser::{self, Parser, SyntaxTree},
     renderer::context::{Context, ContextFlags},
-    settings::Settings,
+    settings::{Settings, TranslatorType},
     support::docking::UiDocking,
-    translator::{self, Translate, Translation, Translator},
+    translator::{
+        self, chat::ChatTranslator, deepl::DeepLTranslator, realtime::RealtimeTranslator,
+        Translation, Translator,
+    },
     tts::{self, TtsEngine},
     view::{
         gloss::GlossView,
         inject::InjectView,
         mixins::{ellipses, help_marker},
         settings::SettingsView,
-        translator::{TranslationUsageView, TranslatorView},
     },
 };
 
@@ -34,7 +38,7 @@ enum Error {
 
 enum Message {
     Gloss(Result<SyntaxTree, parser::Error>),
-    Translation(Result<Translation, translator::Error>),
+    Translation(Result<Box<dyn Translation>, translator::Error>),
 }
 
 #[derive(Debug)]
@@ -60,8 +64,9 @@ pub struct App {
 
     settings: Settings,
     state: State,
+    error: Option<Error>,
     parser: Parser,
-    translator: Translator,
+    translator: Arc<dyn Translator>,
     tts: TtsEngine,
     gloss: GlossView,
 }
@@ -70,7 +75,11 @@ impl App {
     pub async fn new(settings: Settings) -> Self {
         let (channel_tx, channel_rx) = tokio::sync::mpsc::unbounded_channel();
         let parser = Parser::new(&settings).await;
-        let translator = Translator::new(&settings);
+        let translator: Arc<dyn Translator> = match settings.translator_type {
+            TranslatorType::DeepL => Arc::new(DeepLTranslator),
+            TranslatorType::Chat => Arc::new(ChatTranslator::new(&settings)),
+            TranslatorType::Realtime => Arc::new(RealtimeTranslator::new(&settings)),
+        };
         let tts = TtsEngine::new(&settings);
 
         App {
@@ -86,6 +95,7 @@ impl App {
             show_translator: false,
             settings,
             state: State::Completed,
+            error: None,
             parser,
             translator,
             tts,
@@ -142,13 +152,11 @@ impl App {
 
         let text = text.into();
 
-        tokio::spawn(
-            enclose! { (mut translator, mut settings, channel_tx) async move {
-                let span = tracing::debug_span!("translation");
-                let translation = translator.translate(&settings, text).instrument(span).await;
-                let _ = channel_tx.send(Message::Translation(translation));
-            }},
-        );
+        tokio::spawn(enclose! { (translator, settings, channel_tx) async move {
+            let span = tracing::debug_span!("translation");
+            let translation = translator.translate(&settings, text).instrument(span).await;
+            let _ = channel_tx.send(Message::Translation(translation));
+        }});
     }
 
     fn request_tts(&mut self, ui: &Ui, text: &str) {
@@ -160,11 +168,13 @@ impl App {
     }
 
     fn transition(&mut self, ui: &Ui, state: State) {
-        if let State::Error(err) = &state {
+        if let State::Error(err) = state {
             tracing::error!(%err);
             ui.open_popup(ERROR_MODAL_TITLE);
+            self.error = Some(err);
+        } else {
+            self.state = state;
         }
-        self.state = state;
     }
 
     fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
@@ -278,7 +288,7 @@ impl App {
     }
 
     fn show_error_modal(&mut self, _ctx: &mut Context, ui: &Ui) {
-        if let State::Error(err) = &self.state {
+        if let Some(err) = &self.error {
             ui.modal_popup_config(ERROR_MODAL_TITLE)
                 .always_auto_resize(true)
                 .build(|| {
@@ -339,7 +349,7 @@ impl App {
                     ui.tooltip(|| ui.text("Text does not require translation"));
                 }
                 if let Some(translation) = self.gloss.translation() {
-                    TranslationUsageView(translation).ui(ui);
+                    translation.view_usage().ui(ui);
                 }
             }
 
@@ -405,7 +415,7 @@ impl App {
             .menu_bar(true)
             .begin()
         {
-            TranslatorView(&self.translator, &mut self.settings).ui(ui);
+            self.translator.view(&mut self.settings).ui(ui);
         }
     }
 

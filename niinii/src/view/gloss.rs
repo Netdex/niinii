@@ -6,7 +6,6 @@ use imgui::*;
 
 use super::index::IndexView;
 use super::mixins::*;
-use super::translator::TranslationView;
 use crate::parser::SyntaxTree;
 use crate::renderer::context::Context;
 use crate::settings::{RubyTextType, Settings};
@@ -20,7 +19,7 @@ enum View {
 
 pub struct GlossView {
     view: Option<View>,
-    translation: Option<Translation>,
+    translation: Option<Box<dyn Translation>>,
     translation_pending: bool,
     show_term_window: RefCell<HashSet<Romanized>>,
     selected_clause: RefCell<HashMap<Segment, i32>>,
@@ -63,12 +62,12 @@ impl GlossView {
     pub fn set_translation_pending(&mut self, pending: bool) {
         self.translation_pending = pending;
     }
-    pub fn set_translation(&mut self, tl: Option<Translation>) {
+    pub fn set_translation(&mut self, tl: Option<Box<dyn Translation>>) {
         self.translation = tl;
         self.translation_pending = false;
     }
-    pub fn translation(&self) -> Option<&Translation> {
-        self.translation.as_ref()
+    pub fn translation(&self) -> Option<&dyn Translation> {
+        self.translation.as_deref()
     }
 
     fn term_window(
@@ -273,7 +272,7 @@ impl GlossView {
         }
         ui.new_line();
         if let Some(translation) = &self.translation {
-            TranslationView(translation).ui(ui);
+            translation.view().ui(ui);
         } else if self.translation_pending {
             ui.text_disabled("(waiting for translation");
             ui.same_line_with_spacing(0.0, 0.0);

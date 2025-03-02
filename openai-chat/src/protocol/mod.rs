@@ -3,29 +3,42 @@ use thiserror::Error;
 
 pub mod chat;
 pub mod moderation;
+pub mod realtime;
 
 #[derive(Error, Debug, Clone, Deserialize, PartialEq, Eq)]
-#[error("{kind}: {message}")]
+#[error("{error_type}: {message} (param={param:?}, code={code:?}, event_id={event_id:?})")]
 pub struct Error {
     message: String,
     #[serde(rename = "type")]
-    kind: String,
+    error_type: String,
     param: Option<String>,
     code: Option<String>,
+    event_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub enum Response<T> {
-    #[serde(rename = "error")]
-    Error(Error),
-    #[serde(untagged)]
-    Ok(T),
-}
-impl<T> From<Response<T>> for Result<T, Error> {
-    fn from(response: Response<T>) -> Self {
-        match response {
-            Response::Error(error) => Err(error),
-            Response::Ok(value) => Ok(value),
-        }
+type Result<T> = std::result::Result<T, Error>;
+
+mod untagged_ok_result {
+    use crate::protocol::Error;
+    use serde::{Deserialize, Deserializer};
+
+    #[allow(unused)]
+    pub(crate) fn deserialize<'de, D, T>(de: D) -> Result<Result<T, Error>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        serde_untagged::UntaggedEnumVisitor::new()
+            .map(|map| {
+                let value: serde_json::Value = map.deserialize()?;
+                if let Some(error) = value["error"].as_object() {
+                    Ok(Err(
+                        Error::deserialize(error).map_err(serde::de::Error::custom)?
+                    ))
+                } else {
+                    Ok(Ok(T::deserialize(value).map_err(serde::de::Error::custom)?))
+                }
+            })
+            .deserialize(de)
     }
 }

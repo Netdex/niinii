@@ -1,37 +1,26 @@
-use enum_dispatch::enum_dispatch;
 use imgui::*;
 use openai_chat::chat::{Model, Role};
 
 use crate::{
     settings::Settings,
-    translator::{
-        chatgpt::{ChatGptTranslation, ChatGptTranslator},
-        deepl::{DeepLTranslation, DeepLTranslator},
-        Translation, Translator,
-    },
+    translator::chat::{ChatTranslation, ChatTranslator},
     view::mixins::drag_handle,
 };
 
-use super::mixins::{
-    checkbox_option, checkbox_option_with_default, combo_enum, ellipses, stroke_text,
-    stroke_text_with_highlight,
+use crate::view::{
+    mixins::{
+        checkbox_option, checkbox_option_with_default, combo_enum, ellipses,
+        stroke_text_with_highlight,
+    },
+    View,
 };
 
-pub struct TranslatorView<'a>(pub &'a Translator, pub &'a mut Settings);
-impl TranslatorView<'_> {
-    pub fn ui(&mut self, ui: &Ui) {
-        let TranslatorView(translator, settings) = self;
-        translator.show_translator(ui, settings);
-    }
-}
-#[enum_dispatch(Translator)]
-trait ViewTranslator {
-    fn show_translator(&self, ui: &Ui, settings: &mut Settings);
-}
-impl ViewTranslator for ChatGptTranslator {
-    fn show_translator(&self, ui: &Ui, settings: &mut Settings) {
-        let mut chat = self.chat.blocking_lock();
-        let chatgpt = &mut settings.chatgpt;
+pub struct ViewChatTranslator<'a>(pub &'a ChatTranslator, pub &'a mut Settings);
+impl View for ViewChatTranslator<'_> {
+    fn ui(&mut self, ui: &Ui) {
+        let ViewChatTranslator(translator, settings) = self;
+        let mut chat = translator.chat.blocking_lock();
+        let chatgpt = &mut settings.chat;
         ui.menu_bar(|| {
             ui.menu("Settings", || {
                 ui.menu_item_config("Moderation")
@@ -205,34 +194,15 @@ impl ViewTranslator for ChatGptTranslator {
         });
     }
 }
-impl ViewTranslator for DeepLTranslator {
-    fn show_translator(&self, _ui: &Ui, _settings: &mut Settings) {}
-}
 
-pub struct TranslationView<'a>(pub &'a Translation);
-impl TranslationView<'_> {
-    pub fn ui(&self, ui: &Ui) {
-        self.0.view(ui);
-    }
-}
-pub struct TranslationUsageView<'a>(pub &'a Translation);
-impl TranslationUsageView<'_> {
-    pub fn ui(&self, ui: &Ui) {
-        self.0.show_usage(ui);
-    }
-}
-#[enum_dispatch(Translation)]
-trait ViewTranslation {
-    fn view(&self, ui: &Ui);
-    fn show_usage(&self, ui: &Ui);
-}
-impl ViewTranslation for ChatGptTranslation {
-    fn view(&self, ui: &Ui) {
+pub struct ViewChatTranslation<'a>(pub &'a ChatTranslation);
+impl View for ViewChatTranslation<'_> {
+    fn ui(&mut self, ui: &imgui::Ui) {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         ui.text(""); // anchor for line wrapping
         ui.same_line();
-        match self {
-            ChatGptTranslation::Translated { chat, .. } => {
+        match self.0 {
+            ChatTranslation::Translated { chat, .. } => {
                 let chat = chat.blocking_lock();
                 let draw_list = ui.get_window_draw_list();
                 stroke_text_with_highlight(
@@ -267,7 +237,7 @@ impl ViewTranslation for ChatGptTranslation {
                     );
                 }
             }
-            ChatGptTranslation::Filtered { moderation } => {
+            ChatTranslation::Filtered { moderation } => {
                 let draw_list = ui.get_window_draw_list();
                 for k in moderation
                     .categories
@@ -290,8 +260,12 @@ impl ViewTranslation for ChatGptTranslation {
             }
         }
     }
-    fn show_usage(&self, ui: &Ui) {
-        if let ChatGptTranslation::Translated { model, chat, .. } = self {
+}
+
+pub struct ViewChatTranslationUsage<'a>(pub &'a ChatTranslation);
+impl View for ViewChatTranslationUsage<'_> {
+    fn ui(&mut self, ui: &imgui::Ui) {
+        if let ChatTranslation::Translated { model, chat, .. } = self.0 {
             let chat = chat.blocking_lock();
             let usage = chat.usage();
             if let Some(usage) = usage {
@@ -310,35 +284,5 @@ impl ViewTranslation for ChatGptTranslation {
                     .build(ui);
             }
         }
-    }
-}
-impl ViewTranslation for DeepLTranslation {
-    fn view(&self, ui: &Ui) {
-        let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
-        ui.text(""); // anchor for line wrapping
-        let draw_list = ui.get_window_draw_list();
-        stroke_text_with_highlight(
-            ui,
-            &draw_list,
-            "[DeepL]",
-            1.0,
-            Some(StyleColor::TextSelectedBg),
-        );
-        ui.same_line();
-        stroke_text(ui, &draw_list, &self.deepl_text, 1.0);
-    }
-    fn show_usage(&self, ui: &Ui) {
-        ui.same_line();
-        let fraction =
-            self.deepl_usage.character_count as f32 / self.deepl_usage.character_limit as f32;
-        ProgressBar::new(fraction)
-            .overlay_text(format!(
-                "usage: {}/{} ({:.2}%)",
-                self.deepl_usage.character_count,
-                self.deepl_usage.character_limit,
-                fraction * 100.0
-            ))
-            .size([350.0, 0.0])
-            .build(ui);
     }
 }

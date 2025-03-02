@@ -88,8 +88,7 @@ fn is_model_loaded() {
 #[test]
 fn load_model() {
     let vvc = setup();
-
-    assert_eq!(vvc.load_model(0).unwrap(), ());
+    vvc.load_model(0).unwrap()
 }
 
 #[test]

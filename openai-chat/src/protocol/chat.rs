@@ -1,19 +1,8 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, IntoStaticStr};
-use thiserror::Error;
 use tiktoken_rs::cl100k_base_singleton;
 
-use super::Response;
-
-#[derive(Error, Debug, Clone, Deserialize, PartialEq, Eq)]
-#[error("{kind}: {message}")]
-pub struct Error {
-    message: String,
-    #[serde(rename = "type")]
-    kind: String,
-    param: Option<String>,
-    code: Option<String>,
-}
+use super::{untagged_ok_result, Result};
 
 #[derive(
     Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter,
@@ -143,7 +132,11 @@ pub struct Completion {
     pub usage: Usage,
     pub choices: Vec<Choice>,
 }
-pub(crate) type ChatResponse = Response<Completion>;
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ChatResponse(
+    #[serde(deserialize_with = "untagged_ok_result::deserialize")] pub Result<Completion>,
+);
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PartialCompletion {

@@ -1,28 +1,25 @@
 use async_trait::async_trait;
 use enclose::enclose;
 
-use super::{Error, Translate, Translation};
-use crate::settings::Settings;
+use super::{Error, Translation, Translator};
+use crate::{
+    settings::Settings,
+    view::{
+        translator::{ViewDeepLTranslation, ViewDeepLTranslationUsage, ViewDeepLTranslator},
+        View,
+    },
+};
 
-#[derive(Debug)]
-pub struct DeepLTranslation {
-    pub source_text: String,
-    pub deepl_text: String,
-    pub deepl_usage: deepl_api::UsageInformation,
-}
-
-#[derive(Clone)]
 pub struct DeepLTranslator;
 
 #[async_trait]
-impl Translate for DeepLTranslator {
+impl Translator for DeepLTranslator {
     async fn translate(
-        &mut self,
+        &self,
         settings: &Settings,
-        text: impl 'async_trait + Into<String> + Send,
-    ) -> Result<Translation, Error> {
+        text: String,
+    ) -> Result<Box<dyn Translation>, Error> {
         let Settings { deepl_api_key, .. } = settings;
-        let text = text.into();
 
         // TODO: it would be great if there was an async version of this
         let (deepl_text, deepl_usage) = tokio::task::spawn_blocking(enclose! { (text, deepl_api_key) move || {
@@ -47,10 +44,28 @@ impl Translate for DeepLTranslator {
         .await
         .unwrap()?;
 
-        Ok(Translation::DeepL(DeepLTranslation {
+        Ok(Box::new(DeepLTranslation {
             source_text: text,
             deepl_text,
             deepl_usage,
         }))
+    }
+    fn view<'a>(&'a self, _settings: &'a mut Settings) -> Box<dyn View + 'a> {
+        Box::new(ViewDeepLTranslator)
+    }
+}
+
+#[derive(Debug)]
+pub struct DeepLTranslation {
+    pub source_text: String,
+    pub deepl_text: String,
+    pub deepl_usage: deepl_api::UsageInformation,
+}
+impl Translation for DeepLTranslation {
+    fn view(&self) -> Box<dyn View + '_> {
+        Box::new(ViewDeepLTranslation(self))
+    }
+    fn view_usage(&self) -> Box<dyn View + '_> {
+        Box::new(ViewDeepLTranslationUsage(self))
     }
 }

@@ -8,3 +8,7 @@ pub mod settings;
 pub mod term;
 pub mod translator;
 pub mod tts;
+
+pub trait View {
+    fn ui(&mut self, ui: &imgui::Ui);
+}

@@ -3,34 +3,38 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use enclose::enclose;
 use openai_chat::{
-    chat::{self, Message, Model},
-    moderation, Client, ConnectionPolicy,
+    chat::{self, ChatBuffer, Message, Model},
+    moderation, ConnectionPolicy,
 };
 use tokio::sync::{Mutex, Semaphore};
 use tokio_stream::StreamExt;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::Instrument;
 
-use crate::settings::Settings;
+use crate::{
+    settings::Settings,
+    view::{
+        translator::{ViewChatTranslation, ViewChatTranslationUsage, ViewChatTranslator},
+        View,
+    },
+};
 
-use super::{chat_buffer::ChatBuffer, Error, Translate, Translation};
+use super::{Error, Translation, Translator};
 
-#[derive(Clone)]
-pub struct ChatGptTranslator {
-    client: Client<backon::ConstantBuilder>,
+pub struct ChatTranslator {
+    client: openai_chat::Client,
     pub chat: Arc<Mutex<ChatBuffer>>,
     semaphore: Arc<Semaphore>,
 }
-impl ChatGptTranslator {
+impl ChatTranslator {
     pub fn new(settings: &Settings) -> Self {
         Self {
-            client: Client::new(
+            client: openai_chat::Client::new(
                 &settings.openai_api_key,
-                &settings.chatgpt.api_endpoint,
+                &settings.chat.api_endpoint,
                 ConnectionPolicy {
-                    backoff: Default::default(),
-                    timeout: Duration::from_millis(settings.chatgpt.timeout),
-                    connect_timeout: Duration::from_millis(settings.chatgpt.connection_timeout),
+                    timeout: Duration::from_millis(settings.chat.timeout),
+                    connect_timeout: Duration::from_millis(settings.chat.connection_timeout),
                 },
             ),
             chat: Arc::new(Mutex::new(ChatBuffer::new())),
@@ -38,15 +42,15 @@ impl ChatGptTranslator {
         }
     }
 }
+
 #[async_trait]
-impl Translate for ChatGptTranslator {
+impl Translator for ChatTranslator {
     async fn translate(
-        &mut self,
+        &self,
         settings: &Settings,
-        text: impl 'async_trait + Into<String> + Send,
-    ) -> Result<Translation, Error> {
-        let text = text.into();
-        let chatgpt = &settings.chatgpt;
+        text: String,
+    ) -> Result<Box<dyn Translation>, Error> {
+        let chatgpt = &settings.chat;
 
         if chatgpt.moderation {
             let mod_request = moderation::Request {
@@ -55,9 +59,7 @@ impl Translate for ChatGptTranslator {
             };
             let moderation = self.client.moderation(&mod_request).await?;
             if moderation.flagged {
-                return Ok(Translation::ChatGpt(ChatGptTranslation::Filtered {
-                    moderation,
-                }));
+                return Ok(Box::new(ChatTranslation::Filtered { moderation }));
             }
         }
 
@@ -134,16 +136,19 @@ impl Translate for ChatGptTranslator {
             }
         }.instrument(tracing::Span::current())});
 
-        Ok(ChatGptTranslation::Translated {
+        Ok(Box::new(ChatTranslation::Translated {
             model: chatgpt.model,
             chat: chat.clone(),
             _guard: token.drop_guard(),
-        }
-        .into())
+        }))
+    }
+
+    fn view<'a>(&'a self, settings: &'a mut Settings) -> Box<dyn View + 'a> {
+        Box::new(ViewChatTranslator(self, settings))
     }
 }
 
-pub enum ChatGptTranslation {
+pub enum ChatTranslation {
     Translated {
         model: Model,
         chat: Arc<Mutex<ChatBuffer>>,
@@ -152,4 +157,12 @@ pub enum ChatGptTranslation {
     Filtered {
         moderation: moderation::Moderation,
     },
+}
+impl Translation for ChatTranslation {
+    fn view(&self) -> Box<dyn View + '_> {
+        Box::new(ViewChatTranslation(self))
+    }
+    fn view_usage(&self) -> Box<dyn View + '_> {
+        Box::new(ViewChatTranslationUsage(self))
+    }
 }
