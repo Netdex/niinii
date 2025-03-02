@@ -1,7 +1,9 @@
-use backon::BackoffBuilder;
+//! https://platform.openai.com/docs/api-reference/chat
+
 use eventsource_stream::Eventsource;
 use reqwest::Method;
 use tokio_stream::{Stream, StreamExt};
+use tracing::Level;
 
 pub use crate::protocol::chat::{Message, Model, PartialMessage, Role, Usage};
 
@@ -9,6 +11,10 @@ use crate::{
     protocol::chat::{self, StreamResponse},
     Client, Error,
 };
+
+mod chat_buffer;
+
+pub use chat_buffer::ChatBuffer;
 
 #[derive(Debug, Clone, Default)]
 pub struct Request {
@@ -62,21 +68,24 @@ impl From<Request> for chat::Request {
     }
 }
 
-impl<B: BackoffBuilder + Clone> Client<B> {
+impl Client {
+    #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
     pub async fn chat(&self, request: Request) -> Result<chat::Completion, Error> {
         let request: chat::Request = request.into();
-
         tracing::trace!(?request);
         let response: chat::ChatResponse = self
             .shared
-            .request_with_body(Method::POST, "/v1/chat/completions", &request)
+            .request(Method::POST, "/v1/chat/completions")
+            .body(&request)
+            .send()
             .await?
             .json()
             .await?;
         tracing::trace!(?response);
-        Ok(Result::from(response)?)
+        Ok(response.0?)
     }
 
+    #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
     pub async fn stream(
         &self,
         request: Request,
@@ -87,7 +96,9 @@ impl<B: BackoffBuilder + Clone> Client<B> {
         tracing::trace!(?request);
         let stream = self
             .shared
-            .request_with_body(Method::POST, "/v1/chat/completions", &request)
+            .request(Method::POST, "/v1/chat/completions")
+            .body(&request)
+            .send()
             .await?
             .bytes_stream()
             .eventsource();

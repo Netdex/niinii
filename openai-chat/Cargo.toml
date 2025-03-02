@@ -9,16 +9,21 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1" }
 tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+tokio-rustls = "0.26"
 
 reqwest = { version = "0.12", features = ["blocking", "json", "stream"] }
 tiktoken-rs = "0.6"
 backon = "1.3.0"
+rustls = { version = "0.23"}
+webpki-roots = "0.26.8"
 
 log = "0.4"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = "3.0"
+serde-untagged = "0.1"
 thiserror = "2"
 csv = "1.1"
 regex = "1"
@@ -28,6 +33,9 @@ num-derive = "0.4"
 strum = "0.26"
 strum_macros = "0.26"
 derive_more = { version = "1", features = ["display"] }
+futures-util = "0.3"
+async-stream = "0.3"
+enclose = "1.1.8"
 
 eventsource-stream = { path = "../third-party/eventsource-stream" }
 

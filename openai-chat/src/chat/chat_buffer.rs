@@ -1,6 +1,8 @@
+//! Simple wrapper for a conversation using the completions API
+
 use std::collections::VecDeque;
 
-use openai_chat::chat::{Message, PartialMessage, Role, Usage};
+use crate::chat::{Message, PartialMessage, Role, Usage};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum State {

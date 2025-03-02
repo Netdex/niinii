@@ -1,16 +1,21 @@
-use backon::BackoffBuilder;
+//! https://platform.openai.com/docs/api-reference/moderations
+
 use reqwest::Method;
+use tracing::Level;
 
 pub use crate::protocol::moderation::{Category, Moderation, Request, Response};
 
 use crate::{Client, Error};
 
-impl<B: BackoffBuilder + Clone> Client<B> {
+impl Client {
+    #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
     pub async fn moderation(&self, request: &Request) -> Result<Moderation, Error> {
         tracing::trace!(?request);
         let mut response: Response = self
             .shared
-            .request_with_body(Method::POST, "/v1/moderations", request)
+            .request(Method::POST, "/v1/moderations")
+            .body(request)
+            .send()
             .await?
             .json()
             .await?;

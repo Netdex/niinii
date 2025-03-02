@@ -33,7 +33,7 @@ fn main() -> std::io::Result<()> {
     #[cfg(feature = "tracing-tracy")]
     let subscriber = {
         use tracing_subscriber::prelude::*;
-        let tracy_layer = tracing_tracy::TracyLayer::new();
+        let tracy_layer = tracing_tracy::TracyLayer::new(tracing_tracy::DefaultConfig::default());
         subscriber.with(tracy_layer)
     };
     #[cfg(feature = "tracing-chrome")]

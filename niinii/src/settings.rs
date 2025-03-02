@@ -1,5 +1,4 @@
 use num_derive::FromPrimitive;
-use openai_chat::chat::Model;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, IntoStaticStr};
 
@@ -20,14 +19,15 @@ pub enum RubyTextType {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
 pub enum TranslatorType {
     DeepL,
-    ChatGpt,
+    Chat,
+    Realtime,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct ChatGptSettings {
+pub struct ChatSettings {
     pub api_endpoint: String,
-    pub model: Model,
+    pub model: openai_chat::chat::Model,
     pub system_prompt: String,
     pub max_context_tokens: u32,
     pub moderation: bool,
@@ -38,7 +38,7 @@ pub struct ChatGptSettings {
     pub connection_timeout: u64,
     pub timeout: u64,
 }
-impl Default for ChatGptSettings {
+impl Default for ChatSettings {
     fn default() -> Self {
         Self {
             api_endpoint: "https://api.openai.com".into(),
@@ -56,6 +56,25 @@ impl Default for ChatGptSettings {
         }
     }
 }
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RealtimeSettings {
+    pub model: openai_chat::realtime::Model,
+    pub system_prompt: String,
+    pub temperature: Option<f32>,
+}
+impl Default for RealtimeSettings {
+    fn default() -> Self {
+        Self {
+            model: Default::default(),
+            system_prompt: "You will translate the following visual novel script into English."
+                .into(),
+            temperature: None,
+        }
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Settings {
@@ -78,7 +97,8 @@ pub struct Settings {
     pub auto_translate: bool,
     pub deepl_api_key: String,
     pub openai_api_key: String,
-    pub chatgpt: ChatGptSettings,
+    pub chat: ChatSettings,
+    pub realtime: RealtimeSettings,
 
     pub vv_model_path: String,
     pub auto_tts_regex: Option<String>,
@@ -114,7 +134,8 @@ impl Default for Settings {
             auto_translate: false,
             deepl_api_key: Default::default(),
             openai_api_key: Default::default(),
-            chatgpt: Default::default(),
+            chat: Default::default(),
+            realtime: Default::default(),
 
             vv_model_path: Default::default(),
             auto_tts_regex: None,
