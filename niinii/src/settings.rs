@@ -115,9 +115,9 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            ichiran_path: Default::default(),
-            postgres_path: Default::default(),
-            db_path: Default::default(),
+            ichiran_path: "data/ichiran-cli.exe".into(),
+            postgres_path: "data/pgsql/bin".into(),
+            db_path: "data/pgsql/data".into(),
 
             renderer_type: RendererType::Direct3D11,
             transparent: Default::default(),
@@ -130,7 +130,7 @@ impl Default for Settings {
             more_variants: true,
             stroke_text: true,
 
-            translator_type: TranslatorType::DeepL,
+            translator_type: TranslatorType::Chat,
             auto_translate: false,
             deepl_api_key: Default::default(),
             openai_api_key: Default::default(),

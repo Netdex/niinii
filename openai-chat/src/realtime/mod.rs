@@ -337,6 +337,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
+    #[ignore]
     async fn test_response() -> Result<(), Error> {
         let client = fixture::client();
         let session = client

@@ -1,0 +1,40 @@
+name: Rust
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static-md
+      VCPKG_INSTALLED_DIR: ${{ github.workspace }}/third-party/vcpkg/installed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # lfs: true
+          submodules: recursive
+      # - name: Extract data
+      #   run: 7z x deploy/ichiran-250113.7z
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: "${{ github.workspace }}/third-party/vcpkg"
+          runVcpkgInstall: true
+          vcpkgJsonGlob: "**/vcpkg.json"
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Run tests
+        run: cargo test --release --verbose
+      - uses: actions/upload-artifact@v4
+        with:
+          name: niinii_x86_64-pc-windows-msvc
+          path: |
+            target/release/niinii*.exe
+            target/release/niinii*.pdb

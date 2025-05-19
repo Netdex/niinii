@@ -396,6 +396,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_match() {
         let ichiran = fixture::ichiran().await;
         let nikaime = ichiran.romanize("2回目", 1).await.unwrap();
@@ -431,6 +432,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_romanize() {
         let ichiran = fixture::ichiran().await;
         let _furaseteiru = ichiran.romanize("降らせている", 1).await.unwrap();
