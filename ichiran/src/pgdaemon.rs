@@ -4,6 +4,7 @@ use std::{
 };
 
 use tokio::process::{Child, Command};
+use win32job::{Job, JobError};
 
 use crate::ConnParams;
 
@@ -12,6 +13,7 @@ pub struct PostgresDaemon {
     data_path: PathBuf,
     pg_proc: Result<Child, std::io::Error>,
     silent: bool,
+    _job_obj: Job,
 }
 impl PostgresDaemon {
     pub fn new(
@@ -22,6 +24,8 @@ impl PostgresDaemon {
     ) -> Self {
         let pg_bin_dir = pg_bin_dir.into();
         let data_path = data_path.into();
+
+        let job = Self::create_job_object().expect("failed to create job object");
 
         tracing::info!(?pg_bin_dir, ?data_path, "starting");
         let postgres_bin_path = Self::pg_bin_path(&pg_bin_dir, "postgres");
@@ -51,12 +55,21 @@ impl PostgresDaemon {
             data_path,
             pg_proc: proc,
             silent,
+            _job_obj: job,
         }
     }
     fn pg_bin_path(pg_bin_dir: impl AsRef<Path>, name: impl Into<PathBuf>) -> PathBuf {
         let mut bin = name.into();
         bin.set_extension(std::env::consts::EXE_EXTENSION);
         pg_bin_dir.as_ref().join(bin)
+    }
+    fn create_job_object() -> Result<Job, JobError> {
+        let job = Job::create()?;
+        let mut info = job.query_extended_limit_info()?;
+        info.limit_kill_on_job_close();
+        job.set_extended_limit_info(&info)?;
+        job.assign_current_process()?;
+        Ok(job)
     }
 }
 impl Drop for PostgresDaemon {

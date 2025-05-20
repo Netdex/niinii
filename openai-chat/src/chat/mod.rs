@@ -138,6 +138,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
+    #[ignore]
     async fn test_chat() {
         let client = fixture::client();
         let request = Request {
@@ -163,6 +164,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
+    #[ignore]
     async fn test_stream() {
         let client = fixture::client();
         let request = Request {

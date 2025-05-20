@@ -33,6 +33,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
+    #[ignore]
     async fn test_moderation() {
         let client = fixture::client();
         let request = Request {

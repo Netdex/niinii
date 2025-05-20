@@ -14,14 +14,8 @@ imgui-winit-glow-renderer-viewports = { git = "https://github.com/Netdex/imgui-r
 # hudhook = { git = "https://github.com/veeenu/hudhook.git" }
 
 [workspace]
-members = [
-    "niinii",
-    "ichiran",
-    "openai-chat",
-    "third-party/eventsource-stream",
-    "third-party/imgui-dx11-renderer",
-    "third-party/vvcore",
-]
+members = ["niinii", "ichiran", "openai-chat"]
+exclude = ["third-party"]
 resolver = "2"
 
 # flate2 is slow in debug mode
