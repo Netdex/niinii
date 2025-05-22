@@ -172,7 +172,7 @@ impl Ichiran {
                                 limit
                             ))
                             .await?;
-                        let output = lisp_interpret::<String>(&output)?;
+                        let output: String = serde_lexpr::from_str(&output)?;
                         let root: Root = serde_json::from_str(&output)?;
                         assert_eq!(
                             root.segments().len(),
@@ -229,7 +229,7 @@ impl Ichiran {
         let expr = format!("(list {})", commands.join(" "));
 
         let output = self.shared.evaluate(expr).await?;
-        let output: Vec<String> = lisp_interpret(&format!("'{}", output))?;
+        let output: Vec<String> = serde_lexpr::from_str(&output)?;
 
         let kanji_cache = &mut self.shared.state.lock().unwrap().kanji_cache;
         for json in output {

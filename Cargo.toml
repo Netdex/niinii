@@ -3,13 +3,11 @@
 imgui = { git = "https://github.com/Netdex/imgui-rs", branch = "glow-viewports-mdpi" }
 imgui-sys = { git = "https://github.com/Netdex/imgui-rs", branch = "glow-viewports-mdpi" }
 imgui-winit-support = { git = "https://github.com/Netdex/imgui-rs", branch = "glow-viewports-mdpi" }
-imgui-glow-renderer = { git = "https://github.com/Netdex/imgui-rs", branch = "glow-viewports-mdpi" }
 imgui-winit-glow-renderer-viewports = { git = "https://github.com/Netdex/imgui-rs", branch = "glow-viewports-mdpi" }
 
 # imgui = { path = "../../imgui-rs/imgui" }
 # imgui-sys = { path = "../../imgui-rs/imgui-sys" }
 # imgui-winit-support = { path = "../../imgui-rs/imgui-winit-support" }
-# imgui-glow-renderer = { path = "../../imgui-rs/imgui-glow-renderer" }
 # imgui-winit-glow-renderer-viewports = { path = "../../imgui-rs/imgui-winit-glow-renderer-viewports" }
 # hudhook = { git = "https://github.com/veeenu/hudhook.git" }
 
