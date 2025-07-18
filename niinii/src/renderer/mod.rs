@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use imgui_winit_support::WinitPlatform;
 
-use crate::support::clipboard;
+use crate::support::platform;
 use crate::{app::App, settings::Settings};
 
 pub mod context;
@@ -28,7 +28,7 @@ pub trait Renderer {
         io.font_allow_user_scaling = true;
         io.config_flags |= imgui::ConfigFlags::DOCKING_ENABLE;
 
-        if let Some(backend) = clipboard::init() {
+        if let Some(backend) = platform::init() {
             imgui.set_clipboard_backend(backend);
         } else {
             panic!("failed to initialize clipboard");

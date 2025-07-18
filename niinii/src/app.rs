@@ -10,7 +10,7 @@ use crate::{
     parser::{self, Parser, SyntaxTree},
     renderer::context::{Context, ContextFlags},
     settings::{Settings, TranslatorType},
-    support::docking::UiDocking,
+    support::{docking::UiDocking, platform::get_scroll_lock},
     translator::{
         self, chat::ChatTranslator, deepl::DeepLTranslator, realtime::RealtimeTranslator,
         Translation, Translator,
@@ -19,12 +19,12 @@ use crate::{
     view::{
         gloss::GlossView,
         inject::InjectView,
-        mixins::{ellipses, help_marker},
+        mixins::{ellipses, help_marker, stroke_text_with_highlight},
         settings::SettingsView,
     },
 };
 
-const ERROR_MODAL_TITLE: &str = "Error";
+const ERROR_MODAL_ID: &str = "Error";
 
 #[derive(thiserror::Error, Debug)]
 enum Error {
@@ -43,7 +43,6 @@ enum Message {
 
 #[derive(Debug)]
 enum State {
-    Error(Error),
     Processing,
     Completed,
 }
@@ -81,7 +80,6 @@ impl App {
             TranslatorType::Realtime => Arc::new(RealtimeTranslator::new(&settings)),
         };
         let tts = TtsEngine::new(&settings);
-
         App {
             channel_tx,
             channel_rx,
@@ -108,7 +106,7 @@ impl App {
         match regex {
             Ok(regex) => {
                 let text = regex
-                    .replace(text, &self.settings.regex_replace)
+                    .replace_all(text, &self.settings.regex_replace)
                     .into_owned();
                 let text = text.trim().to_owned();
                 if text.is_empty() {
@@ -134,7 +132,7 @@ impl App {
                     let _ = channel_tx.send(Message::Gloss(ast));
                 }});
             }
-            Err(err) => self.transition(ui, State::Error(Error::Gloss(err.into()))),
+            Err(err) => self.error(ui, Error::Gloss(err.into())),
         }
     }
 
@@ -163,18 +161,19 @@ impl App {
         let span = tracing::debug_span!("tts");
         let _enter = span.enter();
         if let Err(err) = self.tts.request_tts(text) {
-            self.transition(ui, State::Error(err.into()));
+            self.error(ui, err.into());
         }
     }
 
     fn transition(&mut self, ui: &Ui, state: State) {
-        if let State::Error(err) = state {
-            tracing::error!(%err);
-            ui.open_popup(ERROR_MODAL_TITLE);
-            self.error = Some(err);
-        } else {
-            self.state = state;
-        }
+        self.state = state;
+    }
+
+    fn error(&mut self, ui: &Ui, err: Error) {
+        tracing::error!(%err);
+        self.error = Some(err);
+        ui.open_popup(ERROR_MODAL_ID);
+        self.transition(ui, State::Completed);
     }
 
     fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
@@ -202,20 +201,20 @@ impl App {
                     self.transition(ui, State::Completed);
                 }
                 Message::Gloss(Err(err)) => {
-                    self.transition(ui, State::Error(err.into()));
+                    self.error(ui, err.into());
                 }
                 Message::Translation(Ok(translation)) => {
                     self.gloss.set_translation(Some(translation));
                 }
                 Message::Translation(Err(err)) => {
                     self.gloss.set_translation_pending(false);
-                    self.transition(ui, State::Error(err.into()));
+                    self.error(ui, err.into());
                 }
             }
         }
 
         match &self.state {
-            State::Error(_) | State::Completed => {
+            State::Completed => {
                 if let Some(request_gloss_text) = self.request_gloss_text.clone() {
                     self.request_gloss_text = None;
                     self.request_parse(ui, &request_gloss_text);
@@ -288,18 +287,18 @@ impl App {
     }
 
     fn show_error_modal(&mut self, _ctx: &mut Context, ui: &Ui) {
-        if let Some(err) = &self.error {
-            ui.modal_popup_config(ERROR_MODAL_TITLE)
-                .always_auto_resize(true)
-                .build(|| {
-                    let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
+        ui.modal_popup_config(ERROR_MODAL_ID)
+            .always_auto_resize(true)
+            .build(|| {
+                let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
+                if let Some(err) = &self.error {
                     ui.text(err.to_string());
-                    ui.separator();
-                    if ui.button_with_size("OK", [120.0, 0.0]) {
-                        ui.close_current_popup();
-                    }
-                });
-        }
+                }
+                ui.separator();
+                if ui.button_with_size("OK", [120.0, 0.0]) {
+                    ui.close_current_popup();
+                }
+            });
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
@@ -309,14 +308,29 @@ impl App {
             ui.dockspace_over_viewport();
         };
 
-        let niinii = ui
+        let nx_state = get_scroll_lock();
+        let mut niinii = ui
             .window("niinii")
             .opened(run)
             .menu_bar(true)
             .draw_background(!self.settings().transparent);
+        if nx_state {
+            niinii = niinii.no_inputs().draw_background(false);
+        }
         niinii.build(|| {
             self.show_menu(ctx, ui);
             self.show_error_modal(ctx, ui);
+
+            if nx_state {
+                stroke_text_with_highlight(
+                    ui,
+                    &ui.get_window_draw_list(),
+                    "(interaction disabled, disable ScrLk to re-enable)",
+                    1.0,
+                    Some(StyleColor::PlotLinesHovered),
+                );
+                return;
+            }
             self.poll(ui, ctx);
 
             let disabled = matches!(self.state, State::Processing);

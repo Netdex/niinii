@@ -30,7 +30,6 @@ pub struct ChatSettings {
     pub model: openai_chat::chat::Model,
     pub system_prompt: String,
     pub max_context_tokens: u32,
-    pub moderation: bool,
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub max_tokens: Option<u32>,
@@ -46,7 +45,6 @@ impl Default for ChatSettings {
             system_prompt: "You will translate the following visual novel script into English."
                 .into(),
             max_context_tokens: 64,
-            moderation: false,
             temperature: None,
             top_p: None,
             max_tokens: Some(128),

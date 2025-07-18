@@ -12,7 +12,6 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub mod chat;
-pub mod moderation;
 pub mod realtime;
 
 mod protocol;

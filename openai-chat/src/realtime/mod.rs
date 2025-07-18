@@ -49,7 +49,7 @@ impl RealtimeSession {
         let (ws_stream, _) = tokio_tungstenite::connect_async(request).await?;
         let (client_tx, mut client_rx) = ws_stream.split();
 
-        let event = client_rx.next_response().await?.event?;
+        let event = client_rx.next_response().await?.unwrap().event?;
         let session = match event {
             ServerEvent::SessionCreated { session } => session,
             _ => return Err(Error::UnexpectedResponse(Box::new(event))),
@@ -76,6 +76,7 @@ impl RealtimeSession {
                                 Ok(_) => {},
                                 Err(mpsc::error::SendError(event)) => {
                                     // new sender hung up, buffer event for next sender
+                                    tracing::trace!(?event, "new sender hang up");
                                     buffer.push_back(event);
                                     break 'branch;
                                 },
@@ -87,22 +88,42 @@ impl RealtimeSession {
                     // alive, since this is how tokio-tungstenite responds to
                     // ping requests
                     response = client_rx.next_response() => {
-                        let event = response.and_then(|response| response.event.map_err(Error::Protocol));
-                        match &server_tx {
-                            Some(tx) => {
-                                match tx.send(event).await {
-                                    Ok(_) => {},
-                                    Err(mpsc::error::SendError(event)) => {
-                                        // sender hung up, buffer event for next sender
-                                        buffer.push_back(event);
-                                        server_tx = None;
-                                    },
+                        match response.transpose() {
+                            Some(response) => {
+                                let event = response.and_then(|response| response.event.map_err(Error::Protocol));
+                                match event {
+                                    Ok(ServerEvent::RateLimitsUpdated { .. }) => {},
+                                    Err(Error::Protocol(err)) if err.code.as_deref() == Some("response_cancel_not_active") => {},
+                                    _ => {
+                                        match &server_tx {
+                                            Some(tx) => {
+                                                match tx.send(event).await {
+                                                    Ok(_) => {},
+                                                    Err(mpsc::error::SendError(event)) => {
+                                                        // sender hung up, buffer event for next sender
+                                                        tracing::trace!(?event, "sender hang up");
+                                                        buffer.push_back(event);
+                                                        server_tx = None;
+                                                    },
+                                                }
+                                            },
+                                            None => {
+                                                // no active sender, buffer event for next sender
+                                                tracing::trace!(?event, "no active sender");
+                                                buffer.push_back(event);
+                                            },
+                                        }
+                                    }
                                 }
-                            }
-                            None => {
-                                // no active sender, buffer event for next sender
-                                buffer.push_back(event);
                             },
+                            None => {
+                                tracing::trace!("connection closed");
+                                // connection is dead, kill any active sender then kill ourselves
+                                if let Some(tx) = server_tx {
+                                    let _ = tx.send(Err(Error::WebSocket(tungstenite::Error::ConnectionClosed))).await;
+                                }
+                                return;
+                            }
                         }
                     },
                 }
@@ -294,13 +315,13 @@ impl Client {
 }
 
 trait ServerEventResponseStream {
-    async fn next_response(&mut self) -> Result<ServerEventResponse, Error>;
+    async fn next_response(&mut self) -> Result<Option<ServerEventResponse>, Error>;
 }
 impl<S> ServerEventResponseStream for S
 where
     S: Stream<Item = tungstenite::Result<tungstenite::Message>> + Unpin,
 {
-    async fn next_response(&mut self) -> Result<ServerEventResponse, Error> {
+    async fn next_response(&mut self) -> Result<Option<ServerEventResponse>, Error> {
         while let Some(message) = self.next().await {
             let message = message?;
             if let tungstenite::Message::Text(_) = message {
@@ -308,10 +329,12 @@ where
                     .try_into()
                     .inspect(|response| tracing::trace!(?response))
                     .inspect_err(|err| tracing::error!(%err));
-                return Ok(response?);
+                return Ok(Some(response?));
+            } else {
+                tracing::trace!(?message, "discarding websocket message")
             }
         }
-        Err(Error::WebSocket(tungstenite::Error::ConnectionClosed))
+        Ok(None)
     }
 }
 

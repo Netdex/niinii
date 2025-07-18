@@ -18,23 +18,26 @@ pub enum Model {
     #[serde(rename = "gpt-4o-2024-05-13")]
     Gpt4o20240513,
 
-    #[default]
     #[serde(rename = "gpt-4o-mini")]
     Gpt4oMini,
     #[serde(rename = "gpt-4o-mini-2024-07-18")]
     Gpt4oMini20240718,
-}
-impl Model {
-    /// https://openai.com/pricing
-    pub fn cost(&self, input_tokens: u32, output_tokens: u32) -> f64 {
-        let input = input_tokens as f64;
-        let output = output_tokens as f64;
-        match self {
-            Model::Gpt35Turbo | Model::Gpt35Turbo0125 => input * 0.50e-6 + output * 1.50e-6,
-            Model::Gpt4o | Model::Gpt4o20240513 => input * 5.00e-6 + output * 15.00e-6,
-            Model::Gpt4oMini | Model::Gpt4oMini20240718 => input * 0.15e-6 + output * 0.60e-6,
-        }
-    }
+
+    #[serde(rename = "gpt-4.1")]
+    Gpt41,
+    #[serde(rename = "gpt-4.1-2025-04-14")]
+    Gpt41_20250414,
+
+    #[default]
+    #[serde(rename = "gpt-4.1-mini")]
+    Gpt41Mini,
+    #[serde(rename = "gpt-4.1-mini-2025-04-14")]
+    Gpt41Mini20250414,
+
+    #[serde(rename = "gpt-4.1-nano")]
+    Gpt41Nano,
+    #[serde(rename = "gpt-4.1-nano-2025-04-14")]
+    Gpt41Nano20250414,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]

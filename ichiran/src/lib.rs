@@ -1,7 +1,6 @@
 mod charset;
 mod coerce;
 mod error;
-mod lisp;
 mod pgdaemon;
 mod protocol;
 mod split;
@@ -30,10 +29,7 @@ pub mod prelude {
     pub use crate::protocol::*;
     pub use crate::*;
 }
-use crate::{
-    lisp::*,
-    split::{basic_split, Split},
-};
+use crate::split::{basic_split, Split};
 use prelude::*;
 
 #[derive(Debug)]
@@ -167,8 +163,8 @@ impl Ichiran {
                     enclose! { (span, shared) async move {
                         let output = shared
                             .evaluate(format!(
-                                r#"(jsown:to-json (ichiran:romanize* "{}" :limit {}))"#,
-                                lisp_escape_string(split.clone()),
+                                r#"(jsown:to-json (ichiran:romanize* {} :limit {}))"#,
+                                serde_lexpr::to_string(&split).unwrap(),
                                 limit
                             ))
                             .await?;

@@ -84,16 +84,21 @@ impl ChatBuffer {
     }
 
     pub fn enforce_context_limit(&mut self, limit: u32) {
+        let mut idx = 0;
         loop {
-            if self.context_tokens() <= limit || self.context.len() == 1 {
+            if self.context_tokens() <= limit || idx >= self.context.len() {
                 break;
             }
-            self.context.pop_front();
-            while let Some(message) = self.context.front() {
+            if self.context[idx].name.is_some() {
+                idx += 1;
+            } else {
+                self.context.remove(idx);
+            }
+            while let Some(message) = self.context.get(idx) {
                 if message.role == Role::User {
                     break;
                 }
-                self.context.pop_front();
+                self.context.remove(idx);
             }
         }
     }

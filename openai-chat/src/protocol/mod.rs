@@ -2,18 +2,17 @@ use serde::Deserialize;
 use thiserror::Error;
 
 pub mod chat;
-pub mod moderation;
 pub mod realtime;
 
 #[derive(Error, Debug, Clone, Deserialize, PartialEq, Eq)]
 #[error("{error_type}: {message} (param={param:?}, code={code:?}, event_id={event_id:?})")]
 pub struct Error {
-    message: String,
+    pub message: String,
     #[serde(rename = "type")]
-    error_type: String,
-    param: Option<String>,
-    code: Option<String>,
-    event_id: Option<String>,
+    pub error_type: String,
+    pub param: Option<String>,
+    pub code: Option<String>,
+    pub event_id: Option<String>,
 }
 
 type Result<T> = std::result::Result<T, Error>;

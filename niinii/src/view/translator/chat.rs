@@ -22,11 +22,9 @@ impl View for ViewChatTranslator<'_> {
         let mut chat = translator.chat.blocking_lock();
         let chatgpt = &mut settings.chat;
         ui.menu_bar(|| {
-            ui.menu("Settings", || {
-                ui.menu_item_config("Moderation")
-                    .build_with_ref(&mut chatgpt.moderation);
-            });
-            ui.separator();
+            // ui.menu("Settings", || {
+            // });
+            // ui.separator();
             ui.disabled(chat.pending_response(), || {
                 if ui.menu_item("Clear") {
                     chat.clear();
@@ -89,13 +87,22 @@ impl View for ViewChatTranslator<'_> {
                 [
                     TableColumnSetup::new(""),
                     TableColumnSetup::new(""),
+                    TableColumnSetup::new("Lock"),
                     TableColumnSetup::new("Role"),
                     TableColumnSetup::new("Message"),
                 ],
                 TableFlags::SIZING_STRETCH_PROP,
             ) {
                 ui.table_next_column();
+                ui.disabled(true, || {
+                    drag_handle(ui);
+                });
                 ui.table_next_column();
+                ui.table_next_column();
+                ui.disabled(true, || {
+                    let mut dummy = true;
+                    ui.checkbox("##lock", &mut dummy);
+                });
                 ui.table_next_column();
                 ui.disabled(true, || {
                     ui.set_next_item_width(ui.current_font_size() * 6.0);
@@ -138,6 +145,12 @@ impl View for ViewChatTranslator<'_> {
                         interact = Some(Interaction::Delete(idx));
                     }
                     ui.table_next_column();
+                    let mut lock = message.name.is_some();
+                    ui.disabled(message.role != Role::User, || {
+                        ui.checkbox("##lock", &mut lock);
+                    });
+                    message.name = if lock { Some("info".into()) } else { None };
+                    ui.table_next_column();
                     ui.group(|| {
                         ui.set_next_item_width(ui.current_font_size() * 6.0);
                         combo_enum(ui, "##role", &mut message.role);
@@ -166,6 +179,7 @@ impl View for ViewChatTranslator<'_> {
                         ui.table_next_column();
                         ui.table_next_column();
                         ui.table_next_column();
+                        ui.table_next_column();
                         ui.set_next_item_width(ui.current_font_size() * 6.0);
                         let mut system_role = openai_chat::chat::Role::Assistant;
                         combo_enum(ui, "##role", &mut system_role);
@@ -187,6 +201,7 @@ impl View for ViewChatTranslator<'_> {
                         ..Default::default()
                     })
                 }
+                ui.table_next_column();
                 ui.table_next_column();
                 ui.table_next_column();
                 ui.text_disabled("drag and drop by handle to reorder");
@@ -237,27 +252,6 @@ impl View for ViewChatTranslation<'_> {
                     );
                 }
             }
-            ChatTranslation::Filtered { moderation } => {
-                let draw_list = ui.get_window_draw_list();
-                for k in moderation
-                    .categories
-                    .iter()
-                    .filter_map(|(k, &v)| if v { Some(k) } else { None })
-                {
-                    stroke_text_with_highlight(
-                        ui,
-                        &draw_list,
-                        k.as_ref(),
-                        1.0,
-                        Some(StyleColor::PlotLinesHovered),
-                    );
-                    if ui.is_item_hovered() {
-                        ui.tooltip_text(format!("{:.1}%", moderation.category_scores[k] * 100.0))
-                    }
-                }
-                ui.same_line();
-                drop(draw_list);
-            }
         }
     }
 }
@@ -265,24 +259,21 @@ impl View for ViewChatTranslation<'_> {
 pub struct ViewChatTranslationUsage<'a>(pub &'a ChatTranslation);
 impl View for ViewChatTranslationUsage<'_> {
     fn ui(&mut self, ui: &imgui::Ui) {
-        if let ChatTranslation::Translated { model, chat, .. } = self.0 {
-            let chat = chat.blocking_lock();
-            let usage = chat.usage();
-            if let Some(usage) = usage {
-                ui.same_line();
-                let cost = model.cost(usage.prompt_tokens, usage.completion_tokens);
-                ProgressBar::new(0.0)
-                    .overlay_text(format!(
-                        "{}: {} input + {} output = {} (${:.6})",
-                        <&Model as Into<&'static str>>::into(model),
-                        usage.prompt_tokens,
-                        usage.completion_tokens,
-                        usage.total_tokens,
-                        cost
-                    ))
-                    .size([500.0, 0.0])
-                    .build(ui);
-            }
+        let ChatTranslation::Translated { model, chat, .. } = self.0;
+        let chat = chat.blocking_lock();
+        let usage = chat.usage();
+        if let Some(usage) = usage {
+            ui.same_line();
+            ProgressBar::new(0.0)
+                .overlay_text(format!(
+                    "{}: {} input + {} output = {}",
+                    <&Model as Into<&'static str>>::into(model),
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    usage.total_tokens,
+                ))
+                .size([500.0, 0.0])
+                .build(ui);
         }
     }
 }

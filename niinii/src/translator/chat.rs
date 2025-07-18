@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use enclose::enclose;
 use openai_chat::{
     chat::{self, ChatBuffer, Message, Model},
-    moderation, ConnectionPolicy,
+    ConnectionPolicy,
 };
 use tokio::sync::{Mutex, Semaphore};
 use tokio_stream::StreamExt;
@@ -51,17 +51,6 @@ impl Translator for ChatTranslator {
         text: String,
     ) -> Result<Box<dyn Translation>, Error> {
         let chatgpt = &settings.chat;
-
-        if chatgpt.moderation {
-            let mod_request = moderation::Request {
-                input: text.clone(),
-                ..Default::default()
-            };
-            let moderation = self.client.moderation(&mod_request).await?;
-            if moderation.flagged {
-                return Ok(Box::new(ChatTranslation::Filtered { moderation }));
-            }
-        }
 
         let permit = self.semaphore.clone().acquire_owned().await.unwrap();
         let chat_request = {
@@ -153,9 +142,6 @@ pub enum ChatTranslation {
         model: Model,
         chat: Arc<Mutex<ChatBuffer>>,
         _guard: DropGuard,
-    },
-    Filtered {
-        moderation: moderation::Moderation,
     },
 }
 impl Translation for ChatTranslation {

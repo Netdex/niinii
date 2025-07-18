@@ -106,8 +106,13 @@ displayed by niinii counts as full occlusion despite being transparent, which
 causes Chromium-based browsers to suspend drawing. I suspect this could also
 happen with some Electron apps, but I haven't tested it.
 
-## Troubleshooting
-TODO
+### Something else
+Run the application with tracing enabled, then create a GitHub issue with the log attached.
+```pwsh
+# powershell
+$env:RUST_LOG="trace,hyper=off"
+.\niinii.exe | Tee-Object -FilePath "niinii.log"
+```
 
 ## Third-party
 See NOTICE for a list of third-party software used in this project.
