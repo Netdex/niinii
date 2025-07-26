@@ -308,20 +308,20 @@ impl App {
             ui.dockspace_over_viewport();
         };
 
-        let nx_state = get_scroll_lock();
+        let no_inputs = get_scroll_lock();
         let mut niinii = ui
             .window("niinii")
             .opened(run)
             .menu_bar(true)
             .draw_background(!self.settings().transparent);
-        if nx_state {
+        if no_inputs {
             niinii = niinii.no_inputs().draw_background(false);
         }
         niinii.build(|| {
             self.show_menu(ctx, ui);
             self.show_error_modal(ctx, ui);
 
-            if nx_state {
+            if no_inputs {
                 stroke_text_with_highlight(
                     ui,
                     &ui.get_window_draw_list(),

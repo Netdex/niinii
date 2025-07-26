@@ -4,83 +4,41 @@ use std::collections::VecDeque;
 
 use crate::chat::{Message, PartialMessage, Role, Usage};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum State {
-    AcceptPrompt,
-    AcceptResponse,
-}
-
 #[derive(Debug)]
 pub struct ChatBuffer {
-    state: State,
-    system: Option<Message>,
     context: VecDeque<Message>,
-    response: VecDeque<Message>,
-    usage: Option<Usage>,
 }
+
 impl Default for ChatBuffer {
     fn default() -> Self {
         Self::new()
     }
 }
+
 impl ChatBuffer {
     pub fn new() -> Self {
         ChatBuffer {
-            state: State::AcceptPrompt,
-            system: None,
             context: VecDeque::new(),
-            response: VecDeque::new(),
+        }
+    }
+
+    pub fn start_exchange(&mut self, system: Message, request: Message) -> Exchange {
+        Exchange {
+            system,
+            context: self.context.clone(),
+            request,
+            response: None,
             usage: None,
         }
     }
 
-    pub fn begin_exchange(&mut self, system: Message, request: Message) {
-        assert_eq!(self.state, State::AcceptPrompt);
-        // TODO: This would be better if it returned a transaction which we
-        // operate upon and requires finalization, so we don't have to cancel
-        // a transaction in progress.
-
-        self.system = Some(system);
-        self.context.extend(self.response.drain(..));
-        self.context.push_back(request);
-
-        self.state = State::AcceptResponse;
-        self.usage = None;
-    }
-
-    pub fn cancel_exchange(&mut self) {
-        assert_eq!(self.state, State::AcceptResponse);
-
-        self.context.pop_back();
-        self.end_exchange();
-    }
-
-    pub fn append_partial_response(&mut self, partial: &PartialMessage) {
-        assert_eq!(self.state, State::AcceptResponse);
-
-        if let Some(last) = self.response.back_mut() {
-            if let Some(content) = &mut last.content {
-                content.push_str(&partial.content)
-            }
-        } else {
-            let message = Message {
-                // I would use the role from the response instead of hardcoding
-                // 'Assistant' here, but llama.cpp doesn't put a role in the
-                // response unlike OpenAI.
-                role: Role::Assistant,
-                content: Some(partial.content.clone()),
-                ..Default::default()
-            };
-            self.response.push_back(message)
+    pub fn commit(&mut self, exchange: &mut Exchange) {
+        if exchange.usage.is_none() {
+            self.context = exchange.context.clone();
+            self.context.push_back(exchange.request.clone());
+            self.context.extend(exchange.response.iter().cloned());
+            exchange.usage = Some(exchange.estimate_usage());
         }
-    }
-
-    pub fn end_exchange(&mut self) {
-        assert_eq!(self.state, State::AcceptResponse);
-
-        self.state = State::AcceptPrompt;
-        self.system = None;
-        self.usage = Some(self.estimate_usage());
     }
 
     pub fn enforce_context_limit(&mut self, limit: u32) {
@@ -104,10 +62,7 @@ impl ChatBuffer {
     }
 
     pub fn clear(&mut self) {
-        assert_eq!(self.state, State::AcceptPrompt);
-
         self.context.clear();
-        self.response.clear();
     }
 
     fn context_tokens(&self) -> u32 {
@@ -117,10 +72,56 @@ impl ChatBuffer {
             .sum::<u32>()
     }
 
-    pub fn estimate_usage(&self) -> Usage {
+    pub fn context(&self) -> &VecDeque<Message> {
+        &self.context
+    }
+
+    pub fn context_mut(&mut self) -> &mut VecDeque<Message> {
+        &mut self.context
+    }
+}
+
+pub struct Exchange {
+    system: Message,
+    context: VecDeque<Message>,
+    request: Message,
+    response: Option<Message>,
+    usage: Option<Usage>,
+}
+impl Exchange {
+    pub fn append(&mut self, partial: &PartialMessage) {
+        if let Some(last) = &mut self.response {
+            if let Some(content) = &mut last.content {
+                content.push_str(&partial.content)
+            }
+        } else {
+            let message = Message {
+                role: Role::Assistant,
+                content: Some(partial.content.clone()),
+                ..Default::default()
+            };
+            self.response = Some(message);
+        }
+    }
+
+    pub fn prompt(&self) -> Vec<Message> {
+        let mut messages = vec![];
+        messages.push(self.system.clone());
+        messages.extend(self.context.iter().cloned());
+        messages.push(self.request.clone());
+        messages
+    }
+
+    fn estimate_usage(&self) -> Usage {
         // every reply is primed with <im_start>assistant
-        let prompt_tokens =
-            self.context_tokens() + self.system.as_ref().map_or(0, |m| m.estimate_tokens()) + 2;
+        let prompt_tokens = self
+            .context
+            .iter()
+            .map(|m| m.estimate_tokens())
+            .sum::<u32>()
+            + self.system.estimate_tokens()
+            + self.request.estimate_tokens()
+            + 2;
         let completion_tokens = self
             .response
             .iter()
@@ -133,31 +134,11 @@ impl ChatBuffer {
         }
     }
 
-    pub fn context(&self) -> &VecDeque<Message> {
-        &self.context
-    }
-    pub fn context_mut(&mut self) -> &mut VecDeque<Message> {
-        &mut self.context
-    }
-    pub fn response(&self) -> &VecDeque<Message> {
-        &self.response
-    }
-    pub fn response_mut(&mut self) -> &mut VecDeque<Message> {
-        &mut self.response
-    }
-    pub fn usage(&self) -> Option<&Usage> {
-        self.usage.as_ref()
-    }
-    pub fn prompt(&self) -> Vec<Message> {
-        let mut messages = vec![];
-        if let Some(system) = &self.system {
-            messages.push(system.clone());
-        }
-        messages.extend(self.context.iter().cloned());
-        messages
+    pub fn response(&self) -> Option<&Message> {
+        self.response.as_ref()
     }
 
-    pub fn pending_response(&self) -> bool {
-        self.state == State::AcceptResponse
+    pub fn usage(&self) -> Option<&Usage> {
+        self.usage.as_ref()
     }
 }

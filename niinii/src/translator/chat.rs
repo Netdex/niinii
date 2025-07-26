@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use enclose::enclose;
 use openai_chat::{
-    chat::{self, ChatBuffer, Message, Model},
+    chat::{self, ChatBuffer, Exchange, Message, Model},
     ConnectionPolicy,
 };
 use tokio::sync::{Mutex, Semaphore};
@@ -53,9 +53,9 @@ impl Translator for ChatTranslator {
         let chatgpt = &settings.chat;
 
         let permit = self.semaphore.clone().acquire_owned().await.unwrap();
-        let chat_request = {
+        let mut exchange = {
             let mut chat = self.chat.lock().await;
-            chat.begin_exchange(
+            chat.start_exchange(
                 Message {
                     role: chat::Role::System,
                     content: Some(chatgpt.system_prompt.clone()),
@@ -66,68 +66,59 @@ impl Translator for ChatTranslator {
                     content: Some(text.clone()),
                     ..Default::default()
                 },
-            );
-            chat.enforce_context_limit(chatgpt.max_context_tokens);
-
-            chat::Request {
-                model: chatgpt.model,
-                messages: chat.prompt(),
-                temperature: chatgpt.temperature,
-                top_p: chatgpt.top_p,
-                max_tokens: chatgpt.max_tokens,
-                presence_penalty: chatgpt.presence_penalty,
-                ..Default::default()
-            }
+            )
         };
 
-        let stream = self.client.stream(chat_request).await;
-        let mut stream = match stream {
-            Ok(stream) => stream,
-            Err(err) => {
-                let mut chat = self.chat.lock().await;
-                chat.cancel_exchange();
-                return Err(err.into());
-            }
+        let chat_request = chat::Request {
+            model: chatgpt.model,
+            messages: exchange.prompt(),
+            temperature: chatgpt.temperature,
+            top_p: chatgpt.top_p,
+            max_tokens: chatgpt.max_tokens,
+            presence_penalty: chatgpt.presence_penalty,
+            ..Default::default()
         };
 
+        let exchange = Arc::new(Mutex::new(exchange));
+        let mut stream = self.client.stream(chat_request).await?;
         let token = CancellationToken::new();
         let chat = &self.chat;
-        tokio::spawn(enclose! { (chat, token) async move {
-            // Hold permit: We are not allowed to begin another translation
-            // request until this one is complete.
-            let _permit = permit;
-            loop {
-                tokio::select! {
-                    msg = stream.next() => match msg {
-                        Some(Ok(completion)) => {
-                            let mut chat = chat.lock().await;
-                            let message = &completion.choices.first().unwrap().delta;
-                            chat.append_partial_response(message)
+        tokio::spawn(
+            enclose! { (chat, token, exchange, chatgpt.max_context_tokens => max_context_tokens) async move {
+                // Hold permit: We are not allowed to begin another translation
+                // request until this one is complete.
+                let _permit = permit;
+                loop {
+                    tokio::select! {
+                        msg = stream.next() => match msg {
+                            Some(Ok(completion)) => {
+                                let mut exchange = exchange.lock().await;
+                                let message = &completion.choices.first().unwrap().delta;
+                                exchange.append(message)
+                            },
+                            Some(Err(err)) => {
+                                tracing::error!(%err, "stream");
+                                break
+                            },
+                            None => {
+                                let mut chat = chat.lock().await;
+                                let mut exchange = exchange.lock().await;
+                                chat.commit(&mut exchange);
+                                chat.enforce_context_limit(max_context_tokens);
+                                break
+                            }
                         },
-                        Some(Err(err)) => {
-                            tracing::error!(%err, "stream");
-                            let mut chat = chat.lock().await;
-                            chat.cancel_exchange();
-                            break
-                        },
-                        None => {
-                            let mut chat = chat.lock().await;
-                            chat.end_exchange();
+                        _ = token.cancelled() => {
                             break
                         }
-                    },
-                    _ = token.cancelled() => {
-                        let mut chat = chat.lock().await;
-                        chat.cancel_exchange();
-                        break
                     }
                 }
-            }
-        }.instrument(tracing::Span::current())});
+            }.instrument(tracing::Span::current())},
+        );
 
-        Ok(Box::new(ChatTranslation::Translated {
+        Ok(Box::new(ChatTranslation {
             model: chatgpt.model,
-            chat: chat.clone(),
+            exchange,
             _guard: token.drop_guard(),
         }))
     }
@@ -137,12 +128,10 @@ impl Translator for ChatTranslator {
     }
 }
 
-pub enum ChatTranslation {
-    Translated {
-        model: Model,
-        chat: Arc<Mutex<ChatBuffer>>,
-        _guard: DropGuard,
-    },
+pub struct ChatTranslation {
+    pub model: Model,
+    pub exchange: Arc<Mutex<Exchange>>,
+    _guard: DropGuard,
 }
 impl Translation for ChatTranslation {
     fn view(&self) -> Box<dyn View + '_> {

@@ -1,20 +1,19 @@
 //! https://platform.openai.com/docs/api-reference/chat
 
+mod chat_buffer;
+
 use eventsource_stream::Eventsource;
 use reqwest::Method;
 use tokio_stream::{Stream, StreamExt};
 use tracing::Level;
 
 pub use crate::protocol::chat::{Message, Model, PartialMessage, Role, Usage};
+pub use chat_buffer::{ChatBuffer, Exchange};
 
 use crate::{
     protocol::chat::{self, StreamResponse},
     Client, Error,
 };
-
-mod chat_buffer;
-
-pub use chat_buffer::ChatBuffer;
 
 #[derive(Debug, Clone, Default)]
 pub struct Request {

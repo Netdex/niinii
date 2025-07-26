@@ -5,16 +5,15 @@
 //!    You literally wrote it just for this program.
 //! A: Yes, and?
 
+pub mod chat;
+mod protocol;
+pub mod realtime;
+
 use std::{sync::Arc, time::Duration};
 
 use backon::Retryable;
 use serde::Serialize;
 use thiserror::Error;
-
-pub mod chat;
-pub mod realtime;
-
-mod protocol;
 
 #[derive(Error, Debug)]
 pub enum Error {

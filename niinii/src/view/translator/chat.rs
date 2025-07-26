@@ -25,11 +25,9 @@ impl View for ViewChatTranslator<'_> {
             // ui.menu("Settings", || {
             // });
             // ui.separator();
-            ui.disabled(chat.pending_response(), || {
-                if ui.menu_item("Clear") {
-                    chat.clear();
-                }
-            });
+            if ui.menu_item("Clear") {
+                chat.clear();
+            }
         });
         if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
             if let Some(_token) = ui.begin_table("##", 2) {
@@ -173,26 +171,6 @@ impl View for ViewChatTranslator<'_> {
                     _ => {}
                 }
 
-                ui.disabled(true, || {
-                    for message in chat.response_mut() {
-                        let _id = ui.push_id_ptr(message);
-                        ui.table_next_column();
-                        ui.table_next_column();
-                        ui.table_next_column();
-                        ui.table_next_column();
-                        ui.set_next_item_width(ui.current_font_size() * 6.0);
-                        let mut system_role = openai_chat::chat::Role::Assistant;
-                        combo_enum(ui, "##role", &mut system_role);
-                        ui.table_next_column();
-                        ui.disabled(true, || {
-                            if let Some(content) = &mut message.content {
-                                ui.set_next_item_width(ui.content_region_avail()[0]);
-                                ui.input_text("##content", content).build();
-                            }
-                        });
-                    }
-                });
-
                 ui.table_next_column();
                 ui.table_next_column();
                 if ui.button_with_size("+", [ui.frame_height(), 0.0]) {
@@ -216,42 +194,39 @@ impl View for ViewChatTranslation<'_> {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         ui.text(""); // anchor for line wrapping
         ui.same_line();
-        match self.0 {
-            ChatTranslation::Translated { chat, .. } => {
-                let chat = chat.blocking_lock();
-                let draw_list = ui.get_window_draw_list();
-                stroke_text_with_highlight(
-                    ui,
-                    &draw_list,
-                    "[ChatGPT]",
-                    1.0,
-                    Some(StyleColor::NavHighlight),
-                );
-                for content in chat.response().iter().flat_map(|c| c.content.as_ref()) {
-                    ui.same_line();
-                    stroke_text_with_highlight(
-                        ui,
-                        &draw_list,
-                        content,
-                        1.0,
-                        Some(StyleColor::TextSelectedBg),
-                    );
-                }
-                if chat.pending_response() {
-                    if chat.response().is_empty() {
-                        ui.same_line();
-                    } else {
-                        ui.same_line_with_spacing(0.0, 0.0);
-                    }
-                    stroke_text_with_highlight(
-                        ui,
-                        &draw_list,
-                        ellipses(ui),
-                        1.0,
-                        Some(StyleColor::TextSelectedBg),
-                    );
-                }
+        let ChatTranslation { exchange, .. } = self.0;
+        let exchange = exchange.blocking_lock();
+        let draw_list = ui.get_window_draw_list();
+        stroke_text_with_highlight(
+            ui,
+            &draw_list,
+            "[ChatGPT]",
+            1.0,
+            Some(StyleColor::NavHighlight),
+        );
+        for content in exchange.response().iter().flat_map(|c| c.content.as_ref()) {
+            ui.same_line();
+            stroke_text_with_highlight(
+                ui,
+                &draw_list,
+                content,
+                1.0,
+                Some(StyleColor::TextSelectedBg),
+            );
+        }
+        if exchange.usage().is_none() {
+            if exchange.response().is_none() {
+                ui.same_line();
+            } else {
+                ui.same_line_with_spacing(0.0, 0.0);
             }
+            stroke_text_with_highlight(
+                ui,
+                &draw_list,
+                ellipses(ui),
+                1.0,
+                Some(StyleColor::TextSelectedBg),
+            );
         }
     }
 }
@@ -259,9 +234,11 @@ impl View for ViewChatTranslation<'_> {
 pub struct ViewChatTranslationUsage<'a>(pub &'a ChatTranslation);
 impl View for ViewChatTranslationUsage<'_> {
     fn ui(&mut self, ui: &imgui::Ui) {
-        let ChatTranslation::Translated { model, chat, .. } = self.0;
-        let chat = chat.blocking_lock();
-        let usage = chat.usage();
+        let ChatTranslation {
+            model, exchange, ..
+        } = self.0;
+        let exchange = exchange.blocking_lock();
+        let usage = exchange.usage();
         if let Some(usage) = usage {
             ui.same_line();
             ProgressBar::new(0.0)
