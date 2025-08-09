@@ -4,7 +4,7 @@ use openai_chat::chat::{Model, Role};
 use crate::{
     settings::Settings,
     translator::chat::{ChatTranslation, ChatTranslator},
-    view::mixins::drag_handle,
+    view::mixins::{drag_handle, help_marker},
 };
 
 use crate::view::{
@@ -30,7 +30,10 @@ impl View for ViewChatTranslator<'_> {
             }
         });
         if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
-            if let Some(_token) = ui.begin_table("##", 2) {
+            if let Some(_token) = ui.begin_table("##", 3) {
+                ui.table_next_column();
+                ui.set_next_item_width(ui.current_font_size() * -8.0);
+                combo_enum(ui, "Model", &mut chatgpt.model);
                 ui.table_next_column();
                 ui.set_next_item_width(ui.current_font_size() * -8.0);
                 ui.input_scalar("Max context tokens", &mut chatgpt.max_context_tokens)
@@ -75,8 +78,12 @@ impl View for ViewChatTranslator<'_> {
                     },
                 );
                 ui.table_next_column();
-                ui.set_next_item_width(ui.current_font_size() * -8.0);
-                combo_enum(ui, "Model", &mut chatgpt.model);
+                ui.checkbox("Stream", &mut chatgpt.stream);
+                ui.same_line();
+                help_marker(
+                    ui,
+                    "Use streaming API (may require ID verification for some models)",
+                );
             }
         }
         ui.child_window("context_window").build(|| {
@@ -194,13 +201,15 @@ impl View for ViewChatTranslation<'_> {
         let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
         ui.text(""); // anchor for line wrapping
         ui.same_line();
-        let ChatTranslation { exchange, .. } = self.0;
+        let ChatTranslation {
+            model, exchange, ..
+        } = self.0;
         let exchange = exchange.blocking_lock();
         let draw_list = ui.get_window_draw_list();
         stroke_text_with_highlight(
             ui,
             &draw_list,
-            "[ChatGPT]",
+            &format!("[{}]", std::convert::Into::<&'static str>::into(model)),
             1.0,
             Some(StyleColor::NavHighlight),
         );

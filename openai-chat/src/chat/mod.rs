@@ -11,7 +11,7 @@ pub use crate::protocol::chat::{Message, Model, PartialMessage, Role, Usage};
 pub use chat_buffer::{ChatBuffer, Exchange};
 
 use crate::{
-    protocol::chat::{self, StreamResponse},
+    protocol::chat::{self, ChatResponse, StreamOptions, StreamResponse},
     Client, Error,
 };
 
@@ -37,7 +37,7 @@ pub struct Request {
     /// The maximum number of tokens allowed for the generated answer. By
     /// default, the number of tokens the model can return will be (4096 - prompt
     /// tokens).
-    pub max_tokens: Option<u32>,
+    pub max_completion_tokens: Option<u32>,
     /// Number between -2.0 and 2.0. Positive values penalize new tokens based
     /// on whether they appear in the text so far, increasing the model's
     /// likelihood to talk about new topics.
@@ -51,7 +51,7 @@ impl From<Request> for chat::Request {
             temperature,
             top_p,
             n,
-            max_tokens,
+            max_completion_tokens,
             presence_penalty,
         } = value;
         chat::Request {
@@ -60,7 +60,7 @@ impl From<Request> for chat::Request {
             temperature,
             top_p,
             n,
-            max_tokens,
+            max_completion_tokens,
             presence_penalty,
             ..Default::default()
         }
@@ -71,7 +71,7 @@ impl Client {
     #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
     pub async fn chat(&self, request: Request) -> Result<chat::Completion, Error> {
         let request: chat::Request = request.into();
-        tracing::trace!(?request);
+        tracing::debug!(?request);
         let response: chat::ChatResponse = self
             .shared
             .request(Method::POST, "/v1/chat/completions")
@@ -80,7 +80,7 @@ impl Client {
             .await?
             .json()
             .await?;
-        tracing::trace!(?response);
+        tracing::debug!(?response);
         Ok(response.0?)
     }
 
@@ -91,39 +91,68 @@ impl Client {
     ) -> Result<impl Stream<Item = Result<chat::PartialCompletion, Error>>, Error> {
         let mut request: chat::Request = request.into();
         request.stream = Some(true);
+        request.stream_options = Some(StreamOptions {
+            include_obfuscation: false,
+            include_usage: false,
+        });
 
-        tracing::trace!(?request);
-        let stream = self
+        tracing::debug!(?request);
+        let response = self
             .shared
             .request(Method::POST, "/v1/chat/completions")
             .body(&request)
             .send()
-            .await?
-            .bytes_stream()
-            .eventsource();
-        Ok(stream.map_while(|event| match event {
-            Ok(event) => {
-                if event.data == "[DONE]" {
-                    None
-                } else {
-                    let response = match serde_json::from_str::<StreamResponse>(&event.data) {
-                        Ok(response) => {
-                            tracing::trace!(?response);
-                            Ok::<_, Error>(response.0)
+            .await?;
+        let status = response.status();
+
+        if status.is_success() {
+            // HTTP success: Expect SSE response
+            let stream = response.bytes_stream().eventsource();
+            Ok(stream.map_while(|event| {
+                tracing::trace!(?event);
+                match event {
+                    Ok(event) => {
+                        if event.data == "[DONE]" {
+                            None
+                        } else {
+                            let response = match serde_json::from_str::<StreamResponse>(&event.data)
+                            {
+                                Ok(response) => {
+                                    tracing::debug!(?response);
+                                    Ok::<_, Error>(response.0)
+                                }
+                                Err(err) => {
+                                    // Serde error
+                                    tracing::error!(?err, ?event.data);
+                                    Err(err.into())
+                                }
+                            };
+                            Some(response)
                         }
-                        Err(err) => {
-                            tracing::error!(?err, ?event.data);
-                            Err(err.into())
-                        }
-                    };
-                    Some(response)
+                    }
+                    Err(err) => {
+                        // SSE error
+                        tracing::error!(?err);
+                        Some(Err(err.into()))
+                    }
+                }
+            }))
+        } else {
+            // HTTP error: Expect JSON response
+            let response_err = response.error_for_status_ref().unwrap_err();
+            let chat_response = response.json::<ChatResponse>().await;
+            match chat_response {
+                Ok(err) => {
+                    // OpenAI application error
+                    Err(Error::Protocol(err.0.unwrap_err()))
+                }
+                Err(err) => {
+                    // Not application error, return HTTP error
+                    tracing::error!(?response_err, ?err, "unexpected stream response");
+                    Err(response_err.into())
                 }
             }
-            Err(err) => {
-                tracing::error!(?err);
-                Some(Err(err.into()))
-            }
-        }))
+        }
     }
 }
 

@@ -299,7 +299,7 @@ impl Client {
         session_parameters: SessionParameters,
     ) -> Result<RealtimeSession, Error> {
         let create_session_request = CreateSessionRequest(session_parameters);
-        tracing::trace!(?create_session_request);
+        tracing::debug!(?create_session_request);
         let create_session_response: CreateSessionResponse = self
             .shared
             .request(Method::POST, "/v1/realtime/sessions")
@@ -309,7 +309,7 @@ impl Client {
             .await?
             .json()
             .await?;
-        tracing::trace!(?create_session_response);
+        tracing::debug!(?create_session_response);
         RealtimeSession::new(create_session_response).await
     }
 }
@@ -327,7 +327,7 @@ where
             if let tungstenite::Message::Text(_) = message {
                 let response = (&message)
                     .try_into()
-                    .inspect(|response| tracing::trace!(?response))
+                    .inspect(|response| tracing::debug!(?response))
                     .inspect_err(|err| tracing::error!(%err));
                 return Ok(Some(response?));
             } else {
@@ -346,7 +346,7 @@ where
     S: Sink<tungstenite::Message, Error = tungstenite::Error> + Unpin,
 {
     async fn send_request(&mut self, request: &ClientEventRequest) -> Result<(), Error> {
-        tracing::trace!(?request);
+        tracing::debug!(?request);
         Ok(self.send(request.try_into()?).await?)
     }
 }

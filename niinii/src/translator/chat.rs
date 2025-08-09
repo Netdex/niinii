@@ -53,7 +53,7 @@ impl Translator for ChatTranslator {
         let chatgpt = &settings.chat;
 
         let permit = self.semaphore.clone().acquire_owned().await.unwrap();
-        let mut exchange = {
+        let exchange = {
             let mut chat = self.chat.lock().await;
             chat.start_exchange(
                 Message {
@@ -74,47 +74,54 @@ impl Translator for ChatTranslator {
             messages: exchange.prompt(),
             temperature: chatgpt.temperature,
             top_p: chatgpt.top_p,
-            max_tokens: chatgpt.max_tokens,
+            max_completion_tokens: chatgpt.max_tokens,
             presence_penalty: chatgpt.presence_penalty,
             ..Default::default()
         };
 
         let exchange = Arc::new(Mutex::new(exchange));
-        let mut stream = self.client.stream(chat_request).await?;
         let token = CancellationToken::new();
-        let chat = &self.chat;
-        tokio::spawn(
-            enclose! { (chat, token, exchange, chatgpt.max_context_tokens => max_context_tokens) async move {
-                // Hold permit: We are not allowed to begin another translation
-                // request until this one is complete.
-                let _permit = permit;
-                loop {
-                    tokio::select! {
-                        msg = stream.next() => match msg {
-                            Some(Ok(completion)) => {
-                                let mut exchange = exchange.lock().await;
-                                let message = &completion.choices.first().unwrap().delta;
-                                exchange.append(message)
+        if chatgpt.stream {
+            let mut stream = self.client.stream(chat_request).await?;
+            let chat = &self.chat;
+            tokio::spawn(
+                enclose! { (chat, token, exchange, chatgpt.max_context_tokens => max_context_tokens) async move {
+                    // Hold permit: We are not allowed to begin another translation
+                    // request until this one is complete.
+                    let _permit = permit;
+                    loop {
+                        tokio::select! {
+                            msg = stream.next() => match msg {
+                                Some(Ok(completion)) => {
+                                    let mut exchange = exchange.lock().await;
+                                    let message = &completion.choices.first().unwrap().delta;
+                                    exchange.append_partial(message)
+                                },
+                                Some(Err(err)) => {
+                                    tracing::error!(%err, "stream");
+                                    break
+                                },
+                                None => {
+                                    let mut chat = chat.lock().await;
+                                    let mut exchange = exchange.lock().await;
+                                    chat.commit(&mut exchange);
+                                    chat.enforce_context_limit(max_context_tokens);
+                                    break
+                                }
                             },
-                            Some(Err(err)) => {
-                                tracing::error!(%err, "stream");
-                                break
-                            },
-                            None => {
-                                let mut chat = chat.lock().await;
-                                let mut exchange = exchange.lock().await;
-                                chat.commit(&mut exchange);
-                                chat.enforce_context_limit(max_context_tokens);
+                            _ = token.cancelled() => {
                                 break
                             }
-                        },
-                        _ = token.cancelled() => {
-                            break
                         }
                     }
-                }
-            }.instrument(tracing::Span::current())},
-        );
+                }.instrument(tracing::Span::current())},
+            );
+        } else {
+            let response = self.client.chat(chat_request).await?;
+            let mut e = exchange.lock().await;
+            e.set_complete(response.choices.first().unwrap().message.clone());
+            self.chat.lock().await.commit(&mut e);
+        }
 
         Ok(Box::new(ChatTranslation {
             model: chatgpt.model,

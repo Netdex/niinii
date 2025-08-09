@@ -165,7 +165,7 @@ impl App {
         }
     }
 
-    fn transition(&mut self, ui: &Ui, state: State) {
+    fn transition(&mut self, _ui: &Ui, state: State) {
         self.state = state;
     }
 
@@ -213,14 +213,11 @@ impl App {
             }
         }
 
-        match &self.state {
-            State::Completed => {
-                if let Some(request_gloss_text) = self.request_gloss_text.clone() {
-                    self.request_gloss_text = None;
-                    self.request_parse(ui, &request_gloss_text);
-                }
+        if let State::Completed = &self.state {
+            if let Some(request_gloss_text) = self.request_gloss_text.clone() {
+                self.request_gloss_text = None;
+                self.request_parse(ui, &request_gloss_text);
             }
-            _ => (),
         };
 
         if self.settings.watch_clipboard {
