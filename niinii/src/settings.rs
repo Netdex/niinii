@@ -36,6 +36,7 @@ pub struct ChatSettings {
     pub presence_penalty: Option<f32>,
     pub connection_timeout: u64,
     pub timeout: u64,
+    pub stream: bool,
 }
 impl Default for ChatSettings {
     fn default() -> Self {
@@ -51,6 +52,7 @@ impl Default for ChatSettings {
             presence_penalty: None,
             connection_timeout: 3000,
             timeout: 10000,
+            stream: true,
         }
     }
 }

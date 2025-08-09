@@ -89,7 +89,7 @@ pub struct Exchange {
     usage: Option<Usage>,
 }
 impl Exchange {
-    pub fn append(&mut self, partial: &PartialMessage) {
+    pub fn append_partial(&mut self, partial: &PartialMessage) {
         if let Some(last) = &mut self.response {
             if let Some(content) = &mut last.content {
                 content.push_str(&partial.content)
@@ -102,6 +102,10 @@ impl Exchange {
             };
             self.response = Some(message);
         }
+    }
+
+    pub fn set_complete(&mut self, message: Message) {
+        self.response = Some(message);
     }
 
     pub fn prompt(&self) -> Vec<Message> {

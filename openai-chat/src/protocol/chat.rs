@@ -28,7 +28,6 @@ pub enum Model {
     #[serde(rename = "gpt-4.1-2025-04-14")]
     Gpt41_20250414,
 
-    #[default]
     #[serde(rename = "gpt-4.1-mini")]
     Gpt41Mini,
     #[serde(rename = "gpt-4.1-mini-2025-04-14")]
@@ -38,6 +37,22 @@ pub enum Model {
     Gpt41Nano,
     #[serde(rename = "gpt-4.1-nano-2025-04-14")]
     Gpt41Nano20250414,
+
+    #[serde(rename = "gpt-5")]
+    Gpt5,
+    #[serde(rename = "gpt-5-2025-08-07")]
+    Gpt5_20250807,
+
+    #[default]
+    #[serde(rename = "gpt-5-mini")]
+    Gpt5Mini,
+    #[serde(rename = "gpt-5-mini-2025-08-07")]
+    Gpt5Mini20250807,
+
+    #[serde(rename = "gpt-5-nano")]
+    Gpt5Nano,
+    #[serde(rename = "gpt-5-nano-2025-08-07")]
+    Gpt5Nano20250807,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
@@ -47,7 +62,6 @@ pub enum Role {
     #[default]
     User,
     Assistant,
-    Function,
 }
 
 #[serde_with::skip_serializing_none]
@@ -81,6 +95,12 @@ impl Default for Message {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct StreamOptions {
+    pub include_obfuscation: bool,
+    pub include_usage: bool,
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Request {
@@ -90,12 +110,12 @@ pub struct Request {
     pub top_p: Option<f32>,
     pub n: Option<u32>,
     pub stream: Option<bool>,
+    pub stream_options: Option<StreamOptions>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
-    pub max_tokens: Option<u32>,
+    pub max_completion_tokens: Option<u32>,
     pub presence_penalty: Option<f32>,
     // logit_bias
-    // user
 }
 
 #[derive(Debug, Clone, Deserialize)]
