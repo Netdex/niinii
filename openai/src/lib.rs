@@ -12,8 +12,11 @@ pub mod realtime;
 use std::{sync::Arc, time::Duration};
 
 use backon::Retryable;
+use reqwest::Method;
 use serde::Serialize;
 use thiserror::Error;
+
+pub use crate::protocol::ModelId;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -21,13 +24,13 @@ pub enum Error {
     Request(#[from] reqwest::Error),
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
-    #[error("protocol error: {0}")]
+    #[error("Protocol Error: {0}")]
     Protocol(#[from] protocol::Error),
     #[error(transparent)]
     EventStream(#[from] eventsource_stream::EventStreamError<reqwest::Error>),
     #[error(transparent)]
     WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
-    #[error("unexpected server response: {0:?}")]
+    #[error("Unexpected server response: {0:?}")]
     UnexpectedResponse(Box<protocol::realtime::ServerEvent>),
 }
 
@@ -99,6 +102,16 @@ impl Client {
                 token: token.into(),
             }),
         }
+    }
+    pub async fn models(&self) -> Result<Vec<ModelId>, Error> {
+        let response: protocol::ListModelsResponse = self
+            .shared
+            .request(Method::GET, "/v1/models")
+            .send()
+            .await?
+            .json()
+            .await?;
+        Ok(response.data.iter().map(|m| m.id.clone()).collect())
     }
 }
 

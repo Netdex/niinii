@@ -7,18 +7,20 @@ use reqwest::Method;
 use tokio_stream::{Stream, StreamExt};
 use tracing::Level;
 
-pub use crate::protocol::chat::{Message, Model, PartialMessage, Role, Usage};
+pub use crate::protocol::chat::{
+    Message, PartialMessage, ReasoningEffort, Role, ServiceTier, Usage, Verbosity,
+};
 pub use chat_buffer::{ChatBuffer, Exchange};
 
 use crate::{
     protocol::chat::{self, ChatResponse, StreamOptions, StreamResponse},
-    Client, Error,
+    Client, Error, ModelId,
 };
 
 #[derive(Debug, Clone, Default)]
 pub struct Request {
     /// ID of the model to use. Currently, only gpt-3.5-turbo and gpt-3.5-turbo-0301 are supported.
-    pub model: Model,
+    pub model: ModelId,
     /// The messages to generate chat completions for, in the chat format.
     pub messages: Vec<Message>,
     /// What sampling temperature to use, between 0 and 2. Higher values like
@@ -42,6 +44,32 @@ pub struct Request {
     /// on whether they appear in the text so far, increasing the model's
     /// likelihood to talk about new topics.
     pub presence_penalty: Option<f32>,
+    /// Specifies the processing type used for serving the request.
+    /// - If set to 'auto', then the request will be processed with the service
+    ///   tier configured in the Project settings. Unless otherwise configured,
+    ///   the Project will use 'default'.
+    /// - If set to 'default', then the request will be processed with the
+    ///   standard pricing and performance for the selected model.
+    /// - If set to 'flex' or 'priority', then the request will be processed
+    ///   with the corresponding service tier. Contact sales to learn more about
+    ///   Priority processing.
+    ///
+    /// When not set, the default behavior is 'auto'.
+    /// When the service_tier parameter is set, the response body will include
+    /// the service_tier value based on the processing mode actually used to
+    /// serve the request. This response value may be different from the value
+    /// set in the parameter.
+    pub service_tier: Option<ServiceTier>,
+    /// Constrains effort on reasoning for reasoning models. Currently supported
+    /// values are minimal, low, medium, and high. Reducing reasoning effort can
+    /// result in faster responses and fewer tokens used on reasoning in a
+    /// response.
+    pub reasoning_effort: Option<ReasoningEffort>,
+    /// Constrains the verbosity of the model's response. Lower values will
+    /// result in more concise responses, while higher values will result in
+    /// more verbose responses. Currently supported values are low, medium, and
+    /// high.
+    pub verbosity: Option<Verbosity>,
 }
 impl From<Request> for chat::Request {
     fn from(value: Request) -> Self {
@@ -53,6 +81,9 @@ impl From<Request> for chat::Request {
             n,
             max_completion_tokens,
             presence_penalty,
+            service_tier,
+            reasoning_effort,
+            verbosity,
         } = value;
         chat::Request {
             model,
@@ -62,6 +93,9 @@ impl From<Request> for chat::Request {
             n,
             max_completion_tokens,
             presence_penalty,
+            service_tier,
+            reasoning_effort,
+            verbosity,
             ..Default::default()
         }
     }
@@ -93,7 +127,7 @@ impl Client {
         request.stream = Some(true);
         request.stream_options = Some(StreamOptions {
             include_obfuscation: false,
-            include_usage: false,
+            include_usage: true,
         });
 
         tracing::debug!(?request);

@@ -1,10 +1,10 @@
 use imgui::*;
-use openai_chat::chat::{Model, Role};
+use openai::chat::Role;
 
 use crate::{
     settings::Settings,
     translator::chat::{ChatTranslation, ChatTranslator},
-    view::mixins::{drag_handle, help_marker},
+    view::mixins::{combo_list, drag_handle, help_marker},
 };
 
 use crate::view::{
@@ -19,7 +19,7 @@ pub struct ViewChatTranslator<'a>(pub &'a ChatTranslator, pub &'a mut Settings);
 impl View for ViewChatTranslator<'_> {
     fn ui(&mut self, ui: &Ui) {
         let ViewChatTranslator(translator, settings) = self;
-        let mut chat = translator.chat.blocking_lock();
+        let mut chat = translator.buffer.blocking_lock();
         let chatgpt = &mut settings.chat;
         ui.menu_bar(|| {
             // ui.menu("Settings", || {
@@ -30,10 +30,17 @@ impl View for ViewChatTranslator<'_> {
             }
         });
         if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
-            if let Some(_token) = ui.begin_table("##", 3) {
+            if let Some(_token) = ui.begin_table("##", 2) {
                 ui.table_next_column();
                 ui.set_next_item_width(ui.current_font_size() * -8.0);
-                combo_enum(ui, "Model", &mut chatgpt.model);
+                combo_list(ui, "Model", &translator.models, &mut chatgpt.model);
+                ui.table_next_column();
+                ui.checkbox("Stream", &mut chatgpt.stream);
+                ui.same_line();
+                help_marker(
+                    ui,
+                    "Use streaming API (may require ID verification for some models)",
+                );
                 ui.table_next_column();
                 ui.set_next_item_width(ui.current_font_size() * -8.0);
                 ui.input_scalar("Max context tokens", &mut chatgpt.max_context_tokens)
@@ -78,11 +85,36 @@ impl View for ViewChatTranslator<'_> {
                     },
                 );
                 ui.table_next_column();
-                ui.checkbox("Stream", &mut chatgpt.stream);
-                ui.same_line();
-                help_marker(
+                checkbox_option_with_default(
                     ui,
-                    "Use streaming API (may require ID verification for some models)",
+                    &mut chatgpt.service_tier,
+                    openai::chat::ServiceTier::Auto,
+                    |ui, service_tier| {
+                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        combo_enum(ui, "Service tier", service_tier);
+                    },
+                );
+                ui.table_next_column();
+                checkbox_option_with_default(
+                    ui,
+                    &mut chatgpt.reasoning_effort,
+                    openai::chat::ReasoningEffort::Medium,
+                    |ui, reasoning_effort| {
+                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        combo_enum(ui, "Effort", reasoning_effort);
+                    },
+                );
+                ui.same_line();
+                help_marker(ui, "Effort for reasoning models (GPT-5 and o3 models)");
+                ui.table_next_column();
+                checkbox_option_with_default(
+                    ui,
+                    &mut chatgpt.verbosity,
+                    openai::chat::Verbosity::Medium,
+                    |ui, verbosity| {
+                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        combo_enum(ui, "Verbosity", verbosity);
+                    },
                 );
             }
         }
@@ -181,7 +213,7 @@ impl View for ViewChatTranslator<'_> {
                 ui.table_next_column();
                 ui.table_next_column();
                 if ui.button_with_size("+", [ui.frame_height(), 0.0]) {
-                    chat.context_mut().push_back(openai_chat::chat::Message {
+                    chat.context_mut().push_back(openai::chat::Message {
                         content: Some(String::new()),
                         ..Default::default()
                     })
@@ -209,7 +241,7 @@ impl View for ViewChatTranslation<'_> {
         stroke_text_with_highlight(
             ui,
             &draw_list,
-            &format!("[{}]", std::convert::Into::<&'static str>::into(model)),
+            &format!("[{}]", model.as_ref()),
             1.0,
             Some(StyleColor::NavHighlight),
         );
@@ -223,7 +255,7 @@ impl View for ViewChatTranslation<'_> {
                 Some(StyleColor::TextSelectedBg),
             );
         }
-        if exchange.usage().is_none() {
+        if !exchange.completed() {
             if exchange.response().is_none() {
                 ui.same_line();
             } else {
@@ -252,10 +284,11 @@ impl View for ViewChatTranslationUsage<'_> {
             ui.same_line();
             ProgressBar::new(0.0)
                 .overlay_text(format!(
-                    "{}: {} input + {} output = {}",
-                    <&Model as Into<&'static str>>::into(model),
+                    "{}: {} input + {} output ({} reasoning) = {}",
+                    model.as_ref(),
                     usage.prompt_tokens,
                     usage.completion_tokens,
+                    usage.completion_tokens_details.reasoning_tokens,
                     usage.total_tokens,
                 ))
                 .size([500.0, 0.0])

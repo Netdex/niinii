@@ -12,7 +12,7 @@ imgui-winit-glow-renderer-viewports = { git = "https://github.com/Netdex/imgui-r
 # hudhook = { git = "https://github.com/veeenu/hudhook.git" }
 
 [workspace]
-members = ["niinii", "ichiran", "openai-chat"]
+members = ["niinii", "ichiran", "openai"]
 exclude = ["third-party"]
 resolver = "2"
 

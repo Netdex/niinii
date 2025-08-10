@@ -1,5 +1,5 @@
-# openai-chat
-Rust wrapper around OpenAI compatible chat APIs.
+# openai
+Rust wrapper around OpenAI compatible APIs.
 
 ## Testing
 ```

@@ -5,14 +5,10 @@ use thiserror::Error;
 
 use crate::settings::Settings;
 
-const MAX_TEXT_LENGTH: usize = 512;
-
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
     Ichiran(#[from] IchiranError),
-    #[error("Text too long ({length}/{MAX_TEXT_LENGTH} chars)")]
-    TextTooLong { length: usize },
     #[error(transparent)]
     RegexError(#[from] fancy_regex::Error),
 }
@@ -64,9 +60,6 @@ impl Parser {
         }
     }
     pub async fn parse(&self, text: &str, variants: u32) -> Result<SyntaxTree, Error> {
-        if text.len() > MAX_TEXT_LENGTH {
-            return Err(Error::TextTooLong { length: text.len() });
-        }
         let ichiran = &self.shared.ichiran;
 
         let (root, kanji_info, jmdict_data) = tokio::try_join!(

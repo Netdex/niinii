@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub mod chat;
@@ -40,4 +40,27 @@ mod untagged_ok_result {
             })
             .deserialize(de)
     }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct ModelId(pub String);
+impl AsRef<str> for ModelId {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Model {
+    pub id: ModelId,
+    // pub object: String,
+    // pub created: u32,
+    // pub owned_by: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListModelsResponse {
+    // pub object: String,
+    pub data: Vec<Model>,
 }

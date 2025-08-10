@@ -12,7 +12,7 @@ pub enum Error {
     #[error(transparent)]
     DeepL(#[from] deepl_api::Error),
     #[error(transparent)]
-    OpenAI(#[from] openai_chat::Error),
+    OpenAI(#[from] openai::Error),
 }
 
 #[async_trait]

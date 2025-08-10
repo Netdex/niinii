@@ -1,5 +1,5 @@
 [package]
-name = "openai-chat"
+name = "openai"
 version = "0.1.0"
 authors = ["netdex <admin@netdex.org>"]
 edition = "2021"

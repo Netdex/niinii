@@ -76,8 +76,8 @@ impl App {
         let parser = Parser::new(&settings).await;
         let translator: Arc<dyn Translator> = match settings.translator_type {
             TranslatorType::DeepL => Arc::new(DeepLTranslator),
-            TranslatorType::Chat => Arc::new(ChatTranslator::new(&settings)),
-            TranslatorType::Realtime => Arc::new(RealtimeTranslator::new(&settings)),
+            TranslatorType::Chat => Arc::new(ChatTranslator::new(&settings).await),
+            TranslatorType::Realtime => Arc::new(RealtimeTranslator::new(&settings).await),
         };
         let tts = TtsEngine::new(&settings);
         App {
@@ -213,22 +213,25 @@ impl App {
             }
         }
 
+        if self.settings.watch_clipboard {
+            if let Some(clipboard) = ui.clipboard_text() {
+                if clipboard != self.last_clipboard {
+                    self.input_text.clone_from(&clipboard);
+                    self.last_clipboard.clone_from(&clipboard);
+                    // Ignore clipboard contents if they are unreasonably large
+                    if clipboard.len() < 1000 {
+                        self.request_gloss_text = Some(clipboard);
+                    }
+                }
+            }
+        }
+
         if let State::Completed = &self.state {
             if let Some(request_gloss_text) = self.request_gloss_text.clone() {
                 self.request_gloss_text = None;
                 self.request_parse(ui, &request_gloss_text);
             }
         };
-
-        if self.settings.watch_clipboard {
-            if let Some(clipboard) = ui.clipboard_text() {
-                if clipboard != self.last_clipboard {
-                    self.input_text.clone_from(&clipboard);
-                    self.last_clipboard.clone_from(&clipboard);
-                    self.request_gloss_text = Some(clipboard);
-                }
-            }
-        }
     }
 
     fn show_menu(&mut self, ctx: &mut Context, ui: &Ui) {
@@ -267,8 +270,6 @@ impl App {
             ui.separator();
             let _disable_state = ui.begin_disabled(matches!(self.state, State::Processing));
             {
-                let mut _disable_tl =
-                    ui.begin_disabled(self.gloss.ast().is_none_or(|ast| ast.empty()));
                 if ui.menu_item("Translate") {
                     if let Some(gloss) = self.gloss.ast() {
                         self.request_translation(ui, gloss.original_text.clone());

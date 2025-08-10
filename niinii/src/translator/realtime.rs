@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use enclose::enclose;
 use futures::StreamExt;
-use openai_chat::{realtime::*, ConnectionPolicy};
+use openai::{realtime::*, ConnectionPolicy};
 use tokio::sync::{Mutex, OnceCell, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio_util::sync::{CancellationToken, DropGuard};
 
@@ -20,12 +20,13 @@ use crate::{
 use super::{Error, Translation, Translator};
 
 pub struct RealtimeTranslator {
-    client: openai_chat::Client,
+    client: openai::Client,
+    pub models: Vec<openai::ModelId>,
     session: RwLock<OnceCell<RealtimeSession>>,
 }
 impl RealtimeTranslator {
-    pub fn new(settings: &Settings) -> Self {
-        let client = openai_chat::Client::new(
+    pub async fn new(settings: &Settings) -> Self {
+        let client = openai::Client::new(
             &settings.openai_api_key,
             &settings.chat.api_endpoint,
             ConnectionPolicy {
@@ -33,20 +34,31 @@ impl RealtimeTranslator {
                 connect_timeout: Duration::from_millis(settings.chat.connection_timeout),
             },
         );
+        let models = client
+            .models()
+            .await
+            .inspect_err(|err| {
+                tracing::error!(
+                    ?err,
+                    "failed to query OpenAI models, no models will be available"
+                )
+            })
+            .unwrap_or_default();
         Self {
             client,
+            models,
             session: RwLock::new(OnceCell::new()),
         }
     }
     async fn create_session(
         &self,
         settings: &RealtimeSettings,
-    ) -> Result<RealtimeSession, openai_chat::Error> {
+    ) -> Result<RealtimeSession, openai::Error> {
         self.client
             .realtime(SessionParameters {
                 inference_parameters: InferenceParameters {
                     modalities: vec![Modality::Text],
-                    model: Some(settings.model),
+                    model: Some(settings.model.clone()),
                     temperature: settings.temperature,
                     instructions: Some(settings.system_prompt.clone()),
                     ..Default::default()

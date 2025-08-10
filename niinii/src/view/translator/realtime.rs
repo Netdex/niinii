@@ -4,7 +4,7 @@ use crate::{
     settings::Settings,
     translator::realtime::{RealtimeTranslation, RealtimeTranslator},
     view::{
-        mixins::{checkbox_option_with_default, combo_enum, stroke_text_with_highlight},
+        mixins::{checkbox_option_with_default, combo_list, stroke_text_with_highlight},
         View,
     },
 };
@@ -49,7 +49,7 @@ impl View for ViewRealtimeTranslator<'_> {
                 );
                 ui.table_next_column();
                 ui.set_next_item_width(ui.current_font_size() * -8.0);
-                combo_enum(ui, "Model", &mut realtime.model);
+                combo_list(ui, "Model", &translator.models, &mut realtime.model);
             }
         }
         ui.child_window("context_window").build(|| {

@@ -288,14 +288,39 @@ pub fn checkbox_option_with_default<T, U>(
 
 pub fn combo_enum<T>(ui: &Ui, label: impl AsRef<str>, val: &mut T)
 where
-    T: IntoEnumIterator,
+    T: IntoEnumIterator + PartialEq,
     for<'a> &'a T: Into<&'static str>,
 {
     let val_name = <&T as Into<&'static str>>::into(val);
     if let Some(_token) = ui.begin_combo(label, val_name) {
         for e in T::iter() {
-            if ui.selectable(<&T as Into<&'static str>>::into(&e)) {
+            let selected = *val == e;
+            if selected {
+                ui.set_item_default_focus();
+            }
+            if ui
+                .selectable_config(<&T as Into<&'static str>>::into(&e))
+                .selected(selected)
+                .build()
+            {
                 *val = e;
+            }
+        }
+    }
+}
+
+pub fn combo_list<T>(ui: &Ui, label: impl AsRef<str>, elems: &[T], val: &mut T)
+where
+    T: Clone + PartialEq + AsRef<str>,
+{
+    if let Some(_token) = ui.begin_combo(label, val.as_ref()) {
+        for e in elems {
+            let selected = val == e;
+            if selected {
+                ui.set_item_default_focus();
+            }
+            if ui.selectable_config(e).selected(selected).build() {
+                *val = e.clone();
             }
         }
     }

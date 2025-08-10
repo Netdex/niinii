@@ -2,7 +2,10 @@
 
 use std::collections::VecDeque;
 
-use crate::chat::{Message, PartialMessage, Role, Usage};
+use crate::{
+    chat::{Message, Role, Usage},
+    protocol::chat::{Completion, PartialCompletion},
+};
 
 #[derive(Debug)]
 pub struct ChatBuffer {
@@ -32,13 +35,10 @@ impl ChatBuffer {
         }
     }
 
-    pub fn commit(&mut self, exchange: &mut Exchange) {
-        if exchange.usage.is_none() {
-            self.context = exchange.context.clone();
-            self.context.push_back(exchange.request.clone());
-            self.context.extend(exchange.response.iter().cloned());
-            exchange.usage = Some(exchange.estimate_usage());
-        }
+    pub fn commit(&mut self, exchange: &Exchange) {
+        self.context = exchange.context.clone();
+        self.context.push_back(exchange.request.clone());
+        self.context.extend(exchange.response.iter().cloned());
     }
 
     pub fn enforce_context_limit(&mut self, limit: u32) {
@@ -89,22 +89,30 @@ pub struct Exchange {
     usage: Option<Usage>,
 }
 impl Exchange {
-    pub fn append_partial(&mut self, partial: &PartialMessage) {
-        if let Some(last) = &mut self.response {
-            if let Some(content) = &mut last.content {
-                content.push_str(&partial.content)
+    pub fn partial(&mut self, cmpl: PartialCompletion) {
+        if let Some(message) = cmpl.choices.into_iter().next() {
+            let message = message.delta;
+            if let Some(last) = &mut self.response {
+                if let Some(content) = &mut last.content {
+                    content.push_str(&message.content)
+                }
+            } else {
+                let message = Message {
+                    role: Role::Assistant,
+                    content: Some(message.content.clone()),
+                    ..Default::default()
+                };
+                self.response = Some(message);
             }
-        } else {
-            let message = Message {
-                role: Role::Assistant,
-                content: Some(partial.content.clone()),
-                ..Default::default()
-            };
-            self.response = Some(message);
+        }
+        if let Some(usage) = cmpl.usage {
+            self.usage = Some(usage);
         }
     }
 
-    pub fn set_complete(&mut self, message: Message) {
+    pub fn complete(&mut self, cmpl: Completion) {
+        let message = cmpl.choices.into_iter().next().unwrap().message;
+        self.usage = Some(cmpl.usage);
         self.response = Some(message);
     }
 
@@ -116,33 +124,15 @@ impl Exchange {
         messages
     }
 
-    fn estimate_usage(&self) -> Usage {
-        // every reply is primed with <im_start>assistant
-        let prompt_tokens = self
-            .context
-            .iter()
-            .map(|m| m.estimate_tokens())
-            .sum::<u32>()
-            + self.system.estimate_tokens()
-            + self.request.estimate_tokens()
-            + 2;
-        let completion_tokens = self
-            .response
-            .iter()
-            .map(|m| m.estimate_tokens())
-            .sum::<u32>();
-        Usage {
-            prompt_tokens,
-            completion_tokens,
-            total_tokens: prompt_tokens + completion_tokens,
-        }
-    }
-
     pub fn response(&self) -> Option<&Message> {
         self.response.as_ref()
     }
 
     pub fn usage(&self) -> Option<&Usage> {
         self.usage.as_ref()
+    }
+
+    pub fn completed(&self) -> bool {
+        self.usage.is_some()
     }
 }

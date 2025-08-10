@@ -1,6 +1,7 @@
 use derive_more::derive::Display;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use strum_macros::{EnumIter, IntoStaticStr};
+
+use crate::ModelId;
 
 use super::{untagged_ok_result, Error, Result};
 
@@ -28,19 +29,6 @@ pub struct EventId(String);
 #[derive(Debug, Clone, Deserialize, Serialize, Display)]
 #[serde(transparent)]
 pub struct ResponseId(String);
-
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, EnumIter, IntoStaticStr)]
-pub enum Model {
-    #[serde(rename = "gpt-4o-realtime-preview")]
-    Gpt4oRealtimePreview,
-    #[serde(rename = "gpt-4o-realtime-preview-2024-12-17")]
-    Gpt4oRealtimePreview20241217,
-    #[default]
-    #[serde(rename = "gpt-4o-mini-realtime-preview")]
-    Gpt4oMiniRealtimePreview,
-    #[serde(rename = "gpt-4o-mini-realtime-preview-2024-12-17")]
-    Gpt4oMiniRealtimePreview20241217,
-}
 
 #[derive(Debug, Clone)]
 pub enum MaxResponseOutputTokens {
@@ -113,7 +101,7 @@ pub struct ClientSecret {
 pub struct InferenceParameters {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub modalities: Vec<Modality>,
-    pub model: Option<Model>,
+    pub model: Option<ModelId>,
     pub instructions: Option<String>,
     pub temperature: Option<f32>,
     pub max_response_output_tokens: Option<MaxResponseOutputTokens>,

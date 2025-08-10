@@ -2,21 +2,32 @@ use num_derive::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, IntoStaticStr};
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, FromPrimitive, IntoStaticStr, EnumIter)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    FromPrimitive,
+    IntoStaticStr,
+    EnumIter,
+)]
 pub enum RendererType {
     Glow,
     #[cfg(windows)]
     Direct3D11,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
 pub enum RubyTextType {
     None,
     Furigana,
     Romaji,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
 pub enum TranslatorType {
     DeepL,
     Chat,
@@ -27,7 +38,7 @@ pub enum TranslatorType {
 #[serde(default)]
 pub struct ChatSettings {
     pub api_endpoint: String,
-    pub model: openai_chat::chat::Model,
+    pub model: openai::ModelId,
     pub system_prompt: String,
     pub max_context_tokens: u32,
     pub temperature: Option<f32>,
@@ -37,6 +48,9 @@ pub struct ChatSettings {
     pub connection_timeout: u64,
     pub timeout: u64,
     pub stream: bool,
+    pub service_tier: Option<openai::chat::ServiceTier>,
+    pub reasoning_effort: Option<openai::chat::ReasoningEffort>,
+    pub verbosity: Option<openai::chat::Verbosity>,
 }
 impl Default for ChatSettings {
     fn default() -> Self {
@@ -53,6 +67,9 @@ impl Default for ChatSettings {
             connection_timeout: 3000,
             timeout: 10000,
             stream: true,
+            service_tier: Some(openai::chat::ServiceTier::Priority),
+            reasoning_effort: None,
+            verbosity: None,
         }
     }
 }
@@ -60,7 +77,7 @@ impl Default for ChatSettings {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RealtimeSettings {
-    pub model: openai_chat::realtime::Model,
+    pub model: openai::ModelId,
     pub system_prompt: String,
     pub temperature: Option<f32>,
 }

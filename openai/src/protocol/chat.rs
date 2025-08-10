@@ -2,58 +2,9 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, IntoStaticStr};
 use tiktoken_rs::cl100k_base_singleton;
 
+use crate::ModelId;
+
 use super::{untagged_ok_result, Result};
-
-#[derive(
-    Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter,
-)]
-pub enum Model {
-    #[serde(rename = "gpt-3.5-turbo")]
-    Gpt35Turbo,
-    #[serde(rename = "gpt-3.5-turbo-0125")]
-    Gpt35Turbo0125,
-
-    #[serde(rename = "gpt-4o")]
-    Gpt4o,
-    #[serde(rename = "gpt-4o-2024-05-13")]
-    Gpt4o20240513,
-
-    #[serde(rename = "gpt-4o-mini")]
-    Gpt4oMini,
-    #[serde(rename = "gpt-4o-mini-2024-07-18")]
-    Gpt4oMini20240718,
-
-    #[serde(rename = "gpt-4.1")]
-    Gpt41,
-    #[serde(rename = "gpt-4.1-2025-04-14")]
-    Gpt41_20250414,
-
-    #[serde(rename = "gpt-4.1-mini")]
-    Gpt41Mini,
-    #[serde(rename = "gpt-4.1-mini-2025-04-14")]
-    Gpt41Mini20250414,
-
-    #[serde(rename = "gpt-4.1-nano")]
-    Gpt41Nano,
-    #[serde(rename = "gpt-4.1-nano-2025-04-14")]
-    Gpt41Nano20250414,
-
-    #[serde(rename = "gpt-5")]
-    Gpt5,
-    #[serde(rename = "gpt-5-2025-08-07")]
-    Gpt5_20250807,
-
-    #[default]
-    #[serde(rename = "gpt-5-mini")]
-    Gpt5Mini,
-    #[serde(rename = "gpt-5-mini-2025-08-07")]
-    Gpt5Mini20250807,
-
-    #[serde(rename = "gpt-5-nano")]
-    Gpt5Nano,
-    #[serde(rename = "gpt-5-nano-2025-08-07")]
-    Gpt5Nano20250807,
-}
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
 #[serde(rename_all = "lowercase")]
@@ -101,10 +52,36 @@ pub struct StreamOptions {
     pub include_usage: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
+#[serde(rename_all = "lowercase")]
+pub enum ServiceTier {
+    Auto,
+    Default,
+    Flex,
+    Priority,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    Minimal,
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
+#[serde(rename_all = "lowercase")]
+pub enum Verbosity {
+    Low,
+    Medium,
+    High,
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Request {
-    pub model: Model,
+    pub model: ModelId,
     pub messages: Vec<Message>,
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
@@ -115,6 +92,9 @@ pub struct Request {
     pub stop: Vec<String>,
     pub max_completion_tokens: Option<u32>,
     pub presence_penalty: Option<f32>,
+    pub service_tier: Option<ServiceTier>,
+    pub reasoning_effort: Option<ReasoningEffort>,
+    pub verbosity: Option<Verbosity>,
     // logit_bias
 }
 
@@ -133,10 +113,26 @@ pub struct Choice {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct CompletionTokensDetails {
+    pub accepted_prediction_tokens: u32,
+    pub audio_tokens: u32,
+    pub reasoning_tokens: u32,
+    pub rejected_prediction_tokens: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PromptTokensDetails {
+    pub audio_tokens: u32,
+    pub cached_tokens: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    pub completion_tokens_details: CompletionTokensDetails,
+    pub prompt_tokens_details: PromptTokensDetails,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -151,7 +147,7 @@ pub struct Completion {
     pub id: String,
     pub object: String,
     pub created: u32,
-    pub model: Model,
+    pub model: ModelId,
     pub usage: Usage,
     pub choices: Vec<Choice>,
 }
@@ -161,13 +157,15 @@ pub(crate) struct ChatResponse(
     #[serde(deserialize_with = "untagged_ok_result::deserialize")] pub Result<Completion>,
 );
 
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Deserialize)]
 pub struct PartialCompletion {
     pub id: String,
     pub object: String,
     pub created: u32,
-    pub model: Model,
+    pub model: ModelId,
     pub choices: Vec<PartialChoice>,
+    pub usage: Option<Usage>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -356,7 +356,7 @@ mod tests {
     use tracing_test::traced_test;
 
     use super::*;
-    use crate::tests::fixture;
+    use crate::{tests::fixture, ModelId};
 
     #[tokio::test]
     #[traced_test]
@@ -366,7 +366,7 @@ mod tests {
         let session = client
             .realtime(SessionParameters {
                 inference_parameters: InferenceParameters {
-                    model: Some(Model::Gpt4oMiniRealtimePreview),
+                    model: Some(ModelId("gpt-4o-mini-realtime-preview".into())),
                     modalities: vec![Modality::Text],
                     ..Default::default()
                 },

@@ -5,25 +5,32 @@
 
 [Demonstration](https://www.youtube.com/watch?v=Ap2jXEkhURM)
 
-niinii (knee-knee) is a graphical frontend for glossing Japanese text. Useful
-for assisted reading of text for language learning purposes. A primary use case
-is glossing visual novels, which is shown in the demonstration above. I made
-this tool with the express intent to read a single *specific* visual novel,
-which is also where the name comes from. If someone else finds it useful that's
-cool too.
+niinii (knee-knee) is a graphical frontend for glossing and translating Japanese
+text. Useful for assisted reading of text for language learning purposes. A
+primary use case is glossing visual novels, which is shown in the demonstration
+above. I made this tool with the express intent to read a single *specific*
+visual novel, which is also where the name comes from. If someone else finds it
+useful that's cool too.
 
 For example, in the demonstration above, I use niinii along with a text hooker
 to gloss the dialogue in a visual novel. The segmented phrase along with ruby
 text (i.e. furigana) is displayed. Hovering over a segment will show dictionary
 definitions and inflections from JMDict. You can pop open a separate window by
 clicking on a segment. Hovering over kanji will show kanji information from
-KANJIDIC2. I would write a more detailed user manual but I think you can
-probably figure it out.
+KANJIDIC2. Behold the LLM-based live translation. I would write a more detailed
+user manual but I think you can probably figure it out.
 
-Japanese language support is implemented using
+Segmentation is implemented using
 [Ichiran](https://github.com/tshatrov/ichiran) by
 [tshatrov](https://github.com/tshatrov). Ichiran is pretty amazing at text 
 segmentation compared to other tools I've tried.
+
+As of late, niinii incorporates translation features via LLM offerings from
+OpenAI. Since I started working on this project, the state of LLM-based
+translation has drastically improved both in quality and latency. I won't
+comment on the state of the art here since it changes on a monthly cadence.
+Again, I would write a more detailed user manual but you'll figure it out.
+Bring your own API key.
 
 ## Why not use...
 This is a tool created to service a personal need, and may not be useful to you.
@@ -36,8 +43,10 @@ much better at segmentation, provides more metadata, and makes fewer mistakes.
 **Why not use rikai(kun|chan), JGlossator?**: They don't do segmentation.
 
 **Why not use DeepL, Google Translate, etc.?**: I want a gloss, not a
-translation tool. If I ever integrate translation features, I'd like to do so in
-a way that supplements the gloss rather than dumping text.
+translation tool. ~~If I ever integrate translation features, I'd like to do so in
+a way that supplements the gloss rather than dumping text.~~ I have finally
+incorporated translation features into niinii. Of course, the purpose here is
+still to supplement the gloss.
 
 **Why not use the web frontend [ichi.moe](https://ichi.moe)?**: 
 There are some features I'd like to experiment with to improve the glossing
@@ -46,7 +55,7 @@ experience.
 ## Build
 Prepackaged builds are available in the
 [Releases](https://github.com/Netdex/niinii/releases) section of this
-repository.
+repository. These releases are seldom published and may be missing many unstable features. You may download bleeding-edge builds from [GitHub Actions](https://github.com/Netdex/niinii/actions).
 
 The only target that is properly maintained is `x86_64-pc-windows-msvc`. There's
 nothing stopping it from working on other targets (e.g. Linux), but additional
