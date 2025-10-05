@@ -22,17 +22,15 @@ impl View for ViewChatTranslator<'_> {
         let mut chat = translator.buffer.blocking_lock();
         let chatgpt = &mut settings.chat;
         ui.menu_bar(|| {
-            // ui.menu("Settings", || {
-            // });
-            // ui.separator();
             if ui.menu_item("Clear") {
                 chat.clear();
             }
         });
         if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
+            let align = 10.0;
             if let Some(_token) = ui.begin_table("##", 2) {
                 ui.table_next_column();
-                ui.set_next_item_width(ui.current_font_size() * -8.0);
+                ui.set_next_item_width(ui.current_font_size() * -align);
                 combo_list(ui, "Model", &translator.models, &mut chatgpt.model);
                 ui.table_next_column();
                 ui.checkbox("Stream", &mut chatgpt.stream);
@@ -42,13 +40,18 @@ impl View for ViewChatTranslator<'_> {
                     "Use streaming API (may require ID verification for some models)",
                 );
                 ui.table_next_column();
-                ui.set_next_item_width(ui.current_font_size() * -8.0);
-                ui.input_scalar("Max context tokens", &mut chatgpt.max_context_tokens)
+                ui.set_next_item_width(ui.current_font_size() * -align);
+                ui.input_scalar_n("Context tokens", &mut chatgpt.max_context_tokens)
                     .build();
+                ui.same_line();
+                help_marker(
+                    ui,
+                    "Target/threshold. For limiting context size while optimizing usage of prefix caches",
+                );
                 ui.table_next_column();
                 checkbox_option(ui, &mut chatgpt.max_tokens, |ui, max_tokens| {
-                    ui.set_next_item_width(ui.current_font_size() * -8.0);
-                    ui.input_scalar("Max tokens", max_tokens).build();
+                    ui.set_next_item_width(ui.current_font_size() * -align);
+                    ui.input_scalar("Max response tokens", max_tokens).build();
                 });
                 ui.table_next_column();
                 checkbox_option_with_default(
@@ -56,7 +59,7 @@ impl View for ViewChatTranslator<'_> {
                     &mut chatgpt.temperature,
                     1.0,
                     |ui, temperature| {
-                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        ui.set_next_item_width(ui.current_font_size() * -align);
                         ui.slider_config("Temperature", 0.0f32, 2.0f32)
                             .display_format("%.2f")
                             .flags(SliderFlags::ALWAYS_CLAMP)
@@ -65,7 +68,7 @@ impl View for ViewChatTranslator<'_> {
                 );
                 ui.table_next_column();
                 checkbox_option_with_default(ui, &mut chatgpt.top_p, 1.0, |ui, top_p| {
-                    ui.set_next_item_width(ui.current_font_size() * -8.0);
+                    ui.set_next_item_width(ui.current_font_size() * -align);
                     ui.slider_config("Top P", 0.0f32, 1.0f32)
                         .display_format("%.2f")
                         .flags(SliderFlags::ALWAYS_CLAMP)
@@ -77,7 +80,7 @@ impl View for ViewChatTranslator<'_> {
                     &mut chatgpt.presence_penalty,
                     0.0,
                     |ui, presence_penalty| {
-                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        ui.set_next_item_width(ui.current_font_size() * -align);
                         ui.slider_config("Presence penalty", -2.0f32, 2.0f32)
                             .display_format("%.2f")
                             .flags(SliderFlags::ALWAYS_CLAMP)
@@ -88,9 +91,9 @@ impl View for ViewChatTranslator<'_> {
                 checkbox_option_with_default(
                     ui,
                     &mut chatgpt.service_tier,
-                    openai::chat::ServiceTier::Auto,
+                    openai::ServiceTier::Auto,
                     |ui, service_tier| {
-                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        ui.set_next_item_width(ui.current_font_size() * -align);
                         combo_enum(ui, "Service tier", service_tier);
                     },
                 );
@@ -98,10 +101,10 @@ impl View for ViewChatTranslator<'_> {
                 checkbox_option_with_default(
                     ui,
                     &mut chatgpt.reasoning_effort,
-                    openai::chat::ReasoningEffort::Medium,
+                    openai::ReasoningEffort::Medium,
                     |ui, reasoning_effort| {
-                        ui.set_next_item_width(ui.current_font_size() * -8.0);
-                        combo_enum(ui, "Effort", reasoning_effort);
+                        ui.set_next_item_width(ui.current_font_size() * -align);
+                        combo_enum(ui, "Reasoning effort", reasoning_effort);
                     },
                 );
                 ui.same_line();
@@ -110,9 +113,9 @@ impl View for ViewChatTranslator<'_> {
                 checkbox_option_with_default(
                     ui,
                     &mut chatgpt.verbosity,
-                    openai::chat::Verbosity::Medium,
+                    openai::Verbosity::Medium,
                     |ui, verbosity| {
-                        ui.set_next_item_width(ui.current_font_size() * -8.0);
+                        ui.set_next_item_width(ui.current_font_size() * -align);
                         combo_enum(ui, "Verbosity", verbosity);
                     },
                 );
@@ -255,7 +258,7 @@ impl View for ViewChatTranslation<'_> {
                 Some(StyleColor::TextSelectedBg),
             );
         }
-        if !exchange.completed() {
+        if !exchange.is_completed() {
             if exchange.response().is_none() {
                 ui.same_line();
             } else {
@@ -288,7 +291,11 @@ impl View for ViewChatTranslationUsage<'_> {
                     model.as_ref(),
                     usage.prompt_tokens,
                     usage.completion_tokens,
-                    usage.completion_tokens_details.reasoning_tokens,
+                    usage
+                        .completion_tokens_details
+                        .as_ref()
+                        .map(|x| x.reasoning_tokens)
+                        .unwrap_or_default(),
                     usage.total_tokens,
                 ))
                 .size([500.0, 0.0])

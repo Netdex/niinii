@@ -1,10 +1,75 @@
+use bon::Builder;
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumIter, IntoStaticStr};
 use tiktoken_rs::cl100k_base_singleton;
 
-use crate::ModelId;
-
 use super::{untagged_ok_result, Result};
+use crate::{
+    protocol::{ReasoningEffort, ServiceTier, StreamOptions, Verbosity},
+    ModelId,
+};
+
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Default, Serialize, Builder)]
+pub struct Request {
+    /// ID of the model to use. Currently, only gpt-3.5-turbo and gpt-3.5-turbo-0301 are supported.
+    pub model: ModelId,
+    /// The messages to generate chat completions for, in the chat format.
+    pub messages: Vec<Message>,
+    /// What sampling temperature to use, between 0 and 2. Higher values like
+    /// 0.8 will make the output more random, while lower values like 0.2 will
+    /// make it more focused and deterministic.
+    /// We generally recommend altering this or top_p but not both.
+    pub temperature: Option<f32>,
+    /// An alternative to sampling with temperature, called nucleus sampling,
+    /// where the model considers the results of the tokens with top_p
+    /// probability mass. So 0.1 means only the tokens comprising the top 10%
+    /// probability mass are considered.
+    /// We generally recommend altering this or temperature but not both.
+    pub top_p: Option<f32>,
+    /// How many chat completion choices to generate for each input message.
+    pub n: Option<u32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[builder(default)]
+    pub stop: Vec<String>,
+    /// The maximum number of tokens allowed for the generated answer. By
+    /// default, the number of tokens the model can return will be (4096 - prompt
+    /// tokens).
+    pub max_completion_tokens: Option<u32>,
+    /// Number between -2.0 and 2.0. Positive values penalize new tokens based
+    /// on whether they appear in the text so far, increasing the model's
+    /// likelihood to talk about new topics.
+    pub presence_penalty: Option<f32>,
+    /// Specifies the processing type used for serving the request.
+    /// - If set to 'auto', then the request will be processed with the service
+    ///   tier configured in the Project settings. Unless otherwise configured,
+    ///   the Project will use 'default'.
+    /// - If set to 'default', then the request will be processed with the
+    ///   standard pricing and performance for the selected model.
+    /// - If set to 'flex' or 'priority', then the request will be processed
+    ///   with the corresponding service tier. Contact sales to learn more about
+    ///   Priority processing.
+    ///
+    /// When not set, the default behavior is 'auto'.
+    /// When the service_tier parameter is set, the response body will include
+    /// the service_tier value based on the processing mode actually used to
+    /// serve the request. This response value may be different from the value
+    /// set in the parameter.
+    pub service_tier: Option<ServiceTier>,
+    /// Constrains effort on reasoning for reasoning models. Currently supported
+    /// values are minimal, low, medium, and high. Reducing reasoning effort can
+    /// result in faster responses and fewer tokens used on reasoning in a
+    /// response.
+    pub reasoning_effort: Option<ReasoningEffort>,
+    /// Constrains the verbosity of the model's response. Lower values will
+    /// result in more concise responses, while higher values will result in
+    /// more verbose responses. Currently supported values are low, medium, and
+    /// high.
+    pub verbosity: Option<Verbosity>,
+    // logit_bias
+    pub(crate) stream: Option<bool>,
+    pub(crate) stream_options: Option<StreamOptions>,
+}
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
 #[serde(rename_all = "lowercase")]
@@ -46,63 +111,12 @@ impl Default for Message {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct StreamOptions {
-    pub include_obfuscation: bool,
-    pub include_usage: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
-#[serde(rename_all = "lowercase")]
-pub enum ServiceTier {
-    Auto,
-    Default,
-    Flex,
-    Priority,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
-#[serde(rename_all = "lowercase")]
-pub enum ReasoningEffort {
-    Minimal,
-    Low,
-    Medium,
-    High,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
-#[serde(rename_all = "lowercase")]
-pub enum Verbosity {
-    Low,
-    Medium,
-    High,
-}
-
-#[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct Request {
-    pub model: ModelId,
-    pub messages: Vec<Message>,
-    pub temperature: Option<f32>,
-    pub top_p: Option<f32>,
-    pub n: Option<u32>,
-    pub stream: Option<bool>,
-    pub stream_options: Option<StreamOptions>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub stop: Vec<String>,
-    pub max_completion_tokens: Option<u32>,
-    pub presence_penalty: Option<f32>,
-    pub service_tier: Option<ServiceTier>,
-    pub reasoning_effort: Option<ReasoningEffort>,
-    pub verbosity: Option<Verbosity>,
-    // logit_bias
-}
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct PartialMessage {
     pub role: Option<Role>,
+    // llama-cpp begins responses with content: null for some reason
     #[serde(default)]
-    pub content: String,
+    pub content: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -131,8 +145,8 @@ pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
-    pub completion_tokens_details: CompletionTokensDetails,
-    pub prompt_tokens_details: PromptTokensDetails,
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

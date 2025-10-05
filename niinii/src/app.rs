@@ -219,7 +219,7 @@ impl App {
                     self.input_text.clone_from(&clipboard);
                     self.last_clipboard.clone_from(&clipboard);
                     // Ignore clipboard contents if they are unreasonably large
-                    if clipboard.len() < 1000 {
+                    if clipboard.len() < 500 {
                         self.request_gloss_text = Some(clipboard);
                     }
                 }
@@ -268,12 +268,10 @@ impl App {
                 }
             }
             ui.separator();
-            let _disable_state = ui.begin_disabled(matches!(self.state, State::Processing));
-            {
-                if ui.menu_item("Translate") {
-                    if let Some(gloss) = self.gloss.ast() {
-                        self.request_translation(ui, gloss.original_text.clone());
-                    }
+            let disable_state = ui.begin_disabled(matches!(self.state, State::Processing));
+            if ui.menu_item("Translate") {
+                if let Some(gloss) = self.gloss.ast() {
+                    self.request_translation(ui, gloss.original_text.clone());
                 }
             }
             if cfg!(feature = "voicevox") && ui.menu_item("Speak") {
@@ -281,6 +279,7 @@ impl App {
                     self.request_tts(ui, &gloss.original_text.clone());
                 }
             }
+            drop(disable_state);
         }
     }
 

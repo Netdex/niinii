@@ -27,6 +27,7 @@ strum = "0.26"
 strum_macros = "0.26"
 derive_more = { version = "1", features = ["display"] }
 futures-util = "0.3"
+bon = "3.7.0"
 
 eventsource-stream = { path = "../third-party/eventsource-stream" }
 

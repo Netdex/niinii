@@ -17,6 +17,7 @@ use imgui::{ConfigFlags, ViewportFlags};
 use imgui_winit_glow_renderer_viewports::Renderer as GlowViewportsRenderer;
 use raw_window_handle::HasRawWindowHandle;
 use winit::{
+    dpi::{PhysicalPosition, PhysicalSize},
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
     platform::{run_on_demand::EventLoopExtRunOnDemand, windows::WindowBuilderExtWindows},
@@ -42,7 +43,16 @@ pub struct GlowRenderer {
 }
 impl GlowRenderer {
     pub fn new(settings: &Settings) -> Self {
-        let window_builder = winit::window::WindowBuilder::new().with_title("niinii");
+        // The main window is useless except for driving the main renderer loop,
+        // so just make it invisible and as small as possible.
+        let window_builder = winit::window::WindowBuilder::new()
+            .with_title("niinii")
+            .with_decorations(false)
+            .with_skip_taskbar(true)
+            .with_resizable(false)
+            .with_transparent(true)
+            .with_position(PhysicalPosition::new(0, 0))
+            .with_inner_size(PhysicalSize::new(1, 1));
         let event_loop = EventLoop::new().unwrap();
 
         let template_builder = ConfigTemplateBuilder::new();

@@ -32,6 +32,7 @@ impl ChatBuffer {
             request,
             response: None,
             usage: None,
+            completed: false,
         }
     }
 
@@ -41,10 +42,13 @@ impl ChatBuffer {
         self.context.extend(exchange.response.iter().cloned());
     }
 
-    pub fn enforce_context_limit(&mut self, limit: u32) {
+    pub fn enforce_context_limit(&mut self, limit_range: &[u32; 2]) {
+        if self.context_tokens() <= limit_range[1] {
+            return;
+        }
         let mut idx = 0;
         loop {
-            if self.context_tokens() <= limit || idx >= self.context.len() {
+            if self.context_tokens() <= limit_range[0] || idx >= self.context.len() {
                 break;
             }
             if self.context[idx].name.is_some() {
@@ -87,22 +91,25 @@ pub struct Exchange {
     request: Message,
     response: Option<Message>,
     usage: Option<Usage>,
+    completed: bool,
 }
 impl Exchange {
     pub fn partial(&mut self, cmpl: PartialCompletion) {
         if let Some(message) = cmpl.choices.into_iter().next() {
             let message = message.delta;
-            if let Some(last) = &mut self.response {
-                if let Some(content) = &mut last.content {
-                    content.push_str(&message.content)
+            if let Some(content) = &message.content {
+                let content = content.replace("\n", "");
+                if let Some(last_content) = self.response.as_mut().and_then(|x| x.content.as_mut())
+                {
+                    last_content.push_str(&content)
+                } else {
+                    let message = Message {
+                        role: Role::Assistant,
+                        content: Some(content),
+                        ..Default::default()
+                    };
+                    self.response = Some(message);
                 }
-            } else {
-                let message = Message {
-                    role: Role::Assistant,
-                    content: Some(message.content.clone()),
-                    ..Default::default()
-                };
-                self.response = Some(message);
             }
         }
         if let Some(usage) = cmpl.usage {
@@ -114,6 +121,10 @@ impl Exchange {
         let message = cmpl.choices.into_iter().next().unwrap().message;
         self.usage = Some(cmpl.usage);
         self.response = Some(message);
+    }
+
+    pub fn set_completed(&mut self) {
+        self.completed = true;
     }
 
     pub fn prompt(&self) -> Vec<Message> {
@@ -132,7 +143,7 @@ impl Exchange {
         self.usage.as_ref()
     }
 
-    pub fn completed(&self) -> bool {
-        self.usage.is_some()
+    pub fn is_completed(&self) -> bool {
+        self.completed
     }
 }

@@ -13,7 +13,7 @@ use crate::translator::Translation;
 use crate::view::{raw::RawView, term::TermView};
 
 enum View {
-    Text(String),
+    Text(String), // TODO: display basic_split instead of plain text
     Interpret { ast: SyntaxTree },
 }
 
@@ -245,15 +245,15 @@ impl GlossView {
     pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
         ui.text(""); // anchor for line wrapping
         match &self.view {
-            Some(View::Interpret { ast: gloss }) => {
-                self.add_root(ctx, ui, settings, &gloss.root);
+            Some(View::Interpret { ast }) => {
+                self.add_root(ctx, ui, settings, &ast.root);
 
                 if self.show_raw {
                     ui.window("Raw")
                         .size([300., 110.], Condition::FirstUseEver)
                         .opened(&mut self.show_raw)
                         .build(|| {
-                            RawView::new(&gloss.root).ui(ctx, ui);
+                            RawView::new(&ast.root).ui(ctx, ui);
                         });
                 }
                 if self.show_glossary {
@@ -261,7 +261,7 @@ impl GlossView {
                         .size([300., 110.], Condition::FirstUseEver)
                         .opened(&mut self.show_glossary)
                         .build(|| {
-                            IndexView::new(gloss).ui(ctx, ui, settings);
+                            IndexView::new(ast).ui(ctx, ui, settings);
                         });
                 }
             }

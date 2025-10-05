@@ -40,7 +40,7 @@ pub struct ChatSettings {
     pub api_endpoint: String,
     pub model: openai::ModelId,
     pub system_prompt: String,
-    pub max_context_tokens: u32,
+    pub max_context_tokens: [u32; 2],
     pub temperature: Option<f32>,
     pub top_p: Option<f32>,
     pub max_tokens: Option<u32>,
@@ -48,9 +48,9 @@ pub struct ChatSettings {
     pub connection_timeout: u64,
     pub timeout: u64,
     pub stream: bool,
-    pub service_tier: Option<openai::chat::ServiceTier>,
-    pub reasoning_effort: Option<openai::chat::ReasoningEffort>,
-    pub verbosity: Option<openai::chat::Verbosity>,
+    pub service_tier: Option<openai::ServiceTier>,
+    pub reasoning_effort: Option<openai::ReasoningEffort>,
+    pub verbosity: Option<openai::Verbosity>,
 }
 impl Default for ChatSettings {
     fn default() -> Self {
@@ -59,7 +59,7 @@ impl Default for ChatSettings {
             model: Default::default(),
             system_prompt: "You will translate the following visual novel script into English."
                 .into(),
-            max_context_tokens: 64,
+            max_context_tokens: [64, 64],
             temperature: None,
             top_p: None,
             max_tokens: Some(128),
@@ -67,7 +67,7 @@ impl Default for ChatSettings {
             connection_timeout: 3000,
             timeout: 10000,
             stream: true,
-            service_tier: Some(openai::chat::ServiceTier::Priority),
+            service_tier: Some(openai::ServiceTier::Priority),
             reasoning_effort: None,
             verbosity: None,
         }

@@ -6,7 +6,7 @@ use openai::{
     chat::{self, ChatBuffer, Exchange, Message},
     ConnectionPolicy, ModelId,
 };
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::Instrument;
@@ -25,7 +25,6 @@ pub struct ChatTranslator {
     client: openai::Client,
     pub models: Vec<openai::ModelId>,
     pub buffer: Arc<Mutex<ChatBuffer>>,
-    semaphore: Arc<Semaphore>,
 }
 impl ChatTranslator {
     pub async fn new(settings: &Settings) -> Self {
@@ -51,7 +50,6 @@ impl ChatTranslator {
             client,
             models,
             buffer: Arc::new(Mutex::new(ChatBuffer::new())),
-            semaphore: Arc::new(Semaphore::const_new(1)),
         }
     }
 }
@@ -65,7 +63,6 @@ impl Translator for ChatTranslator {
     ) -> Result<Box<dyn Translation>, Error> {
         let chat = &settings.chat;
 
-        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
         let exchange = {
             let mut buffer = self.buffer.lock().await;
             buffer.start_exchange(
@@ -82,17 +79,16 @@ impl Translator for ChatTranslator {
             )
         };
 
-        let chat_request = chat::Request {
-            model: chat.model.clone(),
-            messages: exchange.prompt(),
-            temperature: chat.temperature,
-            top_p: chat.top_p,
-            max_completion_tokens: chat.max_tokens,
-            presence_penalty: chat.presence_penalty,
-            service_tier: chat.service_tier,
-            reasoning_effort: chat.reasoning_effort,
-            ..Default::default()
-        };
+        let chat_request = chat::Request::builder()
+            .model(chat.model.clone())
+            .messages(exchange.prompt())
+            .maybe_temperature(chat.temperature)
+            .maybe_top_p(chat.top_p)
+            .maybe_max_completion_tokens(chat.max_tokens)
+            .maybe_presence_penalty(chat.presence_penalty)
+            .maybe_service_tier(chat.service_tier)
+            .maybe_reasoning_effort(chat.reasoning_effort)
+            .build();
 
         let exchange = Arc::new(Mutex::new(exchange));
         let token = CancellationToken::new();
@@ -100,9 +96,6 @@ impl Translator for ChatTranslator {
             let mut stream = self.client.stream(chat_request).await?;
             tokio::spawn(
                 enclose! { (self.buffer => buffer, token, exchange, chat.max_context_tokens => max_context_tokens) async move {
-                    // Hold permit: We are not allowed to begin another translation
-                    // request until this one is complete.
-                    let _permit = permit;
                     loop {
                         tokio::select! {
                             msg = stream.next() => match msg {
@@ -118,7 +111,7 @@ impl Translator for ChatTranslator {
                                     let mut buffer = buffer.lock().await;
                                     let exchange = exchange.lock().await;
                                     buffer.commit(&exchange);
-                                    buffer.enforce_context_limit(max_context_tokens);
+                                    buffer.enforce_context_limit(&max_context_tokens);
                                     break
                                 }
                             },
@@ -127,13 +120,15 @@ impl Translator for ChatTranslator {
                             }
                         }
                     }
+                    let mut exchange = exchange.lock().await;
+                    exchange.set_completed();
                 }.instrument(tracing::Span::current())},
             );
         } else {
             let cmpl = self.client.chat(chat_request).await?;
-            let mut e = exchange.lock().await;
-            e.complete(cmpl);
-            self.buffer.lock().await.commit(&e);
+            let mut exchange = exchange.lock().await;
+            exchange.complete(cmpl);
+            self.buffer.lock().await.commit(&exchange);
         }
 
         Ok(Box::new(ChatTranslation {

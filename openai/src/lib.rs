@@ -8,6 +8,7 @@
 pub mod chat;
 mod protocol;
 pub mod realtime;
+pub mod responses;
 
 use std::{sync::Arc, time::Duration};
 
@@ -16,7 +17,7 @@ use reqwest::Method;
 use serde::Serialize;
 use thiserror::Error;
 
-pub use crate::protocol::ModelId;
+pub use crate::protocol::{ModelId, ReasoningEffort, Role, ServiceTier, Verbosity};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -106,7 +107,7 @@ impl Client {
     pub async fn models(&self) -> Result<Vec<ModelId>, Error> {
         let response: protocol::ListModelsResponse = self
             .shared
-            .request(Method::GET, "/v1/models")
+            .request(Method::GET, "v1/models")
             .send()
             .await?
             .json()
