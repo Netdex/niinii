@@ -809,12 +809,12 @@ impl Drop for StateBackup<'_> {
 
             ctx.PSSetShaderResources(0, 1, &opt_com_ptr_as_raw(&self.shader_resource));
             ctx.PSSetSamplers(0, 1, &opt_com_ptr_as_raw(&self.sampler));
-            ctx.PSSetShader(opt_com_ptr_as_raw(&self.ps_shader), &(*self.ps_instances).as_mut_ptr(), (*self.ps_instances).len() as u32);
+            ctx.PSSetShader(opt_com_ptr_as_raw(&self.ps_shader), &(*self.ps_instances).as_mut_ptr(), (&(*self.ps_instances)).len() as u32);
 
-            ctx.VSSetShader(opt_com_ptr_as_raw(&self.vs_shader), &(*self.vs_instances).as_mut_ptr(), (*self.vs_instances).len() as u32);
+            ctx.VSSetShader(opt_com_ptr_as_raw(&self.vs_shader), &(*self.vs_instances).as_mut_ptr(), (&(*self.vs_instances)).len() as u32);
             ctx.VSSetConstantBuffers(0, 1, &opt_com_ptr_as_raw(&self.constant_buffer));
 
-            ctx.GSSetShader(opt_com_ptr_as_raw(&self.gs_shader), &(*self.gs_instances).as_mut_ptr(), (*self.gs_instances).len() as u32);
+            ctx.GSSetShader(opt_com_ptr_as_raw(&self.gs_shader), &(*self.gs_instances).as_mut_ptr(), (&(*self.gs_instances)).len() as u32);
 
             ctx.IASetPrimitiveTopology(self.topology);
             ctx.IASetIndexBuffer(opt_com_ptr_as_raw(&self.index_buffer), self.index_buffer_format, self.index_buffer_offset);
