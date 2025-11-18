@@ -313,6 +313,7 @@ impl App {
             .draw_background(!self.settings().transparent);
         if no_inputs {
             niinii = niinii.no_inputs().draw_background(false);
+            unsafe { sys::igSetNextFrameWantCaptureMouse(false) }
         }
         niinii.build(|| {
             self.show_menu(ctx, ui);

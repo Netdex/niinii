@@ -36,7 +36,8 @@ impl ChatTranslator {
                 connect_timeout: Duration::from_millis(settings.chat.connection_timeout),
             },
         );
-        let models = client
+
+        let mut models = client
             .models()
             .await
             .inspect_err(|err| {
@@ -46,6 +47,8 @@ impl ChatTranslator {
                 )
             })
             .unwrap_or_default();
+        models.sort();
+
         Self {
             client,
             models,

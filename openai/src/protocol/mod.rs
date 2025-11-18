@@ -44,7 +44,7 @@ mod untagged_ok_result {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct ModelId(pub String);
 impl AsRef<str> for ModelId {
@@ -100,6 +100,7 @@ pub enum ReasoningEffort {
     Low,
     Medium,
     High,
+    None,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
