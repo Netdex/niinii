@@ -32,42 +32,42 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = "0.7"
 futures = "0.3"
 async-trait = "0.1"
-backon = "1.3"
+backon = "1.6"
 
 # diagnostics
 log = "0.4"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 tracing-tracy = { version = "0.11", optional = true }
-tracing-chrome = { version = "0.7.1", optional = true }
+tracing-chrome = { version = "0.7.2", optional = true }
 
 # language support
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "0.9"
 regex = "1"
-fancy-regex = "0.14"
-lazy_static = "1.4.0"
+fancy-regex = "0.17"
+lazy_static = "1.5.0"
 num-traits = "0.2"
 num-derive = "0.4"
-strum = "0.26"
-strum_macros = "0.26"
+strum = "0.27"
+strum_macros = "0.27"
 thiserror = "2"
-bitflags = "2.3"
-enclose = "1.1.8"
-once_cell = "1.17.1"
+bitflags = "2.10"
+enclose = "1.2.1"
+once_cell = "1.21.3"
 itertools = "0.14"
 
 # capabilities
-raw-window-handle = "0.5.2"
+raw-window-handle-05 = { package = "raw-window-handle", version = "0.5.2" }
 copypasta = "0.10"
-flate2 = { version = "1.0" }
+flate2 = { version = "1.1" }
 deepl-api = "0.4"
 dirs = "6.0"
-rodio = { version = "0.20.1", optional = true }
+rodio = { version = "0.21.1", optional = true }
 # rayon = "1.5.1"
-hudhook = { version = "0.8.0", optional = true }
-nu-ansi-term = "0.50.1"
+hudhook = { version = "0.8.3", optional = true }
+nu-ansi-term = "0.50.3"
 
 # interned
 ichiran = { path = "../ichiran" }

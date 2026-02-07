@@ -15,7 +15,7 @@ use glutin::{
 use glutin_winit::DisplayBuilder;
 use imgui::{ConfigFlags, ViewportFlags};
 use imgui_winit_glow_renderer_viewports::Renderer as GlowViewportsRenderer;
-use raw_window_handle::HasRawWindowHandle;
+use raw_window_handle_05::HasRawWindowHandle;
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     event::WindowEvent,
