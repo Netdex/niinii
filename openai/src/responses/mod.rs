@@ -1,11 +1,9 @@
 //! https://platform.openai.com/docs/guides/conversation-state?api-mode=responses
 
-use reqwest::Method;
-use tokio_stream::{Stream, StreamExt};
 use tracing::Level;
 
 pub use crate::protocol::responses::Request;
-use crate::{protocol::responses, Client, Error};
+use crate::{Client, Error};
 
 impl Client {
     #[tracing::instrument(level = Level::DEBUG, skip_all, err)]

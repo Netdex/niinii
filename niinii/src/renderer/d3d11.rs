@@ -5,8 +5,7 @@ use std::time::Instant;
 use std::{ptr, rc::Weak};
 
 use imgui_winit_support::WinitPlatform;
-use raw_window_handle::HasRawWindowHandle;
-use raw_window_handle::RawWindowHandle;
+use raw_window_handle_05::{HasRawWindowHandle, RawWindowHandle};
 use winapi::{
     shared::{
         dxgi::*,
@@ -108,11 +107,11 @@ impl D3D11Renderer {
         }
 
         let hwnd = match window.raw_window_handle() {
-            RawWindowHandle::Win32(handle) => handle.hwnd,
+            RawWindowHandle::Win32(handle) => handle.hwnd as HWND,
             _ => unreachable!(),
         };
 
-        let (swapchain, device, context) = unsafe { create_device(hwnd as _) }.unwrap();
+        let (swapchain, device, context) = unsafe { create_device(hwnd) }.unwrap();
         let main_rtv = unsafe { create_render_target(&swapchain, &device) };
 
         let mut imgui = imgui::Context::create();
@@ -421,7 +420,7 @@ unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM)
                     } = &mut *inner;
 
                     let hwnd = match window.raw_window_handle() {
-                        RawWindowHandle::Win32(handle) => handle.hwnd,
+                        RawWindowHandle::Win32(handle) => handle.hwnd as HWND,
                         _ => unreachable!(),
                     };
 
@@ -433,8 +432,7 @@ unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM)
                             use winit::dpi::PhysicalPosition;
 
                             let mut client_pos = ms.pt;
-                            let r =
-                                winuser::ScreenToClient(hwnd as *mut _, &mut client_pos as *mut _);
+                            let r = winuser::ScreenToClient(hwnd, &mut client_pos as *mut _);
                             debug_assert_eq!(r, TRUE);
                             let position =
                                 PhysicalPosition::new(client_pos.x as f64, client_pos.y as f64);
@@ -457,16 +455,16 @@ unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM)
                     // again (this code causes me physical pain)
                     let io = imgui.io_mut();
                     if *last_want_capture_mouse != io.want_capture_mouse {
-                        let style = winuser::GetWindowLongA(hwnd as *mut _, winuser::GWL_EXSTYLE);
+                        let style = winuser::GetWindowLongA(hwnd, winuser::GWL_EXSTYLE);
                         if io.want_capture_mouse {
                             winuser::SetWindowLongA(
-                                hwnd as *mut _,
+                                hwnd,
                                 winuser::GWL_EXSTYLE,
                                 (style as u32 & (!winuser::WS_EX_TRANSPARENT)) as i32,
                             );
                         } else {
                             winuser::SetWindowLongA(
-                                hwnd as *mut _,
+                                hwnd,
                                 winuser::GWL_EXSTYLE,
                                 (style as u32 | winuser::WS_EX_TRANSPARENT) as i32,
                             );

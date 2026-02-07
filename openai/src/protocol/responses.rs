@@ -1,8 +1,6 @@
 use bon::Builder;
 use serde::{Deserialize, Serialize};
-use strum_macros::{EnumIter, IntoStaticStr};
 
-use super::{untagged_ok_result, Result};
 use crate::{
     protocol::{ReasoningEffort, Role, StreamOptions, Verbosity},
     ModelId,
