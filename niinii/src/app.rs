@@ -13,7 +13,7 @@ use crate::{
     support::{docking::UiDocking, platform::get_scroll_lock},
     translator::{
         self, chat::ChatTranslator, deepl::DeepLTranslator, realtime::RealtimeTranslator,
-        Translation, Translator,
+        responses::ResponsesTranslator, Translation, Translator,
     },
     tts::{self, TtsEngine},
     view::{
@@ -78,6 +78,7 @@ impl App {
             TranslatorType::DeepL => Arc::new(DeepLTranslator),
             TranslatorType::Chat => Arc::new(ChatTranslator::new(&settings).await),
             TranslatorType::Realtime => Arc::new(RealtimeTranslator::new(&settings).await),
+            TranslatorType::Responses => Arc::new(ResponsesTranslator::new(&settings).await),
         };
         let tts = TtsEngine::new(&settings);
         App {

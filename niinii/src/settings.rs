@@ -32,6 +32,7 @@ pub enum TranslatorType {
     DeepL,
     Chat,
     Realtime,
+    Responses,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -94,6 +95,38 @@ impl Default for RealtimeSettings {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
+pub struct ResponsesSettings {
+    pub model: openai::ModelId,
+    pub system_prompt: String,
+    pub max_output_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub stream: bool,
+    pub store: bool,
+    pub compact_threshold: Option<u32>,
+    pub reasoning_effort: Option<openai::ReasoningEffort>,
+    pub verbosity: Option<openai::Verbosity>,
+}
+impl Default for ResponsesSettings {
+    fn default() -> Self {
+        Self {
+            model: Default::default(),
+            system_prompt: "You will translate the following visual novel script into English."
+                .into(),
+            max_output_tokens: Some(128),
+            temperature: None,
+            top_p: None,
+            stream: true,
+            store: true,
+            compact_threshold: None,
+            reasoning_effort: None,
+            verbosity: None,
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Settings {
     pub ichiran_path: String,
     pub postgres_path: String,
@@ -116,6 +149,7 @@ pub struct Settings {
     pub openai_api_key: String,
     pub chat: ChatSettings,
     pub realtime: RealtimeSettings,
+    pub responses: ResponsesSettings,
 
     pub vv_model_path: String,
     pub auto_tts_regex: Option<String>,
@@ -153,6 +187,7 @@ impl Default for Settings {
             openai_api_key: Default::default(),
             chat: Default::default(),
             realtime: Default::default(),
+            responses: Default::default(),
 
             vv_model_path: Default::default(),
             auto_tts_regex: None,
