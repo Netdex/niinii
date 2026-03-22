@@ -19,14 +19,14 @@ use winapi::{
         d3d11::*,
         d3dcommon::*,
         winuser::{
-            self, CallNextHookEx, SetWindowsHookExA, UnhookWindowsHookEx, MSLLHOOKSTRUCT,
-            WH_MOUSE_LL,
+            self, CallNextHookEx, SetWindowLongA, SetWindowPos, SetWindowsHookExA,
+            UnhookWindowsHookEx, HWND_TOPMOST, MSLLHOOKSTRUCT, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+            SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WH_MOUSE_LL,
         },
     },
     Interface as _,
 };
 use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
-use winit::window::WindowLevel;
 use winit::{
     event::{DeviceId, Event, WindowEvent},
     event_loop::EventLoop,
@@ -43,6 +43,9 @@ struct Inner {
     platform: WinitPlatform,
     imgui: imgui::Context,
     ctx: Context,
+
+    overlay_mode: bool,
+    last_topmost_refresh: Instant,
 
     renderer: imgui_dx11_renderer::Renderer,
     context: ComPtr<ID3D11DeviceContext>,
@@ -78,7 +81,6 @@ impl D3D11Renderer {
     pub fn new(settings: &Settings) -> Self {
         let event_loop = EventLoop::new().unwrap();
 
-        // let on_top = settings.on_top || settings.overlay_mode;
         let maximized = settings.overlay_mode;
         let decorations = !settings.overlay_mode;
         let fullscreen = if settings.overlay_mode {
@@ -92,18 +94,14 @@ impl D3D11Renderer {
             .with_transparent(true)
             .with_maximized(maximized)
             .with_decorations(decorations)
-            // we set this later, or else we segfault ¯\_(ツ)_/¯
-            // .with_window_level(if on_top {
-            //     WindowLevel::AlwaysOnTop
-            // } else {
-            //     WindowLevel::Normal
-            // })
             .with_fullscreen(fullscreen)
             .build(&event_loop)
             .unwrap();
 
         if settings.overlay_mode {
             window.set_cursor_hittest(false).unwrap();
+            // Don't set this here, or else we segfault
+            // window.set_window_level(WindowLevel::AlwaysOnTop);
         }
 
         let hwnd = match window.raw_window_handle() {
@@ -128,10 +126,10 @@ impl D3D11Renderer {
             unsafe { imgui_dx11_renderer::Renderer::new(&mut imgui, device.clone()).unwrap() };
 
         let mut low_level_mouse_proc: Option<HHOOK> = None;
-        // let mut winit_wnd_proc: winuser::WNDPROC = None;
         if settings.overlay_mode {
-            // this has to be after renderer is created or else we segfault
-            window.set_window_level(WindowLevel::AlwaysOnTop);
+            // best-effort: keep window above borderless fullscreen
+            unsafe { apply_overlay_topmost(hwnd) };
+            // register low level mouse proc for hittesting abuse
             unsafe {
                 low_level_mouse_proc.replace(SetWindowsHookExA(
                     WH_MOUSE_LL,
@@ -140,6 +138,7 @@ impl D3D11Renderer {
                     0,
                 ));
 
+                // let mut winit_wnd_proc: winuser::WNDPROC = None;
                 // let orig_wnd_proc = SetWindowLongPtrA(
                 //     hwnd as HWND,
                 //     winuser::GWL_WNDPROC as i32,
@@ -156,6 +155,8 @@ impl D3D11Renderer {
                     platform,
                     imgui,
                     ctx,
+                    overlay_mode: settings.overlay_mode,
+                    last_topmost_refresh: Instant::now(),
                     renderer,
                     context,
                     main_rtv,
@@ -185,6 +186,8 @@ impl Renderer for D3D11Renderer {
                     platform,
                     imgui,
                     ctx,
+                    overlay_mode,
+                    last_topmost_refresh,
                     renderer,
                     context,
                     main_rtv,
@@ -211,6 +214,18 @@ impl Renderer for D3D11Renderer {
                         event: winit::event::WindowEvent::RedrawRequested,
                         ..
                     } => {
+                        // force the window to the top on a best-effort basis, all other approaches have failed
+                        if *overlay_mode
+                            && last_topmost_refresh.elapsed()
+                                >= std::time::Duration::from_millis(250)
+                        {
+                            let hwnd = match window.raw_window_handle() {
+                                RawWindowHandle::Win32(handle) => handle.hwnd as HWND,
+                                _ => unreachable!(),
+                            };
+                            unsafe { apply_overlay_topmost(hwnd) };
+                            *last_topmost_refresh = Instant::now();
+                        }
                         unsafe {
                             context.OMSetRenderTargets(1, &main_rtv.as_raw(), ptr::null_mut());
                             context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
@@ -360,6 +375,22 @@ unsafe fn create_render_target(
     device.CreateRenderTargetView(back_buffer.cast(), ptr::null_mut(), &mut main_rtv);
     (*back_buffer).Release();
     ComPtr::from_raw(main_rtv)
+}
+
+unsafe fn apply_overlay_topmost(hwnd: HWND) {
+    let style = winuser::GetWindowLongA(hwnd, winuser::GWL_EXSTYLE);
+    let mut ex_style = style as u32;
+    ex_style |= winuser::WS_EX_TOPMOST | winuser::WS_EX_LAYERED | winuser::WS_EX_TOOLWINDOW;
+    SetWindowLongA(hwnd, winuser::GWL_EXSTYLE, ex_style as i32);
+    SetWindowPos(
+        hwnd,
+        HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+    );
 }
 
 thread_local! {

@@ -1,3 +1,7 @@
+# User settings
+.vscode/
+.claude/
+
 # niinii runtime files
 /data
 imgui.ini

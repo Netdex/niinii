@@ -6,6 +6,7 @@
 //! A: Yes, and?
 
 pub mod chat;
+pub mod conversations;
 mod protocol;
 pub mod realtime;
 pub mod responses;

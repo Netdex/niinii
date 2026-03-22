@@ -6,6 +6,7 @@ use crate::{settings::Settings, view::View};
 pub mod chat;
 pub mod deepl;
 pub mod realtime;
+pub mod responses;
 
 #[derive(Error, Debug)]
 pub enum Error {
