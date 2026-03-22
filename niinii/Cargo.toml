@@ -77,7 +77,7 @@ openai = { path = "../openai" }
 imgui-dx11-renderer = { path = "../third-party/imgui-dx11-renderer" }
 vvcore = { path = "../third-party/vvcore", optional = true }
 
-winapi = { version = "0.3", features=["winuser"] }
+winapi = { version = "0.3", features = ["winuser"] }
 wio = "0.2"
 # detour = { version = "0.8", default-features = false }
 

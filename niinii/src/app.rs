@@ -10,7 +10,7 @@ use crate::{
     parser::{self, Parser, SyntaxTree},
     renderer::context::{Context, ContextFlags},
     settings::{Settings, TranslatorType},
-    support::{docking::UiDocking, platform::get_scroll_lock},
+    support::docking::UiDocking,
     translator::{
         self, chat::ChatTranslator, deepl::DeepLTranslator, realtime::RealtimeTranslator,
         responses::ResponsesTranslator, Translation, Translator,
@@ -60,6 +60,7 @@ pub struct App {
     show_style_editor: bool,
     show_inject: bool,
     show_translator: bool,
+    no_inputs: bool,
 
     settings: Settings,
     state: State,
@@ -92,6 +93,7 @@ impl App {
             show_style_editor: false,
             show_inject: false,
             show_translator: false,
+            no_inputs: false,
             settings,
             state: State::Completed,
             error: None,
@@ -253,6 +255,9 @@ impl App {
                 if ui.menu_item("Settings") {
                     self.show_settings = true;
                 }
+                ui.separator();
+                ui.menu_item_config("Disable interaction")
+                    .build_with_ref(&mut self.no_inputs);
             }
             if let Some(_menu) = ui.begin_menu("Gloss") {
                 self.gloss.show_menu(ctx, ui);
@@ -299,6 +304,26 @@ impl App {
             });
     }
 
+    fn show_input_toggle(&mut self, ui: &Ui) -> bool {
+        let mut hovered = false;
+        ui.window("Interaction")
+            .always_auto_resize(true)
+            .movable(false)
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .position([12.0, 12.0], Condition::Always)
+            .bg_alpha(0.75)
+            .build(|| {
+                ui.text("Interaction disabled");
+                if ui.button_with_size("Enable interaction", [180.0, 0.0]) {
+                    self.no_inputs = false;
+                }
+                hovered = ui.is_window_hovered();
+            });
+        hovered
+    }
+
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
         if self.settings().overlay_mode
             && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
@@ -306,7 +331,12 @@ impl App {
             ui.dockspace_over_viewport();
         };
 
-        let no_inputs = get_scroll_lock();
+        let no_inputs = self.no_inputs;
+        let mut toggle_hovered = false;
+        if no_inputs {
+            toggle_hovered = self.show_input_toggle(ui);
+        }
+
         let mut niinii = ui
             .window("niinii")
             .opened(run)
@@ -314,7 +344,6 @@ impl App {
             .draw_background(!self.settings().transparent);
         if no_inputs {
             niinii = niinii.no_inputs().draw_background(false);
-            unsafe { sys::igSetNextFrameWantCaptureMouse(false) }
         }
         niinii.build(|| {
             self.show_menu(ctx, ui);
@@ -324,7 +353,7 @@ impl App {
                 stroke_text_with_highlight(
                     ui,
                     &ui.get_window_draw_list(),
-                    "(interaction disabled, disable ScrLk to re-enable)",
+                    "(interaction disabled)",
                     1.0,
                     Some(StyleColor::PlotLinesHovered),
                 );
@@ -395,6 +424,10 @@ impl App {
         }
         if self.show_translator {
             self.show_translator(ctx, ui);
+        }
+
+        if no_inputs && !toggle_hovered {
+            unsafe { sys::igSetNextFrameWantCaptureMouse(false) }
         }
     }
 
