@@ -31,8 +31,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = "0.7"
 futures = "0.3"
-async-trait = "0.1"
 backon = "1.6"
+arc-swap = "1.7"
 
 # diagnostics
 log = "0.4"
@@ -62,7 +62,6 @@ itertools = "0.14"
 raw-window-handle-05 = { package = "raw-window-handle", version = "0.5.2" }
 copypasta = "0.10"
 flate2 = { version = "1.1" }
-deepl-api = "0.4"
 dirs = "6.0"
 rodio = { version = "0.21.1", optional = true }
 # rayon = "1.5.1"

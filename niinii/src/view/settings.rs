@@ -7,11 +7,34 @@ use crate::{
 
 use super::mixins::{self, checkbox_option, combo_enum};
 
-pub struct SettingsView<'a>(pub &'a mut Settings);
+#[derive(Default)]
+pub struct SettingsView {
+    pub open: bool,
+}
 
-impl SettingsView<'_> {
-    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui) {
-        let settings = &mut self.0;
+impl SettingsView {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn show_menu_item(&mut self, ui: &Ui) {
+        if ui.menu_item("Settings") {
+            self.open = true;
+        }
+    }
+
+    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &mut Settings) {
+        if !self.open {
+            return;
+        }
+        let Some(_window) = ui
+            .window("Settings")
+            .always_auto_resize(true)
+            .opened(&mut self.open)
+            .begin()
+        else {
+            return;
+        };
         if CollapsingHeader::new("Ichiran")
             .default_open(true)
             .build(ui)
@@ -57,9 +80,6 @@ impl SettingsView<'_> {
         {
             combo_enum(ui, "Translator*", &mut settings.translator_type);
             ui.checkbox("Auto-translate", &mut settings.auto_translate);
-            ui.input_text("DeepL API key", &mut settings.deepl_api_key)
-                .password(true)
-                .build();
             ui.input_text("OpenAI API key*", &mut settings.openai_api_key)
                 .password(true)
                 .build();
@@ -120,5 +140,7 @@ impl SettingsView<'_> {
             }
             ui.checkbox("Transparent", &mut settings.transparent);
         }
+        ui.separator();
+        ui.text_disabled("* Restart to apply these changes");
     }
 }

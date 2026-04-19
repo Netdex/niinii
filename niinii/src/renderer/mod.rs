@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use imgui::internal::RawCast;
 use imgui_winit_support::WinitPlatform;
 
 use crate::support::platform;
@@ -32,6 +33,12 @@ pub trait Renderer {
             imgui.set_clipboard_backend(backend);
         } else {
             panic!("failed to initialize clipboard");
+        }
+
+        // https://github.com/imgui-rs/imgui-rs/issues/773
+        unsafe {
+            imgui.fonts().raw_mut().FontBuilderIO =
+                imgui_sys::ImGuiFreeType_GetBuilderForFreeType();
         }
     }
 

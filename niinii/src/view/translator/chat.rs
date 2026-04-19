@@ -1,37 +1,117 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use imgui::*;
-use openai::chat::Role;
+use openai::chat::{Message, Role, Usage};
+use openai::ModelId;
 
 use crate::{
-    settings::Settings,
-    translator::chat::{ChatTranslation, ChatTranslator},
-    view::mixins::{combo_list, drag_handle, help_marker},
-};
-
-use crate::view::{
-    mixins::{
-        checkbox_option, checkbox_option_with_default, combo_enum, ellipses,
-        stroke_text_with_highlight,
+    settings::{Settings, TranslatorType},
+    translator::chat::{
+        self, ChatHandle, ContextEdit, ExchangeId, ExchangeView, MsgId, Response,
+        TranslateConfig,
     },
-    View,
+    view::mixins::{
+        checkbox_option, checkbox_option_with_default, combo_enum, combo_list, drag_handle,
+        ellipses, help_marker, stroke_text_with_highlight,
+    },
 };
 
-pub struct ViewChatTranslator<'a>(pub &'a ChatTranslator, pub &'a mut Settings);
-impl View for ViewChatTranslator<'_> {
-    fn ui(&mut self, ui: &Ui) {
-        let ViewChatTranslator(translator, settings) = self;
-        let mut chat = translator.buffer.blocking_lock();
+/// Owns the translator backend handle, the currently displayed exchange id,
+/// and the per-message edit buffers for the context editor. Acts as both the
+/// controller (submit/cancel translations) and the view (render the window
+/// plus exchange readouts embedded in the main UI).
+pub struct TranslatorWindow {
+    translator: ChatHandle,
+    current: Option<ExchangeId>,
+    buffers: HashMap<MsgId, String>,
+    pub open: bool,
+}
+
+impl TranslatorWindow {
+    pub fn new(settings: &Settings) -> Self {
+        let translator = match settings.translator_type {
+            TranslatorType::Chat => chat::spawn(settings),
+        };
+        Self {
+            translator,
+            current: None,
+            buffers: HashMap::new(),
+            open: false,
+        }
+    }
+
+    /// Cancel any in-flight translation and submit a new one. The new id
+    /// becomes the "current" exchange rendered in the main UI.
+    pub fn translate(&mut self, settings: &Settings, text: String) {
+        if let Some(prev) = self.current {
+            self.translator.cancel(prev);
+        }
+        let config = Arc::new(TranslateConfig::from_settings(settings));
+        self.current = Some(self.translator.translate(text, config));
+    }
+
+    /// Forget the current exchange without cancelling it. Used when a new
+    /// gloss arrives and the user has not opted into auto-translate.
+    pub fn clear_current(&mut self) {
+        self.current = None;
+    }
+
+    /// Render the usage bar for the current exchange, if any.
+    pub fn draw_current_usage(&self, ui: &Ui) {
+        let Some(id) = self.current else { return };
+        let state = self.translator.state();
+        if let Some(ex) = state.exchange(id) {
+            if let Some(usage) = &ex.usage {
+                draw_usage(ui, &ex.model, usage);
+            }
+        }
+    }
+
+    /// Render the full current exchange, if any.
+    pub fn draw_current_exchange(&self, ui: &Ui) {
+        let Some(id) = self.current else { return };
+        let state = self.translator.state();
+        if let Some(ex) = state.exchange(id) {
+            draw_exchange(ui, ex);
+        }
+    }
+
+    pub fn show_menu_item(&mut self, ui: &Ui) {
+        if ui.menu_item("Translator") {
+            self.open = true;
+        }
+    }
+
+    pub fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
+        if !self.open {
+            return;
+        }
+        let Some(_window) = ui
+            .window("Translator")
+            .size_constraints([600.0, 300.0], [1200.0, 1200.0])
+            .opened(&mut self.open)
+            .menu_bar(true)
+            .begin()
+        else {
+            return;
+        };
+        let handle = &self.translator;
+        let state = handle.state();
         let chatgpt = &mut settings.chat;
+
         ui.menu_bar(|| {
             if ui.menu_item("Clear") {
-                chat.clear();
+                handle.clear_context();
             }
         });
+
         if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
             let align = 10.0;
             if let Some(_token) = ui.begin_table("##", 2) {
                 ui.table_next_column();
                 ui.set_next_item_width(ui.current_font_size() * -align);
-                combo_list(ui, "Model", &translator.models, &mut chatgpt.model);
+                combo_list(ui, "Model", &state.models, &mut chatgpt.model);
                 ui.table_next_column();
                 ui.checkbox("Stream", &mut chatgpt.stream);
                 ui.same_line();
@@ -121,6 +201,7 @@ impl View for ViewChatTranslator<'_> {
                 );
             }
         }
+
         ui.child_window("context_window").build(|| {
             if let Some(_t) = ui.begin_table_header_with_flags(
                 "context",
@@ -133,10 +214,9 @@ impl View for ViewChatTranslator<'_> {
                 ],
                 TableFlags::SIZING_STRETCH_PROP,
             ) {
+                // System prompt row (static, from Settings).
                 ui.table_next_column();
-                ui.disabled(true, || {
-                    drag_handle(ui);
-                });
+                ui.disabled(true, || drag_handle(ui));
                 ui.table_next_column();
                 ui.table_next_column();
                 ui.disabled(true, || {
@@ -157,13 +237,24 @@ impl View for ViewChatTranslator<'_> {
                 )
                 .build();
 
+                // Sweep buffers whose messages are gone; keep the rest. Stable
+                // MsgIds make this robust to reorder/insert/delete.
+                let live: std::collections::HashSet<MsgId> =
+                    state.context.iter().map(|e| e.id).collect();
+                self.buffers.retain(|id, _| live.contains(id));
+
                 enum Interaction {
                     Delete(usize),
                     Swap(usize, usize),
+                    SetRole(usize, Role),
+                    SetName(usize, Option<String>),
+                    CommitContent(usize, String),
                 }
-                let mut interact = None;
-                for (idx, message) in chat.context_mut().iter_mut().enumerate() {
-                    let _id = ui.push_id_ptr(message);
+                let mut interact: Option<Interaction> = None;
+
+                for (idx, entry) in state.context.iter().enumerate() {
+                    let message = &entry.message;
+                    let _id = ui.push_id_usize(idx);
                     ui.table_next_column();
                     drag_handle(ui);
                     if let Some(_tooltip) = ui
@@ -187,39 +278,62 @@ impl View for ViewChatTranslator<'_> {
                     ui.table_next_column();
                     let mut lock = message.name.is_some();
                     ui.disabled(message.role != Role::User, || {
-                        ui.checkbox("##lock", &mut lock);
+                        if ui.checkbox("##lock", &mut lock) {
+                            interact = Some(Interaction::SetName(
+                                idx,
+                                lock.then(|| "info".to_string()),
+                            ));
+                        }
                     });
-                    message.name = if lock { Some("info".into()) } else { None };
                     ui.table_next_column();
                     ui.group(|| {
                         ui.set_next_item_width(ui.current_font_size() * 6.0);
-                        combo_enum(ui, "##role", &mut message.role);
+                        let mut role = message.role.clone();
+                        combo_enum(ui, "##role", &mut role);
+                        if role != message.role {
+                            interact = Some(Interaction::SetRole(idx, role));
+                        }
                     });
-
                     ui.table_next_column();
-                    if let Some(content) = &mut message.content {
-                        ui.set_next_item_width(ui.content_region_avail()[0]);
-                        ui.input_text("##content", content).build();
+                    let buf = self.buffers.entry(entry.id).or_insert_with(|| {
+                        message.content.clone().unwrap_or_default()
+                    });
+                    ui.set_next_item_width(ui.content_region_avail()[0]);
+                    ui.input_text("##content", buf).build();
+                    if ui.is_item_deactivated_after_edit() {
+                        interact = Some(Interaction::CommitContent(idx, buf.clone()));
                     }
                 }
 
                 match interact {
                     Some(Interaction::Delete(idx)) => {
-                        chat.context_mut().remove(idx);
+                        handle.edit_context(ContextEdit::Delete(idx));
                     }
-                    Some(Interaction::Swap(src, dst)) => {
-                        chat.context_mut().swap(src, dst);
+                    Some(Interaction::Swap(a, b)) => {
+                        handle.edit_context(ContextEdit::Swap(a, b));
                     }
-                    _ => {}
+                    Some(Interaction::SetRole(idx, role)) => {
+                        handle.edit_context(ContextEdit::SetRole { idx, role });
+                    }
+                    Some(Interaction::SetName(idx, name)) => {
+                        handle.edit_context(ContextEdit::SetName { idx, name });
+                    }
+                    Some(Interaction::CommitContent(idx, content)) => {
+                        handle.edit_context(ContextEdit::SetContent { idx, content });
+                    }
+                    None => {}
                 }
 
                 ui.table_next_column();
                 ui.table_next_column();
                 if ui.button_with_size("+", [ui.frame_height(), 0.0]) {
-                    chat.context_mut().push_back(openai::chat::Message {
-                        content: Some(String::new()),
-                        ..Default::default()
-                    })
+                    handle.edit_context(ContextEdit::Insert {
+                        idx: state.context.len(),
+                        message: Message {
+                            content: Some(String::new()),
+                            ..Default::default()
+                        },
+                    });
                 }
                 ui.table_next_column();
                 ui.table_next_column();
@@ -230,36 +344,33 @@ impl View for ViewChatTranslator<'_> {
     }
 }
 
-pub struct ViewChatTranslation<'a>(pub &'a ChatTranslation);
-impl View for ViewChatTranslation<'_> {
-    fn ui(&mut self, ui: &imgui::Ui) {
-        let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
-        ui.text(""); // anchor for line wrapping
+/// Render one exchange's assistant turn, streaming-aware.
+fn draw_exchange(ui: &Ui, ex: &ExchangeView) {
+    let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
+    ui.text(""); // anchor for line wrapping
+    ui.same_line();
+    let draw_list = ui.get_window_draw_list();
+    stroke_text_with_highlight(
+        ui,
+        &draw_list,
+        &format!("[{}]", ex.model.as_ref()),
+        1.0,
+        Some(StyleColor::NavHighlight),
+    );
+    let content = ex.response.content();
+    if !content.is_empty() {
         ui.same_line();
-        let ChatTranslation {
-            model, exchange, ..
-        } = self.0;
-        let exchange = exchange.blocking_lock();
-        let draw_list = ui.get_window_draw_list();
         stroke_text_with_highlight(
             ui,
             &draw_list,
-            &format!("[{}]", model.as_ref()),
+            content,
             1.0,
-            Some(StyleColor::NavHighlight),
+            Some(StyleColor::TextSelectedBg),
         );
-        for content in exchange.response().iter().flat_map(|c| c.content.as_ref()) {
-            ui.same_line();
-            stroke_text_with_highlight(
-                ui,
-                &draw_list,
-                content,
-                1.0,
-                Some(StyleColor::TextSelectedBg),
-            );
-        }
-        if !exchange.is_completed() {
-            if exchange.response().is_none() {
+    }
+    match &ex.response {
+        Response::Streaming { .. } => {
+            if content.is_empty() {
                 ui.same_line();
             } else {
                 ui.same_line_with_spacing(0.0, 0.0);
@@ -272,34 +383,47 @@ impl View for ViewChatTranslation<'_> {
                 Some(StyleColor::TextSelectedBg),
             );
         }
+        Response::Errored(err) => {
+            ui.same_line();
+            stroke_text_with_highlight(
+                ui,
+                &draw_list,
+                &format!("(error: {})", err),
+                1.0,
+                Some(StyleColor::PlotLinesHovered),
+            );
+        }
+        Response::Cancelled => {
+            ui.same_line();
+            stroke_text_with_highlight(
+                ui,
+                &draw_list,
+                "(cancelled)",
+                1.0,
+                Some(StyleColor::PlotLinesHovered),
+            );
+        }
+        Response::Completed { .. } => {}
     }
 }
 
-pub struct ViewChatTranslationUsage<'a>(pub &'a ChatTranslation);
-impl View for ViewChatTranslationUsage<'_> {
-    fn ui(&mut self, ui: &imgui::Ui) {
-        let ChatTranslation {
-            model, exchange, ..
-        } = self.0;
-        let exchange = exchange.blocking_lock();
-        let usage = exchange.usage();
-        if let Some(usage) = usage {
-            ui.same_line();
-            ProgressBar::new(0.0)
-                .overlay_text(format!(
-                    "{}: {} input + {} output ({} reasoning) = {}",
-                    model.as_ref(),
-                    usage.prompt_tokens,
-                    usage.completion_tokens,
-                    usage
-                        .completion_tokens_details
-                        .as_ref()
-                        .map(|x| x.reasoning_tokens)
-                        .unwrap_or_default(),
-                    usage.total_tokens,
-                ))
-                .size([500.0, 0.0])
-                .build(ui);
-        }
-    }
+/// Render the usage progress bar for one exchange.
+fn draw_usage(ui: &Ui, model: &ModelId, usage: &Usage) {
+    ui.same_line();
+    ProgressBar::new(0.0)
+        .overlay_text(format!(
+            "{}: {} input + {} output ({} reasoning) = {}",
+            model.as_ref(),
+            usage.prompt_tokens,
+            usage.completion_tokens,
+            usage
+                .completion_tokens_details
+                .as_ref()
+                .map(|x| x.reasoning_tokens)
+                .unwrap_or_default(),
+            usage.total_tokens,
+        ))
+        .size([500.0, 0.0])
+        .build(ui);
 }
+
