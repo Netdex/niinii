@@ -3,9 +3,6 @@ use strum_macros::{EnumIter, IntoStaticStr};
 use thiserror::Error;
 
 pub mod chat;
-pub mod conversations;
-pub mod realtime;
-pub mod responses;
 
 #[derive(Error, Debug, Clone, Deserialize, PartialEq, Eq)]
 #[error("{error_type}: {message} (param={param:?}, code={code:?}, event_id={event_id:?})")]

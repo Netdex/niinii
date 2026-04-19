@@ -6,10 +6,7 @@
 //! A: Yes, and?
 
 pub mod chat;
-pub mod conversations;
 mod protocol;
-pub mod realtime;
-pub mod responses;
 
 use std::{sync::Arc, time::Duration};
 
@@ -30,10 +27,6 @@ pub enum Error {
     Protocol(#[from] protocol::Error),
     #[error(transparent)]
     EventStream(#[from] eventsource_stream::EventStreamError<reqwest::Error>),
-    #[error(transparent)]
-    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
-    #[error("Unexpected server response: {0:?}")]
-    UnexpectedResponse(Box<protocol::realtime::ServerEvent>),
 }
 
 #[derive(Clone)]
@@ -126,7 +119,3 @@ impl Shared {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    pub(crate) mod fixture;
-}
