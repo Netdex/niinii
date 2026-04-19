@@ -86,6 +86,14 @@ impl Client {
         api_endpoint: impl reqwest::IntoUrl,
         connection_policy: ConnectionPolicy,
     ) -> Self {
+        let mut api_base = api_endpoint.into_url().unwrap();
+        // `Url::join("v1/...")` on a base whose path has no trailing slash
+        // replaces the last segment. That silently breaks endpoints like
+        // `https://host/llama.cpp`. Normalize by ensuring a trailing slash.
+        if !api_base.path().ends_with('/') {
+            let path = format!("{}/", api_base.path());
+            api_base.set_path(&path);
+        }
         Self {
             shared: Arc::new(Shared {
                 client: reqwest::Client::builder()
@@ -93,7 +101,7 @@ impl Client {
                     .connect_timeout(connection_policy.connect_timeout)
                     .build()
                     .unwrap(),
-                api_base: api_endpoint.into_url().unwrap(),
+                api_base,
                 token: token.into(),
             }),
         }
