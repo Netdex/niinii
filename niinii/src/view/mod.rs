@@ -5,10 +5,6 @@ pub mod kanji;
 pub mod mixins;
 pub mod raw;
 pub mod settings;
+pub mod style_editor;
 pub mod term;
 pub mod translator;
-pub mod tts;
-
-pub trait View {
-    fn ui(&mut self, ui: &imgui::Ui);
-}

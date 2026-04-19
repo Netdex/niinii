@@ -1,12 +1,34 @@
 use imgui::*;
 
-use crate::renderer::context::Context;
 use crate::settings::Settings;
 
-#[derive(Debug)]
-pub struct InjectView;
+#[derive(Debug, Default)]
+pub struct InjectView {
+    pub open: bool,
+}
 impl InjectView {
-    pub fn ui(&mut self, _ctx: &mut Context, ui: &Ui, settings: &mut Settings) {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn show_menu_item(&mut self, ui: &Ui) {
+        if ui.menu_item("Inject") {
+            self.open = true;
+        }
+    }
+
+    pub fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
+        if !self.open {
+            return;
+        }
+        let Some(_window) = ui
+            .window("Inject")
+            .always_auto_resize(true)
+            .opened(&mut self.open)
+            .begin()
+        else {
+            return;
+        };
         if CollapsingHeader::new("Remote Hook")
             .default_open(true)
             .build(ui)

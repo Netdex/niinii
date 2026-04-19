@@ -1,9 +1,3 @@
-mod chat;
-mod deepl;
-mod realtime;
-mod responses;
+pub mod chat;
 
-pub use chat::*;
-pub use deepl::*;
-pub use realtime::*;
-pub use responses::*;
+pub use chat::TranslatorWindow;

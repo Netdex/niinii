@@ -9,6 +9,114 @@ use crate::{
     ModelId,
 };
 
+/// https://platform.openai.com/docs/guides/function-calling
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FunctionDef {
+    pub name: String,
+    pub description: Option<String>,
+    pub parameters: Option<serde_json::Value>,
+    pub strict: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Tool {
+    Function { function: FunctionDef },
+}
+
+impl Tool {
+    pub fn function(function: FunctionDef) -> Self {
+        Self::Function { function }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, IntoStaticStr, EnumIter)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolChoiceMode {
+    None,
+    Auto,
+    Required,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ToolChoiceNamed {
+    pub name: String,
+}
+
+/// See https://platform.openai.com/docs/api-reference/chat/create#chat-create-tool_choice
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum ToolChoice {
+    Mode(ToolChoiceMode),
+    Function {
+        #[serde(rename = "type")]
+        kind: ToolCallKind,
+        function: ToolChoiceNamed,
+    },
+}
+
+impl ToolChoice {
+    pub fn function(name: impl Into<String>) -> Self {
+        Self::Function {
+            kind: ToolCallKind::Function,
+            function: ToolChoiceNamed { name: name.into() },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolCallKind {
+    #[default]
+    Function,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FunctionCall {
+    pub name: String,
+    /// Raw JSON string, as emitted by the model. Parse with `serde_json::from_str`.
+    pub arguments: String,
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ToolCall {
+    /// Server-assigned id used to correlate the `role: tool` reply. OpenAI always
+    /// emits this; some OpenAI-compatible servers (e.g. llama.cpp) may omit it
+    /// and expect the client to skip `tool_call_id` on the reply.
+    #[serde(default)]
+    pub id: String,
+    #[serde(rename = "type", default)]
+    pub kind: ToolCallKind,
+    pub function: FunctionCall,
+}
+
+impl ToolCall {
+    pub fn parse_arguments<T: for<'de> Deserialize<'de>>(&self) -> serde_json::Result<T> {
+        serde_json::from_str(&self.function.arguments)
+    }
+}
+
+/// Streaming fragment of a tool call. The model sends the `id`/`name` once and
+/// then streams `arguments` as string fragments under the same `index`.
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct PartialToolCall {
+    pub index: u32,
+    pub id: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: Option<ToolCallKind>,
+    pub function: Option<PartialFunctionCall>,
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct PartialFunctionCall {
+    pub name: Option<String>,
+    pub arguments: Option<String>,
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Default, Serialize, Builder)]
 pub struct Request {
@@ -66,6 +174,12 @@ pub struct Request {
     /// more verbose responses. Currently supported values are low, medium, and
     /// high.
     pub verbosity: Option<Verbosity>,
+    /// Tools (function definitions) exposed to the model.
+    pub tools: Option<Vec<Tool>>,
+    /// Controls how the model selects tools. `None` defers to the server default (auto when tools are present).
+    pub tool_choice: Option<ToolChoice>,
+    /// Whether the model may emit multiple tool calls in a single assistant turn.
+    pub parallel_tool_calls: Option<bool>,
     // logit_bias
     pub(crate) stream: Option<bool>,
     pub(crate) stream_options: Option<StreamOptions>,
@@ -78,6 +192,7 @@ pub enum Role {
     #[default]
     User,
     Assistant,
+    Tool,
 }
 
 #[serde_with::skip_serializing_none]
@@ -87,6 +202,10 @@ pub struct Message {
     pub role: Role,
     pub content: Option<String>,
     pub name: Option<String>,
+    /// Assistant-authored tool calls. Present when the model asks to invoke tools.
+    pub tool_calls: Option<Vec<ToolCall>>,
+    /// Set on `role: tool` messages that return a tool's output to the model.
+    pub tool_call_id: Option<String>,
 }
 impl Message {
     pub fn estimate_tokens(&self) -> u32 {
@@ -99,6 +218,15 @@ impl Message {
             0
         }
     }
+
+    pub fn tool_result(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: Role::Tool,
+            content: Some(content.into()),
+            tool_call_id: Some(tool_call_id.into()),
+            ..Default::default()
+        }
+    }
 }
 impl Default for Message {
     fn default() -> Self {
@@ -106,26 +234,32 @@ impl Default for Message {
             role: Role::User,
             content: Default::default(),
             name: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct PartialMessage {
     pub role: Option<Role>,
     // llama-cpp begins responses with content: null for some reason
     #[serde(default)]
     pub content: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<PartialToolCall>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Choice {
     pub message: Message,
-    // finish_reason
+    #[serde(default)]
+    pub finish_reason: Option<String>,
     // index
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
 pub struct CompletionTokensDetails {
     pub accepted_prediction_tokens: u32,
     pub audio_tokens: u32,
@@ -133,7 +267,8 @@ pub struct CompletionTokensDetails {
     pub rejected_prediction_tokens: u32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
 pub struct PromptTokensDetails {
     pub audio_tokens: u32,
     pub cached_tokens: u32,
@@ -151,7 +286,8 @@ pub struct Usage {
 #[derive(Debug, Clone, Deserialize)]
 pub struct PartialChoice {
     pub delta: PartialMessage,
-    // finish_reason
+    #[serde(default)]
+    pub finish_reason: Option<String>,
     // index
 }
 

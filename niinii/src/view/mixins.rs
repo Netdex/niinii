@@ -192,13 +192,13 @@ pub fn draw_kanji_text(
             .build();
     }
 
-    let style = ui.clone_style();
+    let item_spacing_x = unsafe { ui.style().item_spacing[0] };
     let ul_thick = 4.0;
     let ul0 = [x, y + kanji_sz[1] + ul_thick / 2.0];
     let ul1 = match underline {
         UnderlineMode::Normal => [x + w, y + kanji_sz[1] + ul_thick / 2.0],
         UnderlineMode::Pad => [
-            x + w + style.item_spacing[0],
+            x + w + item_spacing_x,
             y + kanji_sz[1] + ul_thick / 2.0,
         ],
         UnderlineMode::None => ul0,
@@ -240,8 +240,8 @@ pub fn wrap_line_with_spacing(ui: &Ui, expected_width: f32, spacing: f32) -> boo
     let max_width = ui.window_content_region_max()[0];
     let visible_x = ui.window_pos()[0] + max_width;
     let last_x = ui.item_rect_max()[0];
-    let style = ui.clone_style();
-    let next_x = last_x + style.item_spacing[0] + expected_width;
+    let item_spacing_x = unsafe { ui.style().item_spacing[0] };
+    let next_x = last_x + item_spacing_x + expected_width;
     // don't wrap if it will fit on the current line, or if it won't even fit on an empty line
     if next_x < visible_x || expected_width >= max_width {
         ui.same_line_with_spacing(0.0, spacing);
@@ -328,10 +328,10 @@ where
 
 /// https://github.com/ocornut/imgui/issues/1901
 pub fn spinner(ui: &Ui, radius: f32, thickness: f32, color: StyleColor) {
-    let style = ui.clone_style();
+    let frame_padding_y = unsafe { ui.style().frame_padding[1] };
     let now = ui.time() as f32;
     let pos = ui.cursor_screen_pos();
-    let size = [radius * 2.0, (radius + style.frame_padding[1]) * 2.0];
+    let size = [radius * 2.0, (radius + frame_padding_y) * 2.0];
     ui.dummy(size);
 
     let draw_list = ui.get_window_draw_list();
@@ -341,9 +341,9 @@ pub fn spinner(ui: &Ui, radius: f32, thickness: f32, color: StyleColor) {
     let a_min = PI * 2.0 * start / (num_segments as f32);
     let a_max = PI * 2.0 * ((num_segments - 3) as f32) / (num_segments as f32);
 
-    let center = [pos[0] + radius, pos[1] + radius + style.frame_padding[1]];
+    let center = [pos[0] + radius, pos[1] + radius + frame_padding_y];
 
-    let mut points = vec![];
+    let mut points = Vec::with_capacity(num_segments);
     for i in 0..num_segments {
         let a = a_min + ((i as f32) / (num_segments as f32)) * (a_max - a_min);
         points.push([

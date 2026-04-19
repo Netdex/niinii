@@ -9,7 +9,6 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1" }
 tokio-stream = { version = "0.1", features = ["sync"] }
-tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 
 reqwest = { version = "0.13", features = ["json", "stream"] }
 tiktoken-rs = "0.9"
@@ -36,3 +35,4 @@ tokio = { version = "1", features = ["rt", "macros"] }
 # tracing-test = { version = "0.2.4", features = ["no-env-filter"] }
 tracing-test = "0.2.5"
 serde_path_to_error = "0.1"
+toml = "0.8"

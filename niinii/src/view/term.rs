@@ -191,7 +191,7 @@ impl<'a> TermView<'a> {
         for vias in conj.flatten() {
             let base = *vias.first().unwrap();
 
-            if CollapsingHeader::new(&base.reading().unwrap_or("Conjugation").to_string())
+            if CollapsingHeader::new(base.reading().unwrap_or("Conjugation"))
                 .default_open(true)
                 .build(ui)
             {

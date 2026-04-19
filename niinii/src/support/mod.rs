@@ -2,3 +2,4 @@
 
 pub mod docking;
 pub mod platform;
+pub mod regex;
