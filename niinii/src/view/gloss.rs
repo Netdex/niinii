@@ -1,42 +1,73 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::time::{Duration, Instant};
 
+use futures::FutureExt;
 use ichiran::prelude::*;
 use imgui::*;
+use tokio::task::JoinHandle;
+use tracing::Instrument;
 
 use super::index::IndexView;
 use super::mixins::*;
-use crate::parser::SyntaxTree;
-use crate::renderer::context::Context;
+use crate::parser::{self, Parser, SyntaxTree};
+use crate::renderer::context::{Context, ContextFlags};
 use crate::settings::{RubyTextType, Settings};
-use crate::translator::Translation;
+use crate::support::regex::CachedRegex;
 use crate::view::{raw::RawView, term::TermView};
+
+const CLIPBOARD_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 enum View {
     Text(String), // TODO: display basic_split instead of plain text
     Interpret { ast: SyntaxTree },
 }
 
+/// Emitted from `GlossView::poll`. `ClipboardReceived` surfaces new clipboard
+/// text to the caller so orchestration (parse + translate + clear) happens in
+/// one place -- `GlossView` does not self-gloss on clipboard changes.
+pub enum GlossEvent {
+    ClipboardReceived(String),
+    Completed(String),
+    Failed(parser::Error),
+}
+
+/// Returned from `show_input` so the caller can dispatch. The input row owns
+/// both the Gloss and Translate buttons so the UI stays together.
+pub enum GlossInputAction {
+    Gloss(String),
+    Translate(String),
+}
+
 pub struct GlossView {
+    parser: Parser,
+    pending: Option<JoinHandle<Result<SyntaxTree, parser::Error>>>,
+    match_regex: CachedRegex,
+
+    input_text: String,
+    last_clipboard: String,
+    last_clipboard_poll: Instant,
+
+    events: VecDeque<GlossEvent>,
+
     view: Option<View>,
-    translation: Option<Box<dyn Translation>>,
-    translation_pending: bool,
     show_term_window: RefCell<HashSet<Romanized>>,
     selected_clause: RefCell<HashMap<Segment, i32>>,
     show_raw: bool,
     show_glossary: bool,
 }
-impl Default for GlossView {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+
 impl GlossView {
-    pub fn new() -> Self {
+    pub async fn new(settings: &Settings) -> Self {
         Self {
+            parser: Parser::new(settings).await,
+            pending: None,
+            match_regex: CachedRegex::default(),
+            input_text: String::new(),
+            last_clipboard: String::new(),
+            last_clipboard_poll: Instant::now(),
+            events: VecDeque::new(),
             view: None,
-            translation: None,
-            translation_pending: false,
             show_term_window: RefCell::new(HashSet::new()),
             selected_clause: RefCell::new(HashMap::new()),
             show_raw: false,
@@ -44,13 +75,6 @@ impl GlossView {
         }
     }
 
-    pub fn set_text(&mut self, text: impl Into<String>) {
-        self.view = Some(View::Text(text.into()));
-    }
-
-    pub fn set_ast(&mut self, ast: SyntaxTree) {
-        self.view = Some(View::Interpret { ast });
-    }
     pub fn ast(&self) -> Option<&SyntaxTree> {
         if let Some(View::Interpret { ast, .. }) = &self.view {
             Some(ast)
@@ -59,15 +83,127 @@ impl GlossView {
         }
     }
 
-    pub fn set_translation_pending(&mut self, pending: bool) {
-        self.translation_pending = pending;
+    pub fn is_processing(&self) -> bool {
+        self.pending.is_some()
     }
-    pub fn set_translation(&mut self, tl: Option<Box<dyn Translation>>) {
-        self.translation = tl;
-        self.translation_pending = false;
+
+    pub fn input_text(&self) -> &str {
+        &self.input_text
     }
-    pub fn translation(&self) -> Option<&dyn Translation> {
-        self.translation.as_deref()
+
+    /// Preprocess `text` through the configured match/replace regex and spawn
+    /// a parse. Aborts any prior in-flight parse. The preview text is shown
+    /// immediately; `poll` will transition to the parsed AST on completion.
+    /// Returns the post-regex text on success, or `None` if the regex yielded
+    /// empty text and nothing was spawned.
+    pub fn request(
+        &mut self,
+        text: &str,
+        settings: &Settings,
+    ) -> Result<Option<String>, parser::Error> {
+        let regex = self.match_regex.get(&settings.regex_match)?;
+        let text = regex
+            .replace_all(text, &settings.regex_replace)
+            .into_owned();
+        let text = text.trim().to_owned();
+        if text.is_empty() {
+            return Ok(None);
+        }
+
+        if let Some(prev) = self.pending.take() {
+            prev.abort();
+        }
+        self.view = Some(View::Text(text.clone()));
+
+        let parser = self.parser.clone();
+        let variants = if settings.more_variants { 5 } else { 1 };
+        let spawn_text = text.clone();
+        self.pending = Some(tokio::spawn(
+            async move {
+                parser.parse(&spawn_text, variants).await
+            }
+            .instrument(tracing::debug_span!("parse")),
+        ));
+        Ok(Some(text))
+    }
+
+    /// Drive clipboard watching and pending-parse completion. Returns an event
+    /// when a parse finishes so the caller can wire up auto-translate etc.
+    pub fn poll(
+        &mut self,
+        ui: &Ui,
+        ctx: &mut Context,
+        settings: &Settings,
+    ) -> Option<GlossEvent> {
+        if settings.watch_clipboard
+            && self.last_clipboard_poll.elapsed() >= CLIPBOARD_POLL_INTERVAL
+        {
+            self.last_clipboard_poll = Instant::now();
+            if let Some(clipboard) = ui.clipboard_text() {
+                if clipboard != self.last_clipboard {
+                    self.input_text.clone_from(&clipboard);
+                    self.last_clipboard.clone_from(&clipboard);
+                    // Ignore clipboard contents if they are unreasonably large
+                    if clipboard.len() < 500 {
+                        self.events
+                            .push_back(GlossEvent::ClipboardReceived(clipboard));
+                    }
+                }
+            }
+        }
+
+        if let Some(handle) = self.pending.as_mut() {
+            if let Some(poll) = handle.now_or_never() {
+                self.pending = None;
+                match poll {
+                    Ok(Ok(ast)) => {
+                        if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
+                            ctx.add_unknown_glyphs_from_root(&ast.root);
+                        }
+                        let text = ast.original_text.clone();
+                        self.view = Some(View::Interpret { ast });
+                        self.events.push_back(GlossEvent::Completed(text));
+                    }
+                    Ok(Err(err)) => self.events.push_back(GlossEvent::Failed(err)),
+                    // Aborted by a follow-up request; the replacement is already in flight.
+                    Err(_) => {}
+                }
+            }
+        }
+
+        self.events.pop_front()
+    }
+
+    /// Render the manual-input row: textarea, Gloss button, Translate button.
+    /// Leaves the cursor on the same line so the caller can append adjacent
+    /// controls (e.g. a usage bar). Returns the action the user triggered.
+    pub fn show_input(&mut self, ui: &Ui) -> Option<GlossInputAction> {
+        let mut action = None;
+        {
+            let _disabled = ui.begin_disabled(self.is_processing());
+            let entered = ui
+                .input_text_multiline("##", &mut self.input_text, [0.0, 50.0])
+                .enter_returns_true(true)
+                .build();
+            let clicked = ui.button_with_size("Gloss", [120.0, 0.0]);
+            if entered || clicked {
+                action = Some(GlossInputAction::Gloss(self.input_text.clone()));
+            }
+        }
+        ui.same_line();
+
+        let enable_tl = self.ast().is_some_and(|ast| !ast.empty());
+        let disable_tl = ui.begin_disabled(!enable_tl);
+        if ui.button_with_size("Translate", [120.0, 0.0]) {
+            if let Some(gloss) = self.ast() {
+                action = Some(GlossInputAction::Translate(gloss.original_text.clone()));
+            }
+        }
+        drop(disable_tl);
+        if !enable_tl && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED) {
+            ui.tooltip(|| ui.text("Text does not require translation"));
+        }
+        action
     }
 
     fn term_window(
@@ -271,15 +407,6 @@ impl GlossView {
             _ => {}
         }
         ui.new_line();
-        if let Some(translation) = &self.translation {
-            translation.view().ui(ui);
-        } else if self.translation_pending {
-            ui.text_disabled("(waiting for translation");
-            ui.same_line_with_spacing(0.0, 0.0);
-            ui.text_disabled(ellipses(ui));
-            ui.same_line_with_spacing(0.0, 0.0);
-            ui.text_disabled(")");
-        }
 
         // show all term windows, close if requested (this is actually witchcraft)
         self.show_term_window
