@@ -118,25 +118,21 @@ impl GlossView {
         let parser = self.parser.clone();
         let variants = if settings.more_variants { 5 } else { 1 };
         let spawn_text = text.clone();
+        let splits: Vec<(Split, String)> = basic_split(&spawn_text)
+            .into_iter()
+            .map(|(kind, s)| (kind, s.to_string()))
+            .collect();
         self.pending = Some(tokio::spawn(
-            async move {
-                parser.parse(&spawn_text, variants).await
-            }
-            .instrument(tracing::debug_span!("parse")),
+            async move { parser.parse(&spawn_text, &splits, variants).await }
+                .instrument(tracing::debug_span!("parse")),
         ));
         Ok(Some(text))
     }
 
     /// Drive clipboard watching and pending-parse completion. Returns an event
     /// when a parse finishes so the caller can wire up auto-translate etc.
-    pub fn poll(
-        &mut self,
-        ui: &Ui,
-        ctx: &mut Context,
-        settings: &Settings,
-    ) -> Option<GlossEvent> {
-        if settings.watch_clipboard
-            && self.last_clipboard_poll.elapsed() >= CLIPBOARD_POLL_INTERVAL
+    pub fn poll(&mut self, ui: &Ui, ctx: &mut Context, settings: &Settings) -> Option<GlossEvent> {
+        if settings.watch_clipboard && self.last_clipboard_poll.elapsed() >= CLIPBOARD_POLL_INTERVAL
         {
             self.last_clipboard_poll = Instant::now();
             if let Some(clipboard) = ui.clipboard_text() {
@@ -160,9 +156,7 @@ impl GlossView {
                         if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
                             ctx.add_unknown_glyphs_from_root(&ast.root);
                         }
-                        let text = ast.original_text.clone();
                         self.view = Some(View::Interpret { ast });
-                        self.events.push_back(GlossEvent::Completed(text));
                     }
                     Ok(Err(err)) => self.events.push_back(GlossEvent::Failed(err)),
                     // Aborted by a follow-up request; the replacement is already in flight.

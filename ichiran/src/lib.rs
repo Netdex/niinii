@@ -3,7 +3,7 @@ mod coerce;
 mod error;
 mod pgdaemon;
 mod protocol;
-mod split;
+pub mod split;
 
 use std::{
     collections::HashMap,
@@ -27,9 +27,9 @@ pub mod prelude {
     pub use crate::error::*;
     pub use crate::pgdaemon::*;
     pub use crate::protocol::*;
+    pub use crate::split::{basic_split, Split};
     pub use crate::*;
 }
-use crate::split::{basic_split, Split};
 use prelude::*;
 
 #[derive(Debug)]
@@ -115,14 +115,14 @@ impl Ichiran {
     }
 
     #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
-    pub async fn romanize(&self, text: &str, limit: u32) -> Result<Root, IchiranError> {
+    pub async fn romanize(
+        &self,
+        splits: &[(Split, String)],
+        limit: u32,
+    ) -> Result<Root, IchiranError> {
         assert!(limit > 0);
 
         let shared = self.shared.clone();
-        let splits: Vec<(Split, String)> = basic_split(text)
-            .into_iter()
-            .map(|(ty, text)| (ty, text.to_owned()))
-            .collect();
 
         // determine minimal candidate queries from splits
         let split_queries: Vec<_> = splits
