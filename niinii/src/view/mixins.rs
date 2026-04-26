@@ -29,6 +29,260 @@ pub enum RubyTextMode<'a> {
     None,
 }
 
+#[derive(Clone, Copy)]
+pub enum BottomTextMode {
+    /// Reserve `h` of vertical space and the standard bottom vpad without
+    /// drawing any text. Used when a translation is drawn separately across
+    /// one or more basic-split segments.
+    Pad(f32),
+    None,
+}
+
+// Layout model for kanji-block flows
+// ----------------------------------
+//
+// A "kanji block" is a unit drawn by `draw_kanji_text`: kanji centered, with
+// optional ruby above and an optional fixed-height bottom slot. Its width
+// is `max(kanji_w, ruby_w)`, returned by `measure_kanji_w`. Block height
+// includes any reserved bottom space (`BottomTextMode::Pad(h)`).
+//
+// A sequence of blocks placed via imgui's same-line/wrap flow forms one or
+// more visual rows. `simulate_flow` mirrors imgui's wrap_line decisions
+// against given widths to predict those rows ahead of drawing -- this is
+// how callers size per-block reservations they need before any draw
+// happens.
+//
+// `distribute_lines` greedily packs words across a row-width sequence: each
+// row gets one packed line, the last row absorbs leftover as additional
+// stacked lines at its width. `draw_translation_lines_colored` emits those
+// lines via the window draw-list at each row's y + `bottom_text_y_offset`.
+
+/// One visual row of a kanji-block flow. `y` is the row's top in screen
+/// coordinates (above the ruby band); `left`/`right` bracket the row's
+/// horizontal extent.
+#[derive(Clone, Copy)]
+pub struct RowExtent {
+    pub y: f32,
+    pub left: f32,
+    pub right: f32,
+}
+
+/// Width of the kanji block that `draw_kanji_text` would produce for these
+/// inputs: `max(kanji_w, ruby_w)`. Used by `simulate_flow` to match the
+/// actual draw geometry exactly.
+pub fn measure_kanji_w(ui: &Ui, ctx: &Context, text: &str, ruby: &RubyTextMode) -> f32 {
+    let _t = ui.push_font(ctx.get_font(TextStyle::Kanji));
+    let kanji_w = ui.calc_text_size(text)[0];
+    drop(_t);
+    let ruby_w = match ruby {
+        RubyTextMode::Text(t) => ui.calc_text_size(t)[0],
+        RubyTextMode::Pad | RubyTextMode::None => 0.0,
+    };
+    kanji_w.max(ruby_w)
+}
+
+/// Greedy fit: take as many words from `words` as fit in `max_w`. Returns
+/// the joined line and how many words were consumed. The first word is
+/// always emitted even if oversize, so progress is guaranteed.
+pub fn take_words_fitting(ui: &Ui, words: &[&str], max_w: f32) -> (String, usize) {
+    let mut line = String::new();
+    let mut consumed = 0usize;
+    for w in words {
+        let candidate = if line.is_empty() {
+            w.to_string()
+        } else {
+            format!("{} {}", line, w)
+        };
+        if !line.is_empty() && ui.calc_text_size(&candidate)[0] > max_w {
+            break;
+        }
+        line = candidate;
+        consumed += 1;
+    }
+    (line, consumed)
+}
+
+/// Distribute `words` across rows of the given widths via repeated
+/// `take_words_fitting`. Each row gets one greedy line; the last row
+/// absorbs any leftover as additional stacked lines at its width.
+pub fn distribute_lines(ui: &Ui, words: &[&str], row_widths: &[f32]) -> Vec<Vec<String>> {
+    let mut rows: Vec<Vec<String>> = row_widths.iter().map(|_| Vec::new()).collect();
+    if words.is_empty() || row_widths.is_empty() {
+        return rows;
+    }
+    let last = row_widths.len() - 1;
+    let mut cursor = 0usize;
+    for (i, &w) in row_widths.iter().enumerate() {
+        if cursor < words.len() {
+            let (line, c) = take_words_fitting(ui, &words[cursor..], w);
+            rows[i].push(line);
+            cursor += c;
+        }
+        if i == last {
+            while cursor < words.len() {
+                let (line, c) = take_words_fitting(ui, &words[cursor..], w);
+                if c == 0 {
+                    break;
+                }
+                rows[i].push(line);
+                cursor += c;
+            }
+        }
+    }
+    rows
+}
+
+/// Simulate imgui flow over a sequence of width-groups starting at the
+/// current cursor. Each entry of `groups` is one segment's item widths.
+/// Returns each group's rows as `RowExtent` with `y = row_index` so
+/// same-row identification (by equality) works without pixel y values.
+///
+/// **Preconditions** (callers must hold these or the simulation lies):
+/// - Called *before* any draw for these groups.
+/// - `ui.cursor_screen_pos()` reflects the next-line position;
+///   `ui.item_rect_max()` is the previous segment's last item.
+/// - No intervening cursor manipulation between this call and the draws.
+pub fn simulate_global_flow(ui: &Ui, groups: &[Vec<f32>]) -> Vec<Vec<RowExtent>> {
+    let visible_x = ui.window_pos()[0] + ui.window_content_region_max()[0];
+    let new_row_x = ui.cursor_screen_pos()[0];
+    let item_sp = unsafe { ui.style().item_spacing[0] };
+    let max_w = ui.window_content_region_max()[0];
+
+    let mut last_x = ui.item_rect_max()[0];
+    let mut row_index: i32 = 0;
+    let mut group_rows: Vec<Vec<RowExtent>> = vec![Vec::new(); groups.len()];
+
+    for (g_idx, widths) in groups.iter().enumerate() {
+        for &w in widths {
+            let next_x = last_x + item_sp + w;
+            let item_left = if next_x < visible_x || w >= max_w {
+                last_x + item_sp
+            } else {
+                row_index += 1;
+                new_row_x
+            };
+            let item_right = item_left + w;
+            last_x = item_right;
+            let key = row_index as f32;
+            let rows = &mut group_rows[g_idx];
+            match rows.last_mut() {
+                Some(r) if (r.y - key).abs() < 0.5 => r.right = r.right.max(item_right),
+                _ => rows.push(RowExtent {
+                    y: key,
+                    left: item_left,
+                    right: item_right,
+                }),
+            }
+        }
+    }
+    group_rows
+}
+
+/// For each `(rows, words)` group, compute the per-term Pad height the
+/// caller must apply so every row of the group has bottom space tall enough
+/// for the greedy line distribution. This deliberately does not borrow
+/// horizontal space from neighboring groups; translation layout is local
+/// to the same basic-split groups used by the translator.
+pub fn plan_translation_reservations(
+    ui: &Ui,
+    groups: &[(Vec<RowExtent>, &[String])],
+    line_h: f32,
+) -> Vec<f32> {
+    groups
+        .iter()
+        .map(|(rows, words)| {
+            if rows.is_empty() {
+                return 0.0;
+            }
+            let widths: Vec<f32> = rows.iter().map(|r| r.right - r.left).collect();
+            let words_ref: Vec<&str> = words.iter().map(String::as_str).collect();
+            let lines = distribute_lines(ui, &words_ref, &widths);
+            let max_lines = lines.iter().map(|r| r.len()).max().unwrap_or(0);
+            (max_lines as f32) * line_h
+        })
+        .collect()
+}
+
+/// Place precomputed translation `lines` at `rows`. Lines are left-aligned
+/// in their own basic-split row extent and stacked vertically within the
+/// bottom slot the caller reserved via `BottomTextMode::Pad`. Drawn with
+/// the same style as furigana so the translation visually belongs to the
+/// kanji block above.
+pub fn draw_translation_lines_colored(
+    ui: &Ui,
+    ctx: &Context,
+    ruby_present: bool,
+    stroke: bool,
+    fore: StyleColor,
+    rows: &[RowExtent],
+    lines: &[Vec<String>],
+) {
+    if rows.is_empty() || lines.iter().all(|l| l.is_empty()) {
+        return;
+    }
+    let line_h = ui.text_line_height();
+    let y_off = bottom_text_y_offset(ui, ctx, ruby_present);
+    let draw_list = ui.get_window_draw_list();
+    for (row, row_lines) in rows.iter().zip(lines.iter()) {
+        if row_lines.is_empty() {
+            continue;
+        }
+        let clip_min = [row.left, row.y + y_off];
+        let clip_max = [row.right, row.y + y_off + (row_lines.len() as f32) * line_h];
+        draw_list.with_clip_rect_intersect(clip_min, clip_max, || {
+            for (j, line) in row_lines.iter().enumerate() {
+                let x = row.left;
+                let y = row.y + y_off + (j as f32) * line_h;
+                draw_styled_text_with_color(ui, &draw_list, line, [x, y], stroke, fore);
+            }
+        });
+    }
+}
+
+/// Draw `text` at `pos` matching the style used for ruby/kanji bodies, with
+/// a 1px stroke against `StyleColor::TitleBg` when `stroke` is set.
+fn draw_styled_text_with_color(
+    ui: &Ui,
+    draw_list: &DrawListMut,
+    text: &str,
+    pos: [f32; 2],
+    stroke: bool,
+    fore: StyleColor,
+) {
+    if stroke {
+        stroke_token_with_color(
+            ui,
+            draw_list,
+            text,
+            pos,
+            StrokeStyle {
+                thick: 1.0,
+                fore,
+                back: StyleColor::TitleBg,
+            },
+        );
+    } else {
+        draw_list.add_text(pos, ui.style_color(fore), text);
+    }
+}
+
+/// Vertical offset from the top of a kanji block to where externally drawn
+/// bottom text (translation) should be placed. Mirrors the layout used by
+/// `draw_kanji_text` with `BottomTextMode::Pad`.
+pub fn bottom_text_y_offset(ui: &Ui, ctx: &Context, ruby_present: bool) -> f32 {
+    let ruby_h = if ruby_present {
+        ui.text_line_height()
+    } else {
+        0.0
+    };
+    let vpad = if ruby_present { 8.0 } else { 0.0 };
+    let _t = ui.push_font(ctx.get_font(TextStyle::Kanji));
+    let kanji_h = ui.text_line_height();
+    drop(_t);
+    let vpad_b = 6.0;
+    ruby_h + vpad + kanji_h + vpad_b
+}
+
 pub struct StrokeStyle {
     thick: f32,
     fore: StyleColor,
@@ -117,13 +371,27 @@ pub struct KanjiStyle {
     pub preview: bool,
     pub underline: UnderlineMode,
 }
+
+/// Geometry of a drawn kanji block plus the underline-hover flag. Callers
+/// laying out grouped blocks (e.g. clauses with a per-clause translation
+/// hanging below) need the actual row position, which `cursor_screen_pos()`
+/// can't give them after `dummy()` advances the cursor to the next line.
+#[derive(Clone, Copy)]
+pub struct KanjiDrawn {
+    pub underline_hover: bool,
+    /// Y of the top of the row the block was drawn on (after `wrap_line`).
+    pub row_y: f32,
+    pub x_left: f32,
+    pub x_right: f32,
+}
 pub fn draw_kanji_text(
     ui: &Ui,
     ctx: &Context,
     text: &str,
     ruby_text: RubyTextMode,
+    bottom_text: BottomTextMode,
     style: KanjiStyle,
-) -> bool {
+) -> KanjiDrawn {
     let KanjiStyle {
         highlight,
         stroke,
@@ -140,17 +408,27 @@ pub fn draw_kanji_text(
     let kanji_sz = ui.calc_text_size(text);
     drop(_kanji_font_token);
 
+    let bottom_h = match bottom_text {
+        BottomTextMode::Pad(h) => h,
+        BottomTextMode::None => 0.0,
+    };
+
     let vpad = match ruby_text {
         RubyTextMode::None => 0.0,
         _ => 8.0,
     };
-    let w = f32::max(kanji_sz[0], ruby_sz[0]);
-    let h = kanji_sz[1] + ruby_sz[1] + vpad;
+    let vpad_b = match bottom_text {
+        BottomTextMode::None => 0.0,
+        _ => 6.0,
+    };
+    let w = kanji_sz[0].max(ruby_sz[0]);
+    let h = kanji_sz[1] + ruby_sz[1] + vpad + bottom_h + vpad_b;
 
     wrap_line(ui, w);
 
+    let row_y = ui.cursor_screen_pos()[1];
     let x = ui.cursor_screen_pos()[0];
-    let mut y = ui.cursor_screen_pos()[1] + vpad;
+    let mut y = row_y + vpad;
 
     let draw_list = ui.get_window_draw_list();
 
@@ -197,10 +475,7 @@ pub fn draw_kanji_text(
     let ul0 = [x, y + kanji_sz[1] + ul_thick / 2.0];
     let ul1 = match underline {
         UnderlineMode::Normal => [x + w, y + kanji_sz[1] + ul_thick / 2.0],
-        UnderlineMode::Pad => [
-            x + w + item_spacing_x,
-            y + kanji_sz[1] + ul_thick / 2.0,
-        ],
+        UnderlineMode::Pad => [x + w + item_spacing_x, y + kanji_sz[1] + ul_thick / 2.0],
         UnderlineMode::None => ul0,
     };
     draw_list
@@ -229,11 +504,17 @@ pub fn draw_kanji_text(
 
     ui.dummy([w, h]);
 
-    ui.is_window_focused()
+    let underline_hover = ui.is_window_focused()
         && ui.is_mouse_hovering_rect(
             [ul0[0], ul0[1] - ul_thick / 2.0],
             [ul1[0], ul1[1] + ul_thick / 2.0],
-        )
+        );
+    KanjiDrawn {
+        underline_hover,
+        row_y,
+        x_left: x,
+        x_right: x + w,
+    }
 }
 
 pub fn wrap_line_with_spacing(ui: &Ui, expected_width: f32, spacing: f32) -> bool {

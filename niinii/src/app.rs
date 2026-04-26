@@ -4,6 +4,7 @@ use crate::{
     renderer::context::{Context, ContextFlags},
     settings::Settings,
     support::{docking::UiDocking, regex::CachedRegex},
+    translator::Translator,
     tts::{self, TtsEngine},
     view::{
         gloss::{GlossEvent, GlossInputAction, GlossView},
@@ -33,6 +34,7 @@ pub struct App {
     error: Option<Error>,
     tts: TtsEngine,
     gloss: GlossView,
+    translator: Translator,
     translator_window: TranslatorWindow,
     settings_view: SettingsView,
     inject_view: InjectView,
@@ -45,7 +47,7 @@ impl App {
     pub async fn new(settings: Settings) -> Self {
         let tts = TtsEngine::new(&settings);
         let gloss = GlossView::new(&settings).await;
-        let translator_window = TranslatorWindow::new(&settings);
+        let translator = Translator::new(&settings);
         App {
             show_metrics_window: false,
             no_inputs: false,
@@ -53,7 +55,8 @@ impl App {
             error: None,
             tts,
             gloss,
-            translator_window,
+            translator,
+            translator_window: TranslatorWindow::new(),
             settings_view: SettingsView::new(),
             inject_view: InjectView::new(),
             style_editor: StyleEditor::new(),
@@ -62,17 +65,50 @@ impl App {
     }
 
     fn request_gloss(&mut self, ui: &Ui, text: &str) {
-        match self.gloss.request(text, &self.settings) {
-            Ok(Some(processed)) => {
-                if self.settings.auto_translate {
-                    self.translator_window.translate(&self.settings, processed);
-                } else {
-                    self.translator_window.clear_current();
-                }
-            }
-            Ok(None) => {}
-            Err(err) => self.error(ui, Error::Gloss(err)),
+        let processed = match self.gloss.request(text, &self.settings) {
+            Ok(Some(p)) => p,
+            Ok(None) => return,
+            Err(err) => return self.error(ui, Error::Gloss(err)),
+        };
+        // Auto-translate and auto-tts both run on the regex-processed input
+        // text and don't need the parsed AST, so kick them off here in
+        // parallel with the still-running parse.
+        if self.settings.auto_translate {
+            self.dispatch_translate(processed.clone());
+        } else {
+            self.translator.clear_current();
         }
+        if let Some(pattern) = self.settings.auto_tts_regex.clone() {
+            let tts_text = self.auto_tts_regex.get(&pattern).ok().and_then(|regex| {
+                regex.captures(&processed).unwrap().map(|captures| {
+                    captures
+                        .get(1)
+                        .map(|cap| cap.as_str().to_owned())
+                        .unwrap_or_else(|| processed.clone())
+                })
+            });
+            if let Some(tts_text) = tts_text {
+                self.request_tts(ui, &tts_text);
+            }
+        }
+    }
+
+    /// Submit a translation for the active gloss. Translations require the
+    /// active basic-split segments so per-chunk output can render under the
+    /// kanji. If no segments are available, don't submit a translation.
+    fn dispatch_translate(&mut self, text: String) {
+        let Some(segs) = self
+            .gloss
+            .translation_segments()
+            .filter(|segs| !segs.is_empty())
+        else {
+            self.translator.cancel_current();
+            return;
+        };
+        let id = self
+            .translator
+            .translate(&self.settings, text, std::sync::Arc::new(segs));
+        self.gloss.bind_translation(id);
     }
 
     fn request_tts(&mut self, ui: &Ui, text: &str) {
@@ -92,28 +128,8 @@ impl App {
     fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
         while let Some(event) = self.gloss.poll(ui, ctx, &self.settings) {
             match event {
-                GlossEvent::ClipboardReceived(text) => {
-                    self.request_gloss(ui, &text);
-                }
-                GlossEvent::Completed(text) => {
-                    if let Some(pattern) = self.settings.auto_tts_regex.clone() {
-                        let tts_text =
-                            self.auto_tts_regex.get(&pattern).ok().and_then(|regex| {
-                                regex.captures(&text).unwrap().map(|captures| {
-                                    captures
-                                        .get(1)
-                                        .map(|cap| cap.as_str().to_owned())
-                                        .unwrap_or_else(|| text.clone())
-                                })
-                            });
-                        if let Some(tts_text) = tts_text {
-                            self.request_tts(ui, &tts_text);
-                        }
-                    }
-                }
-                GlossEvent::Failed(err) => {
-                    self.error(ui, err.into());
-                }
+                GlossEvent::ClipboardReceived(text) => self.request_gloss(ui, &text),
+                GlossEvent::Failed(err) => self.error(ui, err.into()),
             }
         }
     }
@@ -152,7 +168,7 @@ impl App {
             if ui.menu_item("Translate") {
                 if let Some(gloss) = self.gloss.ast() {
                     let text = gloss.original_text.clone();
-                    self.translator_window.translate(&self.settings, text);
+                    self.dispatch_translate(text);
                 }
             }
             if cfg!(feature = "voicevox") && ui.menu_item("Speak") {
@@ -238,19 +254,26 @@ impl App {
 
             if self.settings().show_manual_input {
                 let action = self.gloss.show_input(ui);
-                self.translator_window.draw_current_usage(ui);
+                self.translator_window
+                    .draw_current_usage(ui, &self.translator);
                 if let Some(action) = action {
                     match action {
                         GlossInputAction::Gloss(text) => self.request_gloss(ui, &text),
                         GlossInputAction::Translate(text) => {
-                            self.translator_window.translate(&self.settings, text);
+                            self.dispatch_translate(text);
                         }
                     }
                 }
             }
 
-            self.gloss.ui(ctx, ui, &self.settings);
-            self.translator_window.draw_current_exchange(ui);
+            // Look up translations bound to this exact gloss. This prevents
+            // stale spans from a previous exchange painting under new text.
+            let state = self.translator.state();
+            let translations = self
+                .gloss
+                .current_exchange_id()
+                .and_then(|id| self.translator.translations_for(&state, id));
+            self.gloss.ui(ctx, ui, &self.settings, translations);
 
             if ctx.font_atlas_dirty() {
                 ui.new_line();
@@ -268,7 +291,8 @@ impl App {
         self.settings_view.ui(ctx, ui, &mut self.settings);
         self.inject_view.ui(ui, &mut self.settings);
         self.style_editor.ui(ui, &mut self.settings);
-        self.translator_window.ui(ui, &mut self.settings);
+        self.translator_window
+            .ui(ui, &mut self.settings, &self.translator);
         if self.show_metrics_window {
             ui.show_metrics_window(&mut self.show_metrics_window);
         }

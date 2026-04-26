@@ -98,11 +98,12 @@ impl<'a> TermView<'a> {
                     let _style_token = ui.push_style_var(StyleVar::ItemSpacing([0.0, 4.0]));
                     let text = format!("{}", chr);
                     ui.same_line();
-                    draw_kanji_text(
+                    let _ = draw_kanji_text(
                         ui,
                         ctx,
                         &text,
                         RubyTextMode::None,
+                        BottomTextMode::None,
                         KanjiStyle {
                             highlight: kanji.is_some(),
                             stroke: false,

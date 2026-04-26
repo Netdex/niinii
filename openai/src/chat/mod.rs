@@ -437,5 +437,4 @@ mod tests {
         assert_eq!(calls[0].function.name, "get_weather");
         assert_eq!(calls[0].function.arguments, "{\"location\":\"Tokyo\"}");
     }
-
 }

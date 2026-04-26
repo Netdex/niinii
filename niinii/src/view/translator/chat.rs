@@ -1,79 +1,47 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use imgui::*;
 use openai::chat::{Message, Role, Usage};
 use openai::ModelId;
 
 use crate::{
-    settings::{Settings, TranslatorType},
-    translator::chat::{
-        self, ChatHandle, ContextEdit, ExchangeId, ExchangeView, MsgId, Response,
-        TranslateConfig,
-    },
+    settings::Settings,
+    translator::{ContextEdit, MsgId, Translator},
     view::mixins::{
         checkbox_option, checkbox_option_with_default, combo_enum, combo_list, drag_handle,
-        ellipses, help_marker, stroke_text_with_highlight,
+        help_marker,
     },
 };
 
-/// Owns the translator backend handle, the currently displayed exchange id,
-/// and the per-message edit buffers for the context editor. Acts as both the
-/// controller (submit/cancel translations) and the view (render the window
-/// plus exchange readouts embedded in the main UI).
+/// Pure view: owns the modal's open flag and the per-message edit buffers
+/// for the context editor. Borrows a `Translator` to render exchange data
+/// and to submit context-editing commands.
 pub struct TranslatorWindow {
-    translator: ChatHandle,
-    current: Option<ExchangeId>,
     buffers: HashMap<MsgId, String>,
     pub open: bool,
 }
 
+impl Default for TranslatorWindow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TranslatorWindow {
-    pub fn new(settings: &Settings) -> Self {
-        let translator = match settings.translator_type {
-            TranslatorType::Chat => chat::spawn(settings),
-        };
+    pub fn new() -> Self {
         Self {
-            translator,
-            current: None,
             buffers: HashMap::new(),
             open: false,
         }
     }
 
-    /// Cancel any in-flight translation and submit a new one. The new id
-    /// becomes the "current" exchange rendered in the main UI.
-    pub fn translate(&mut self, settings: &Settings, text: String) {
-        if let Some(prev) = self.current {
-            self.translator.cancel(prev);
-        }
-        let config = Arc::new(TranslateConfig::from_settings(settings));
-        self.current = Some(self.translator.translate(text, config));
-    }
-
-    /// Forget the current exchange without cancelling it. Used when a new
-    /// gloss arrives and the user has not opted into auto-translate.
-    pub fn clear_current(&mut self) {
-        self.current = None;
-    }
-
     /// Render the usage bar for the current exchange, if any.
-    pub fn draw_current_usage(&self, ui: &Ui) {
-        let Some(id) = self.current else { return };
-        let state = self.translator.state();
-        if let Some(ex) = state.exchange(id) {
+    pub fn draw_current_usage(&self, ui: &Ui, translator: &Translator) {
+        let state = translator.state();
+        if let Some(ex) = translator.current_exchange(&state) {
             if let Some(usage) = &ex.usage {
                 draw_usage(ui, &ex.model, usage);
             }
-        }
-    }
-
-    /// Render the full current exchange, if any.
-    pub fn draw_current_exchange(&self, ui: &Ui) {
-        let Some(id) = self.current else { return };
-        let state = self.translator.state();
-        if let Some(ex) = state.exchange(id) {
-            draw_exchange(ui, ex);
         }
     }
 
@@ -83,7 +51,7 @@ impl TranslatorWindow {
         }
     }
 
-    pub fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
+    pub fn ui(&mut self, ui: &Ui, settings: &mut Settings, translator: &Translator) {
         if !self.open {
             return;
         }
@@ -96,8 +64,8 @@ impl TranslatorWindow {
         else {
             return;
         };
-        let handle = &self.translator;
-        let state = handle.state();
+        let handle = translator.handle();
+        let state = translator.state();
         let chatgpt = &mut settings.chat;
 
         ui.menu_bar(|| {
@@ -279,10 +247,8 @@ impl TranslatorWindow {
                     let mut lock = message.name.is_some();
                     ui.disabled(message.role != Role::User, || {
                         if ui.checkbox("##lock", &mut lock) {
-                            interact = Some(Interaction::SetName(
-                                idx,
-                                lock.then(|| "info".to_string()),
-                            ));
+                            interact =
+                                Some(Interaction::SetName(idx, lock.then(|| "info".to_string())));
                         }
                     });
                     ui.table_next_column();
@@ -295,9 +261,10 @@ impl TranslatorWindow {
                         }
                     });
                     ui.table_next_column();
-                    let buf = self.buffers.entry(entry.id).or_insert_with(|| {
-                        message.content.clone().unwrap_or_default()
-                    });
+                    let buf = self
+                        .buffers
+                        .entry(entry.id)
+                        .or_insert_with(|| message.content.clone().unwrap_or_default());
                     ui.set_next_item_width(ui.content_region_avail()[0]);
                     ui.input_text("##content", buf).build();
                     if ui.is_item_deactivated_after_edit() {
@@ -344,69 +311,6 @@ impl TranslatorWindow {
     }
 }
 
-/// Render one exchange's assistant turn, streaming-aware.
-fn draw_exchange(ui: &Ui, ex: &ExchangeView) {
-    let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
-    ui.text(""); // anchor for line wrapping
-    ui.same_line();
-    let draw_list = ui.get_window_draw_list();
-    stroke_text_with_highlight(
-        ui,
-        &draw_list,
-        &format!("[{}]", ex.model.as_ref()),
-        1.0,
-        Some(StyleColor::NavHighlight),
-    );
-    let content = ex.response.content();
-    if !content.is_empty() {
-        ui.same_line();
-        stroke_text_with_highlight(
-            ui,
-            &draw_list,
-            content,
-            1.0,
-            Some(StyleColor::TextSelectedBg),
-        );
-    }
-    match &ex.response {
-        Response::Streaming { .. } => {
-            if content.is_empty() {
-                ui.same_line();
-            } else {
-                ui.same_line_with_spacing(0.0, 0.0);
-            }
-            stroke_text_with_highlight(
-                ui,
-                &draw_list,
-                ellipses(ui),
-                1.0,
-                Some(StyleColor::TextSelectedBg),
-            );
-        }
-        Response::Errored(err) => {
-            ui.same_line();
-            stroke_text_with_highlight(
-                ui,
-                &draw_list,
-                &format!("(error: {})", err),
-                1.0,
-                Some(StyleColor::PlotLinesHovered),
-            );
-        }
-        Response::Cancelled => {
-            ui.same_line();
-            stroke_text_with_highlight(
-                ui,
-                &draw_list,
-                "(cancelled)",
-                1.0,
-                Some(StyleColor::PlotLinesHovered),
-            );
-        }
-        Response::Completed { .. } => {}
-    }
-}
-
 /// Render the usage progress bar for one exchange.
 fn draw_usage(ui: &Ui, model: &ModelId, usage: &Usage) {
     ui.same_line();
@@ -426,4 +330,3 @@ fn draw_usage(ui: &Ui, model: &ModelId, usage: &Usage) {
         .size([500.0, 0.0])
         .build(ui);
 }
-

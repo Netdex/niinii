@@ -59,11 +59,16 @@ impl Parser {
             }),
         }
     }
-    pub async fn parse(&self, text: &str, variants: u32) -> Result<SyntaxTree, Error> {
+    pub async fn parse(
+        &self,
+        text: &str,
+        splits: &[(Split, String)],
+        variants: u32,
+    ) -> Result<SyntaxTree, Error> {
         let ichiran = &self.shared.ichiran;
 
         let (root, kanji_info, jmdict_data) = tokio::try_join!(
-            ichiran.romanize(text, variants),
+            ichiran.romanize(splits, variants),
             ichiran.kanji_from_str(text),
             ichiran.jmdict_data()
         )?;
