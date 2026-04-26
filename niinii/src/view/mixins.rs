@@ -197,10 +197,7 @@ pub fn draw_kanji_text(
     let ul0 = [x, y + kanji_sz[1] + ul_thick / 2.0];
     let ul1 = match underline {
         UnderlineMode::Normal => [x + w, y + kanji_sz[1] + ul_thick / 2.0],
-        UnderlineMode::Pad => [
-            x + w + item_spacing_x,
-            y + kanji_sz[1] + ul_thick / 2.0,
-        ],
+        UnderlineMode::Pad => [x + w + item_spacing_x, y + kanji_sz[1] + ul_thick / 2.0],
         UnderlineMode::None => ul0,
     };
     draw_list

@@ -174,11 +174,9 @@ fn add_conj(ui: &Ui, conj: &Conjugation) {
                     }
                 });
             for via in conj.vias() {
-                ui.tree_node_config("Via")
-                    .default_open(false)
-                    .build(|| {
-                        add_conj(ui, via);
-                    });
+                ui.tree_node_config("Via").default_open(false).build(|| {
+                    add_conj(ui, via);
+                });
             }
             wrap_bullet(ui, &format!("readok: {}", conj.readok()));
         });

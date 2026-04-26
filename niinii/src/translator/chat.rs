@@ -25,7 +25,8 @@ use arc_swap::ArcSwap;
 use enclose::enclose;
 use openai::{
     chat::{
-        self, Message, PartialToolCall, Role, ToolCall, ToolCallAccumulator, Tool, ToolChoice, Usage,
+        self, Message, PartialToolCall, Role, Tool, ToolCall, ToolCallAccumulator, ToolChoice,
+        Usage,
     },
     ConnectionPolicy, ModelId, ReasoningEffort, ServiceTier, Verbosity,
 };
@@ -90,8 +91,14 @@ impl TranslateConfig {
 
 #[derive(Clone, Debug)]
 pub enum Response {
-    Streaming { content: String, tool_calls: ToolCallAccumulator },
-    Completed { content: String, tool_calls: Vec<ToolCall> },
+    Streaming {
+        content: String,
+        tool_calls: ToolCallAccumulator,
+    },
+    Completed {
+        content: String,
+        tool_calls: Vec<ToolCall>,
+    },
     Errored(Arc<str>),
     Cancelled,
 }
@@ -253,88 +260,84 @@ fn handle_command(
 
 fn reduce(state: &mut ChatState, event: ChatEvent) {
     match event {
-            ChatEvent::Started {
+        ChatEvent::Started {
+            id,
+            model,
+            user_message,
+        } => {
+            state.exchanges.push(ExchangeView {
                 id,
                 model,
                 user_message,
-            } => {
-                state.exchanges.push(ExchangeView {
-                    id,
-                    model,
-                    user_message,
-                    response: Response::Streaming {
-                        content: String::new(),
-                        tool_calls: ToolCallAccumulator::new(),
-                    },
-                    usage: None,
-                });
-            }
-            ChatEvent::Delta { id, content } => {
-                if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                    if let Response::Streaming {
-                        content: acc,
-                        ..
-                    } = &mut ex.response
-                    {
-                        acc.push_str(&content);
-                    }
+                response: Response::Streaming {
+                    content: String::new(),
+                    tool_calls: ToolCallAccumulator::new(),
+                },
+                usage: None,
+            });
+        }
+        ChatEvent::Delta { id, content } => {
+            if let Some(ex) = find_mut(&mut state.exchanges, id) {
+                if let Response::Streaming { content: acc, .. } = &mut ex.response {
+                    acc.push_str(&content);
                 }
             }
-            ChatEvent::ToolCallDelta { id, partials } => {
-                if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                    if let Response::Streaming { tool_calls, .. } = &mut ex.response {
-                        tool_calls.extend(partials);
-                    }
+        }
+        ChatEvent::ToolCallDelta { id, partials } => {
+            if let Some(ex) = find_mut(&mut state.exchanges, id) {
+                if let Response::Streaming { tool_calls, .. } = &mut ex.response {
+                    tool_calls.extend(partials);
                 }
             }
-            ChatEvent::Completed {
-                id,
-                usage,
-                max_context_tokens,
-            } => {
-                let Some(ex) = find_mut(&mut state.exchanges, id) else {
+        }
+        ChatEvent::Completed {
+            id,
+            usage,
+            max_context_tokens,
+        } => {
+            let Some(ex) = find_mut(&mut state.exchanges, id) else {
+                return;
+            };
+            let prior = std::mem::replace(&mut ex.response, Response::Cancelled);
+            let (content, tool_calls) = match prior {
+                Response::Streaming {
+                    content,
+                    tool_calls,
+                } => (content, tool_calls.finish()),
+                other => {
+                    ex.response = other;
                     return;
-                };
-                let prior = std::mem::replace(&mut ex.response, Response::Cancelled);
-                let (content, tool_calls) = match prior {
-                    Response::Streaming {
-                        content,
-                        tool_calls,
-                    } => (content, tool_calls.finish()),
-                    other => {
-                        ex.response = other;
-                        return;
-                    }
-                };
-                ex.response = Response::Completed {
-                    content: content.clone(),
-                    tool_calls: tool_calls.clone(),
-                };
-                ex.usage = usage;
-                let assistant = Message {
-                    role: Role::Assistant,
-                    content: Some(content),
-                    tool_calls: (!tool_calls.is_empty()).then_some(tool_calls),
-                    ..Default::default()
-                };
-                let user_clone = ex.user_message.clone();
-                state.push_back(user_clone);
-                state.push_back(assistant);
-                enforce_context_limit(&mut state.context, &max_context_tokens);
-            }
-            ChatEvent::Failed { id, error } => {
-                if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                    ex.response = Response::Errored(error.clone());
                 }
-                state.last_error = Some(error);
+            };
+            ex.response = Response::Completed {
+                content: content.clone(),
+                tool_calls: tool_calls.clone(),
+            };
+            ex.usage = usage;
+            let assistant = Message {
+                role: Role::Assistant,
+                content: Some(content),
+                tool_calls: (!tool_calls.is_empty()).then_some(tool_calls),
+                ..Default::default()
+            };
+            let user_clone = ex.user_message.clone();
+            state.push_back(user_clone);
+            state.push_back(assistant);
+            enforce_context_limit(&mut state.context, &max_context_tokens);
+        }
+        ChatEvent::Failed { id, error } => {
+            if let Some(ex) = find_mut(&mut state.exchanges, id) {
+                ex.response = Response::Errored(error.clone());
             }
-            ChatEvent::Cancelled { id } => {
-                if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                    if let Response::Streaming { .. } = ex.response {
-                        ex.response = Response::Cancelled;
-                    }
+            state.last_error = Some(error);
+        }
+        ChatEvent::Cancelled { id } => {
+            if let Some(ex) = find_mut(&mut state.exchanges, id) {
+                if let Response::Streaming { .. } = ex.response {
+                    ex.response = Response::Cancelled;
                 }
             }
+        }
         ChatEvent::ModelsRefreshed(models) => state.models = models,
         ChatEvent::Error(err) => state.last_error = Some(err),
     }
@@ -344,11 +347,7 @@ fn find_mut(exchanges: &mut [ExchangeView], id: ExchangeId) -> Option<&mut Excha
     exchanges.iter_mut().find(|e| e.id == id)
 }
 
-fn build_prompt(
-    state: &ChatState,
-    config: &TranslateConfig,
-    user: &Message,
-) -> Vec<Message> {
+fn build_prompt(state: &ChatState, config: &TranslateConfig, user: &Message) -> Vec<Message> {
     let mut prompt = Vec::with_capacity(state.context.len() + 2);
     prompt.push(Message {
         role: Role::System,
@@ -433,116 +432,114 @@ fn spawn_adapter(
     cancel: CancellationToken,
     evt_tx: mpsc::Sender<ChatEvent>,
 ) {
-    tokio::spawn(
-        enclose! { (config) async move {
-            let req = chat::Request::builder()
-                .model(config.model.clone())
-                .messages(prompt)
-                .maybe_temperature(config.temperature)
-                .maybe_top_p(config.top_p)
-                .maybe_max_completion_tokens(config.max_tokens)
-                .maybe_presence_penalty(config.presence_penalty)
-                .maybe_service_tier(config.service_tier)
-                .maybe_reasoning_effort(config.reasoning_effort)
-                .maybe_verbosity(config.verbosity)
-                .build();
+    tokio::spawn(enclose! { (config) async move {
+        let req = chat::Request::builder()
+            .model(config.model.clone())
+            .messages(prompt)
+            .maybe_temperature(config.temperature)
+            .maybe_top_p(config.top_p)
+            .maybe_max_completion_tokens(config.max_tokens)
+            .maybe_presence_penalty(config.presence_penalty)
+            .maybe_service_tier(config.service_tier)
+            .maybe_reasoning_effort(config.reasoning_effort)
+            .maybe_verbosity(config.verbosity)
+            .build();
 
-            let max_ctx = config.max_context_tokens;
-            if config.stream {
-                let mut stream = match client.stream(req).await {
-                    Ok(s) => s,
-                    Err(err) => {
-                        let _ = evt_tx.send(ChatEvent::Failed {
-                            id,
-                            error: Arc::from(err.to_string()),
-                        }).await;
-                        return;
-                    }
-                };
-                let mut usage = None;
-                loop {
-                    tokio::select! {
-                        biased;
-                        _ = cancel.cancelled() => {
-                            let _ = evt_tx.send(ChatEvent::Cancelled { id }).await;
-                            return;
-                        }
-                        chunk = stream.next() => match chunk {
-                            Some(Ok(cmpl)) => {
-                                if let Some(u) = cmpl.usage { usage = Some(u); }
-                                for choice in cmpl.choices {
-                                    if let Some(content) = choice.delta.content {
-                                        let _ = evt_tx.send(ChatEvent::Delta {
-                                            id,
-                                            content: content.replace('\n', ""),
-                                        }).await;
-                                    }
-                                    if let Some(calls) = choice.delta.tool_calls {
-                                        let _ = evt_tx.send(ChatEvent::ToolCallDelta {
-                                            id,
-                                            partials: calls,
-                                        }).await;
-                                    }
-                                }
-                            }
-                            Some(Err(err)) => {
-                                let _ = evt_tx.send(ChatEvent::Failed {
-                                    id,
-                                    error: Arc::from(err.to_string()),
-                                }).await;
-                                return;
-                            }
-                            None => {
-                                let _ = evt_tx.send(ChatEvent::Completed {
-                                    id, usage, max_context_tokens: max_ctx,
-                                }).await;
-                                return;
-                            }
-                        }
-                    }
+        let max_ctx = config.max_context_tokens;
+        if config.stream {
+            let mut stream = match client.stream(req).await {
+                Ok(s) => s,
+                Err(err) => {
+                    let _ = evt_tx.send(ChatEvent::Failed {
+                        id,
+                        error: Arc::from(err.to_string()),
+                    }).await;
+                    return;
                 }
-            } else {
+            };
+            let mut usage = None;
+            loop {
                 tokio::select! {
                     biased;
                     _ = cancel.cancelled() => {
                         let _ = evt_tx.send(ChatEvent::Cancelled { id }).await;
+                        return;
                     }
-                    res = client.chat(req) => match res {
-                        Ok(cmpl) => {
-                            let usage = Some(cmpl.usage.clone());
-                            if let Some(choice) = cmpl.choices.into_iter().next() {
-                                if let Some(content) = choice.message.content {
-                                    let _ = evt_tx.send(ChatEvent::Delta { id, content }).await;
+                    chunk = stream.next() => match chunk {
+                        Some(Ok(cmpl)) => {
+                            if let Some(u) = cmpl.usage { usage = Some(u); }
+                            for choice in cmpl.choices {
+                                if let Some(content) = choice.delta.content {
+                                    let _ = evt_tx.send(ChatEvent::Delta {
+                                        id,
+                                        content: content.replace('\n', ""),
+                                    }).await;
                                 }
-                                if let Some(calls) = choice.message.tool_calls {
-                                    let partials = calls.into_iter().enumerate()
-                                        .map(|(i, call)| PartialToolCall {
-                                            index: i as u32,
-                                            id: Some(call.id),
-                                            kind: Some(call.kind),
-                                            function: Some(openai::chat::PartialFunctionCall {
-                                                name: Some(call.function.name),
-                                                arguments: Some(call.function.arguments),
-                                            }),
-                                        })
-                                        .collect();
-                                    let _ = evt_tx.send(ChatEvent::ToolCallDelta { id, partials }).await;
+                                if let Some(calls) = choice.delta.tool_calls {
+                                    let _ = evt_tx.send(ChatEvent::ToolCallDelta {
+                                        id,
+                                        partials: calls,
+                                    }).await;
                                 }
                             }
+                        }
+                        Some(Err(err)) => {
+                            let _ = evt_tx.send(ChatEvent::Failed {
+                                id,
+                                error: Arc::from(err.to_string()),
+                            }).await;
+                            return;
+                        }
+                        None => {
                             let _ = evt_tx.send(ChatEvent::Completed {
                                 id, usage, max_context_tokens: max_ctx,
                             }).await;
-                        }
-                        Err(err) => {
-                            let _ = evt_tx.send(ChatEvent::Failed {
-                                id, error: Arc::from(err.to_string()),
-                            }).await;
+                            return;
                         }
                     }
                 }
             }
-        }.instrument(tracing::Span::current())},
-    );
+        } else {
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    let _ = evt_tx.send(ChatEvent::Cancelled { id }).await;
+                }
+                res = client.chat(req) => match res {
+                    Ok(cmpl) => {
+                        let usage = Some(cmpl.usage.clone());
+                        if let Some(choice) = cmpl.choices.into_iter().next() {
+                            if let Some(content) = choice.message.content {
+                                let _ = evt_tx.send(ChatEvent::Delta { id, content }).await;
+                            }
+                            if let Some(calls) = choice.message.tool_calls {
+                                let partials = calls.into_iter().enumerate()
+                                    .map(|(i, call)| PartialToolCall {
+                                        index: i as u32,
+                                        id: Some(call.id),
+                                        kind: Some(call.kind),
+                                        function: Some(openai::chat::PartialFunctionCall {
+                                            name: Some(call.function.name),
+                                            arguments: Some(call.function.arguments),
+                                        }),
+                                    })
+                                    .collect();
+                                let _ = evt_tx.send(ChatEvent::ToolCallDelta { id, partials }).await;
+                            }
+                        }
+                        let _ = evt_tx.send(ChatEvent::Completed {
+                            id, usage, max_context_tokens: max_ctx,
+                        }).await;
+                    }
+                    Err(err) => {
+                        let _ = evt_tx.send(ChatEvent::Failed {
+                            id, error: Arc::from(err.to_string()),
+                        }).await;
+                    }
+                }
+            }
+        }
+    }.instrument(tracing::Span::current())});
 }
 
 /// Handle to the chat backend task. Cheap to clone. All mutations go through

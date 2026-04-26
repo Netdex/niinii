@@ -126,4 +126,3 @@ impl Shared {
         RequestBuilder::new(r)
     }
 }
-

@@ -8,8 +8,7 @@ use openai::ModelId;
 use crate::{
     settings::{Settings, TranslatorType},
     translator::chat::{
-        self, ChatHandle, ContextEdit, ExchangeId, ExchangeView, MsgId, Response,
-        TranslateConfig,
+        self, ChatHandle, ContextEdit, ExchangeId, ExchangeView, MsgId, Response, TranslateConfig,
     },
     view::mixins::{
         checkbox_option, checkbox_option_with_default, combo_enum, combo_list, drag_handle,
@@ -279,10 +278,8 @@ impl TranslatorWindow {
                     let mut lock = message.name.is_some();
                     ui.disabled(message.role != Role::User, || {
                         if ui.checkbox("##lock", &mut lock) {
-                            interact = Some(Interaction::SetName(
-                                idx,
-                                lock.then(|| "info".to_string()),
-                            ));
+                            interact =
+                                Some(Interaction::SetName(idx, lock.then(|| "info".to_string())));
                         }
                     });
                     ui.table_next_column();
@@ -295,9 +292,10 @@ impl TranslatorWindow {
                         }
                     });
                     ui.table_next_column();
-                    let buf = self.buffers.entry(entry.id).or_insert_with(|| {
-                        message.content.clone().unwrap_or_default()
-                    });
+                    let buf = self
+                        .buffers
+                        .entry(entry.id)
+                        .or_insert_with(|| message.content.clone().unwrap_or_default());
                     ui.set_next_item_width(ui.content_region_avail()[0]);
                     ui.input_text("##content", buf).build();
                     if ui.is_item_deactivated_after_edit() {
@@ -426,4 +424,3 @@ fn draw_usage(ui: &Ui, model: &ModelId, usage: &Usage) {
         .size([500.0, 0.0])
         .build(ui);
 }
-
