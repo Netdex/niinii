@@ -62,16 +62,32 @@ impl App {
     }
 
     fn request_gloss(&mut self, ui: &Ui, text: &str) {
-        match self.gloss.request(text, &self.settings) {
-            Ok(Some(processed)) => {
-                if self.settings.auto_translate {
-                    self.translator_window.translate(&self.settings, processed);
-                } else {
-                    self.translator_window.clear_current();
-                }
+        let processed = match self.gloss.request(text, &self.settings) {
+            Ok(Some(p)) => p,
+            Ok(None) => return,
+            Err(err) => return self.error(ui, Error::Gloss(err)),
+        };
+        // Auto-translate and auto-tts both run on the regex-processed input
+        // text and don't need the parsed AST, so kick them off here in
+        // parallel with the still-running parse.
+        if self.settings.auto_translate {
+            self.translator_window
+                .translate(&self.settings, processed.clone());
+        } else {
+            self.translator_window.clear_current();
+        }
+        if let Some(pattern) = self.settings.auto_tts_regex.clone() {
+            let tts_text = self.auto_tts_regex.get(&pattern).ok().and_then(|regex| {
+                regex.captures(&processed).unwrap().map(|captures| {
+                    captures
+                        .get(1)
+                        .map(|cap| cap.as_str().to_owned())
+                        .unwrap_or_else(|| processed.clone())
+                })
+            });
+            if let Some(tts_text) = tts_text {
+                self.request_tts(ui, &tts_text);
             }
-            Ok(None) => {}
-            Err(err) => self.error(ui, Error::Gloss(err)),
         }
     }
 
@@ -92,28 +108,8 @@ impl App {
     fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
         while let Some(event) = self.gloss.poll(ui, ctx, &self.settings) {
             match event {
-                GlossEvent::ClipboardReceived(text) => {
-                    self.request_gloss(ui, &text);
-                }
-                GlossEvent::Completed(text) => {
-                    if let Some(pattern) = self.settings.auto_tts_regex.clone() {
-                        let tts_text =
-                            self.auto_tts_regex.get(&pattern).ok().and_then(|regex| {
-                                regex.captures(&text).unwrap().map(|captures| {
-                                    captures
-                                        .get(1)
-                                        .map(|cap| cap.as_str().to_owned())
-                                        .unwrap_or_else(|| text.clone())
-                                })
-                            });
-                        if let Some(tts_text) = tts_text {
-                            self.request_tts(ui, &tts_text);
-                        }
-                    }
-                }
-                GlossEvent::Failed(err) => {
-                    self.error(ui, err.into());
-                }
+                GlossEvent::ClipboardReceived(text) => self.request_gloss(ui, &text),
+                GlossEvent::Failed(err) => self.error(ui, err.into()),
             }
         }
     }

@@ -28,7 +28,6 @@ enum View {
 /// one place -- `GlossView` does not self-gloss on clipboard changes.
 pub enum GlossEvent {
     ClipboardReceived(String),
-    Completed(String),
     Failed(parser::Error),
 }
 
