@@ -2,7 +2,7 @@
 //! (OpenAI, llama.cpp, vLLM, Ollama, etc.).
 //!
 //! Config is read from the workspace `niinii.toml`. Tests acquire the client
-//! and model via [`live_server!`], which skips (prints a notice and returns)
+//! and model via [`fixture!`], which skips (prints a notice and returns)
 //! when the config file or required fields are missing — so `cargo test` is
 //! always safe to run.
 //!
@@ -17,13 +17,13 @@ use openai::{Client, ModelId};
 
 const CONFIG_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../niinii.toml");
 
-pub struct LiveConfig {
+pub struct ServerConfig {
     pub endpoint: String,
     pub model: String,
     pub api_key: String,
 }
 
-pub fn load_config() -> Option<LiveConfig> {
+pub fn load_config() -> Option<ServerConfig> {
     let text = std::fs::read_to_string(CONFIG_PATH).ok()?;
     let v: toml::Value = toml::from_str(&text).ok()?;
     let chat = v.get("chat")?;
@@ -34,14 +34,14 @@ pub fn load_config() -> Option<LiveConfig> {
         .and_then(|k| k.as_str())
         .unwrap_or("no-key")
         .to_string();
-    Some(LiveConfig {
+    Some(ServerConfig {
         endpoint,
         model,
         api_key,
     })
 }
 
-pub fn build(cfg: LiveConfig) -> (Client, ModelId) {
+pub fn build(cfg: ServerConfig) -> (Client, ModelId) {
     let model = ModelId(cfg.model);
     let client = Client::new(cfg.api_key, cfg.endpoint, Default::default());
     (client, model)
@@ -51,7 +51,7 @@ pub fn build(cfg: LiveConfig) -> (Client, ModelId) {
 /// and `return`s) if `niinii.toml` is missing or incomplete. The skip branch
 /// is why this is a macro — a function can't return from its caller.
 #[macro_export]
-macro_rules! live_server {
+macro_rules! fixture {
     () => {
         match $crate::common::load_config() {
             Some(cfg) => $crate::common::build(cfg),

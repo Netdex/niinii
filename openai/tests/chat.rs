@@ -40,7 +40,7 @@ fn user(content: &str) -> Message {
 #[tokio::test]
 #[traced_test]
 async fn chat_basic() {
-    let (client, model) = live_server!();
+    let (client, model) = fixture!();
     let request = Request::builder()
         .model(model)
         .messages(vec![user("What is the capital city of Canada?")])
@@ -54,7 +54,7 @@ async fn chat_basic() {
 #[tokio::test]
 #[traced_test]
 async fn chat_stream_basic() {
-    let (client, model) = live_server!();
+    let (client, model) = fixture!();
     let request = Request::builder()
         .model(model)
         .messages(vec![user("What is the capital city of Canada?")])
@@ -68,7 +68,7 @@ async fn chat_stream_basic() {
 #[tokio::test]
 #[traced_test]
 async fn chat_tool_call_loop() {
-    let (client, model) = live_server!();
+    let (client, model) = fixture!();
     let tools = vec![weather_tool()];
     let mut messages = vec![user("What is the weather in Tokyo? Use the tool.")];
 
@@ -110,7 +110,7 @@ async fn chat_tool_call_loop() {
 #[tokio::test]
 #[traced_test]
 async fn stream_tool_call_accumulates() {
-    let (client, model) = live_server!();
+    let (client, model) = fixture!();
     let req = Request::builder()
         .model(model)
         .messages(vec![user("What is the weather in Tokyo? Use the tool.")])
