@@ -180,6 +180,10 @@ pub struct Request {
     pub tool_choice: Option<ToolChoice>,
     /// Whether the model may emit multiple tool calls in a single assistant turn.
     pub parallel_tool_calls: Option<bool>,
+    /// llama.cpp-server extension: when set, the server constrains generation
+    /// to the given GBNF grammar. Ignored by hosted OpenAI APIs; sent only
+    /// when `Some` so the wire request is unchanged otherwise.
+    pub grammar: Option<String>,
     // logit_bias
     pub(crate) stream: Option<bool>,
     pub(crate) stream_options: Option<StreamOptions>,
