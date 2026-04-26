@@ -380,6 +380,7 @@ impl Counter {
 
 #[cfg(test)]
 mod tests {
+    use crate::split::basic_split;
     use crate::tests::fixture;
 
     use super::*;
@@ -399,7 +400,16 @@ mod tests {
     #[ignore]
     async fn test_match() {
         let ichiran = fixture::ichiran().await;
-        let nikaime = ichiran.romanize("2回目", 1).await.unwrap();
+        let nikaime = ichiran
+            .romanize(
+                &basic_split("2回目")
+                    .into_iter()
+                    .map(|(k, s)| (k, s.to_string()))
+                    .collect::<Vec<_>>(),
+                1,
+            )
+            .await
+            .unwrap();
         let nikaime_gold = Root(vec![Segment::Clauses(vec![Clause(
             vec![Romanized(
                 "nikaime".into(),
@@ -435,7 +445,13 @@ mod tests {
     #[ignore]
     async fn test_romanize() {
         let ichiran = fixture::ichiran().await;
-        let _furaseteiru = ichiran.romanize("降らせている", 1).await.unwrap();
-        let _naidesho = ichiran.romanize("ないでしょ", 1).await.unwrap();
+        let splits = |t: &str| -> Vec<_> {
+            basic_split(t)
+                .into_iter()
+                .map(|(k, s)| (k, s.to_string()))
+                .collect()
+        };
+        let _furaseteiru = ichiran.romanize(&splits("降らせている"), 1).await.unwrap();
+        let _naidesho = ichiran.romanize(&splits("ないでしょ"), 1).await.unwrap();
     }
 }
