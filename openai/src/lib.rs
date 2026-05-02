@@ -99,6 +99,14 @@ impl Client {
                 client: reqwest::Client::builder()
                     .timeout(connection_policy.timeout)
                     .connect_timeout(connection_policy.connect_timeout)
+                    // Keep the TLS/HTTP-2 connection to the chat endpoint hot
+                    // so the first translation token after an idle period
+                    // does not pay TCP+TLS handshake latency.
+                    .pool_idle_timeout(None)
+                    .tcp_keepalive(Duration::from_secs(30))
+                    .http2_keep_alive_interval(Duration::from_secs(30))
+                    .http2_keep_alive_timeout(Duration::from_secs(10))
+                    .http2_keep_alive_while_idle(true)
                     .build()
                     .unwrap(),
                 api_base,

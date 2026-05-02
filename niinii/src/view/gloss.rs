@@ -16,11 +16,15 @@ use crate::settings::{RubyTextType, Settings};
 use crate::support::regex::CachedRegex;
 use crate::view::{raw::RawView, term::TermView};
 
-const CLIPBOARD_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const CLIPBOARD_POLL_INTERVAL: Duration = Duration::from_millis(33);
 
 enum View {
-    Text(String), // TODO: display basic_split instead of plain text
-    Interpret { ast: SyntaxTree },
+    /// Preview shown while a parse is in flight: the text chunked by
+    /// `basic_split` so Text/Skip blocks can be styled distinctly.
+    Text(Vec<(Split, String)>),
+    Interpret {
+        ast: SyntaxTree,
+    },
 }
 
 /// Emitted from `GlossView::poll`. `ClipboardReceived` surfaces new clipboard
@@ -40,7 +44,8 @@ pub enum GlossInputAction {
 
 pub struct GlossView {
     parser: Parser,
-    pending: Option<JoinHandle<Result<SyntaxTree, parser::Error>>>,
+    pending_ast: Option<JoinHandle<Result<SyntaxTree, parser::Error>>>,
+    pending_kanji: Option<JoinHandle<Result<HashMap<char, Kanji>, parser::Error>>>,
     match_regex: CachedRegex,
 
     input_text: String,
@@ -60,7 +65,8 @@ impl GlossView {
     pub async fn new(settings: &Settings) -> Self {
         Self {
             parser: Parser::new(settings).await,
-            pending: None,
+            pending_ast: None,
+            pending_kanji: None,
             match_regex: CachedRegex::default(),
             input_text: String::new(),
             last_clipboard: String::new(),
@@ -83,7 +89,8 @@ impl GlossView {
     }
 
     pub fn is_processing(&self) -> bool {
-        self.pending.is_some()
+        // Only block the input on the AST; kanji info loads in the background.
+        self.pending_ast.is_some()
     }
 
     pub fn input_text(&self) -> &str {
@@ -104,27 +111,45 @@ impl GlossView {
         let text = regex
             .replace_all(text, &settings.regex_replace)
             .into_owned();
-        let text = text.trim().to_owned();
+        // VN/clipboard text often arrives with hard line breaks from dialogue
+        // wrapping; ichiran segments per-line so embedded newlines wreck the
+        // parse. Strip them along with leading/trailing whitespace.
+        let text = text
+            .replace(|c: char| c == '\n' || c == '\r', "")
+            .trim()
+            .to_owned();
         if text.is_empty() {
             return Ok(None);
         }
 
-        if let Some(prev) = self.pending.take() {
+        if let Some(prev) = self.pending_ast.take() {
             prev.abort();
         }
-        self.view = Some(View::Text(text.clone()));
+        if let Some(prev) = self.pending_kanji.take() {
+            prev.abort();
+        }
 
-        let parser = self.parser.clone();
         let variants = if settings.more_variants { 5 } else { 1 };
-        let spawn_text = text.clone();
-        let splits: Vec<(Split, String)> = basic_split(&spawn_text)
+        let splits: Vec<(Split, String)> = basic_split(&text)
             .into_iter()
             .map(|(kind, s)| (kind, s.to_string()))
             .collect();
-        self.pending = Some(tokio::spawn(
-            async move { parser.parse(&spawn_text, &splits, variants).await }
-                .instrument(tracing::debug_span!("parse")),
+        self.view = Some(View::Text(splits.clone()));
+
+        let parser_ast = self.parser.clone();
+        let ast_text = text.clone();
+        self.pending_ast = Some(tokio::spawn(
+            async move { parser_ast.parse_ast(&ast_text, &splits, variants).await }
+                .instrument(tracing::debug_span!("parse_ast")),
         ));
+
+        let parser_kanji = self.parser.clone();
+        let kanji_text = text.clone();
+        self.pending_kanji = Some(tokio::spawn(
+            async move { parser_kanji.parse_kanji(&kanji_text).await }
+                .instrument(tracing::debug_span!("parse_kanji")),
+        ));
+
         Ok(Some(text))
     }
 
@@ -147,9 +172,9 @@ impl GlossView {
             }
         }
 
-        if let Some(handle) = self.pending.as_mut() {
+        if let Some(handle) = self.pending_ast.as_mut() {
             if let Some(poll) = handle.now_or_never() {
-                self.pending = None;
+                self.pending_ast = None;
                 match poll {
                     Ok(Ok(ast)) => {
                         if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
@@ -160,6 +185,21 @@ impl GlossView {
                     Ok(Err(err)) => self.events.push_back(GlossEvent::Failed(err)),
                     // Aborted by a follow-up request; the replacement is already in flight.
                     Err(_) => {}
+                }
+            }
+        }
+
+        // Only drain kanji once the AST has landed -- the JoinHandle holds a
+        // completed result for us, so there's no need for a separate buffer.
+        if let Some(View::Interpret { ast, .. }) = &mut self.view {
+            if let Some(handle) = self.pending_kanji.as_mut() {
+                if let Some(poll) = handle.now_or_never() {
+                    self.pending_kanji = None;
+                    match poll {
+                        Ok(Ok(kanji_info)) => ast.kanji_info = kanji_info,
+                        Ok(Err(err)) => self.events.push_back(GlossEvent::Failed(err)),
+                        Err(_) => {}
+                    }
                 }
             }
         }
@@ -251,6 +291,28 @@ impl GlossView {
                 highlight: false,
                 stroke: !preview && settings.stroke_text,
                 preview,
+                underline: UnderlineMode::None,
+            },
+        );
+    }
+
+    /// Render a text chunk that will be glossed once the parse finishes.
+    /// Drawn with `highlight: true` so it visually hints at the eventual
+    /// clause boxes.
+    fn add_preview_text(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, text: &str) {
+        draw_kanji_text(
+            ui,
+            ctx,
+            text,
+            if settings.ruby_text_type == RubyTextType::None {
+                RubyTextMode::None
+            } else {
+                RubyTextMode::Pad
+            },
+            KanjiStyle {
+                highlight: true,
+                stroke: false,
+                preview: true,
                 underline: UnderlineMode::None,
             },
         );
@@ -394,8 +456,13 @@ impl GlossView {
                         });
                 }
             }
-            Some(View::Text(text)) => {
-                self.add_skipped(ctx, ui, settings, text, true);
+            Some(View::Text(splits)) => {
+                for (kind, chunk) in splits {
+                    match kind {
+                        Split::Text => self.add_preview_text(ctx, ui, settings, chunk),
+                        Split::Skip => self.add_skipped(ctx, ui, settings, chunk, true),
+                    }
+                }
             }
             _ => {}
         }

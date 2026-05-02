@@ -348,13 +348,13 @@ fn draw_exchange(ui: &Ui, ex: &ExchangeView) {
     ui.text(""); // anchor for line wrapping
     ui.same_line();
     let draw_list = ui.get_window_draw_list();
-    stroke_text_with_highlight(
-        ui,
-        &draw_list,
-        &format!("[{}]", ex.model.as_ref()),
-        1.0,
-        Some(StyleColor::NavHighlight),
-    );
+    // stroke_text_with_highlight(
+    //     ui,
+    //     &draw_list,
+    //     &format!("[{}]", ex.model.as_ref()),
+    //     1.0,
+    //     Some(StyleColor::NavHighlight),
+    // );
     let content = ex.response.content();
     if !content.is_empty() {
         ui.same_line();
