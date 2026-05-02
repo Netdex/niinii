@@ -76,6 +76,7 @@ impl Default for ChatSettings {
 #[serde(default)]
 pub struct Settings {
     pub ichiran_path: String,
+    pub ichiran_pool_size: usize,
     pub postgres_path: String,
     pub db_path: String,
 
@@ -111,6 +112,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             ichiran_path: "data/ichiran-cli.exe".into(),
+            ichiran_pool_size: ichiran::default_pool_size(),
             postgres_path: "data/pgsql/bin".into(),
             db_path: "data/pgsql/data".into(),
 

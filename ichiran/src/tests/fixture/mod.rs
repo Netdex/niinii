@@ -6,5 +6,5 @@ pub async fn ichiran() -> Ichiran {
     let ichiran_path =
         PathBuf::from("../data/ichiran-cli").with_extension(std::env::consts::EXE_EXTENSION);
 
-    Ichiran::new(ichiran_path)
+    Ichiran::new(ichiran_path, crate::default_pool_size())
 }

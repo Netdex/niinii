@@ -17,6 +17,9 @@ pub enum Error {
 pub struct SyntaxTree {
     pub original_text: String,
     pub root: Root,
+    /// Filled in asynchronously after the AST is displayable. May be empty
+    /// while a kanji-info fetch is still in flight; callers must tolerate
+    /// missing entries.
     pub kanji_info: HashMap<char, Kanji>,
     pub jmdict_data: JmDictData,
 }
@@ -36,7 +39,7 @@ struct Shared {
 }
 impl Parser {
     pub async fn new(settings: &Settings) -> Self {
-        let ichiran = Ichiran::new(settings.ichiran_path.clone());
+        let ichiran = Ichiran::new(settings.ichiran_path.clone(), settings.ichiran_pool_size);
         let pg_daemon = match ichiran.conn_params().await {
             Ok(conn_params) => {
                 let pg_daemon = PostgresDaemon::new(
@@ -59,7 +62,11 @@ impl Parser {
             }),
         }
     }
-    pub async fn parse(
+    /// Parse the AST for display. Skips kanji info, which is fetched
+    /// separately via `parse_kanji` and merged into the tree once it
+    /// arrives. This is the latency-critical path: the AST renders as
+    /// soon as romanize returns.
+    pub async fn parse_ast(
         &self,
         text: &str,
         splits: &[(Split, String)],
@@ -67,17 +74,22 @@ impl Parser {
     ) -> Result<SyntaxTree, Error> {
         let ichiran = &self.shared.ichiran;
 
-        let (root, kanji_info, jmdict_data) = tokio::try_join!(
+        let (root, jmdict_data) = tokio::try_join!(
             ichiran.romanize(splits, variants),
-            ichiran.kanji_from_str(text),
-            ichiran.jmdict_data()
+            ichiran.jmdict_data(),
         )?;
 
         Ok(SyntaxTree {
             root,
-            kanji_info,
+            kanji_info: HashMap::new(),
             jmdict_data,
             original_text: text.to_string(),
         })
+    }
+
+    /// Fetch per-character kanji info for `text`. Runs concurrently with
+    /// `parse_ast` and contends for the same ichiran-cli pool.
+    pub async fn parse_kanji(&self, text: &str) -> Result<HashMap<char, Kanji>, Error> {
+        Ok(self.shared.ichiran.kanji_from_str(text).await?)
     }
 }

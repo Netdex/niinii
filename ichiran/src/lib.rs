@@ -3,11 +3,11 @@ mod coerce;
 mod error;
 mod pgdaemon;
 mod protocol;
+mod server;
 pub mod split;
 
 use std::{
     collections::HashMap,
-    ffi::OsStr,
     io::{self, ErrorKind},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -19,8 +19,21 @@ use itertools::Itertools;
 use lru::LruCache;
 use nonzero_ext::nonzero;
 use par_stream::ParStreamExt;
-use tokio::process::Command;
+use tokio::sync::OnceCell;
 use tracing::{Instrument, Level};
+
+use crate::server::IchiranPool;
+
+/// Suggested default pool size: cap at 8 to avoid spinning up more
+/// resident `ichiran-cli` workers than there's parallel benefit for
+/// (a single parse fans out at most ~20 calls but the longest call
+/// caps the critical path).
+pub fn default_pool_size() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .min(8)
+}
 
 pub mod prelude {
     pub use crate::charset::*;
@@ -48,30 +61,18 @@ pub struct Ichiran {
 
 struct Shared {
     path: PathBuf,
+    pool_size: usize,
     state: Mutex<State>,
+    pool: OnceCell<IchiranPool>,
 }
 impl Shared {
     /// Evaluate the expression with ichiran and return the raw output.
-    async fn evaluate(&self, expr: impl AsRef<OsStr>) -> Result<String, IchiranError> {
-        let working_dir = self.working_dir()?;
-        let expr = expr.as_ref();
-        tracing::trace!(expr = ?expr);
-
-        let output = Command::new(&self.path)
-            .current_dir(working_dir)
-            .arg("-e")
-            .arg(expr)
-            .output()
+    async fn evaluate(&self, expr: impl Into<String>) -> Result<String, IchiranError> {
+        let pool = self
+            .pool
+            .get_or_try_init(|| IchiranPool::spawn(&self.path, self.pool_size))
             .await?;
-
-        if output.status.success() {
-            Ok(String::from_utf8(output.stdout).unwrap())
-        } else {
-            Err(IchiranError::Failure {
-                status: output.status,
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            })
-        }
+        pool.evaluate(expr.into()).await
     }
     fn working_dir(&self) -> Result<&Path, io::Error> {
         Path::new(&self.path).parent().ok_or_else(|| {
@@ -86,12 +87,27 @@ impl Shared {
         let jmdict_path = self
             .evaluate(r#"(format t "~d" ichiran/dict::*jmdict-data*)"#)
             .await?;
-        let jmdict_path = jmdict_path
-            .lines()
-            .next()
-            .ok_or_else(|| IchiranError::Parsing(jmdict_path.clone()))?;
-        Ok(working_dir.join(jmdict_path))
+        Ok(working_dir.join(jmdict_path.trim()))
     }
+}
+
+/// Escape a Rust string into a Common Lisp `"..."` literal. Lisp string
+/// syntax only requires escaping `"` and `\`; everything else (including
+/// newlines and non-ASCII) is literal.
+fn lisp_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 struct State {
@@ -101,15 +117,18 @@ struct State {
 }
 
 impl Ichiran {
-    pub fn new(path: impl Into<PathBuf>) -> Self {
+    pub fn new(path: impl Into<PathBuf>, pool_size: usize) -> Self {
+        assert!(pool_size >= 1, "pool size must be >= 1");
         Self {
             shared: Arc::new(Shared {
                 path: path.into(),
+                pool_size,
                 state: Mutex::new(State {
                     kanji_cache: LruCache::new(nonzero!(512usize)),
                     segment_cache: LruCache::new(nonzero!(512usize)),
                     jmdict: None,
                 }),
+                pool: OnceCell::new(),
             }),
         }
     }
@@ -163,12 +182,11 @@ impl Ichiran {
                     enclose! { (span, shared) async move {
                         let output = shared
                             .evaluate(format!(
-                                r#"(jsown:to-json (ichiran:romanize* {} :limit {}))"#,
-                                serde_lexpr::to_string(&split).unwrap(),
+                                r#"(princ (jsown:to-json (ichiran:romanize* {} :limit {})))"#,
+                                lisp_string(&split),
                                 limit
                             ))
                             .await?;
-                        let output: String = serde_lexpr::from_str(&output)?;
                         let root: Root = serde_json::from_str(&output)?;
                         assert_eq!(
                             root.segments().len(),
@@ -203,13 +221,17 @@ impl Ichiran {
 
     #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
     pub async fn kanji(&self, chars: &[char]) -> Result<HashMap<char, Kanji>, IchiranError> {
-        let (mut kanji_info, query_chars): (HashMap<char, Kanji>, Vec<_>) = {
+        let (mut kanji_info, query_chars): (HashMap<char, Kanji>, Vec<char>) = {
             let kanji_cache = &mut self.shared.state.lock().unwrap().kanji_cache;
             let kanji_info = chars
                 .iter()
                 .filter_map(|c| kanji_cache.get(c).map(|kanji| (*c, kanji.clone())))
                 .collect();
-            let query_chars = chars.iter().filter(|c| !kanji_cache.contains(c)).collect();
+            let query_chars = chars
+                .iter()
+                .filter(|c| !kanji_cache.contains(c))
+                .copied()
+                .collect();
             (kanji_info, query_chars)
         };
 
@@ -217,21 +239,36 @@ impl Ichiran {
             return Ok(kanji_info);
         }
 
-        let commands: Vec<String> = query_chars
-            .iter()
-            .map(|c| format!(r#"(jsown:to-json (ichiran/kanji:kanji-info-json #\{}))"#, c))
-            .collect();
-
-        let expr = format!("(list {})", commands.join(" "));
-
-        let output = self.shared.evaluate(expr).await?;
-        let output: Vec<String> = serde_lexpr::from_str(&output)?;
+        // Fan out per char so the pool can dispatch them across workers in
+        // parallel. Previously these were batched into one (list ...) form
+        // which serialized through a single worker.
+        let shared = self.shared.clone();
+        let span = tracing::Span::current();
+        let results: Vec<(char, Option<Kanji>)> = stream::iter(query_chars)
+            .par_then_unordered(
+                None,
+                enclose! { (span, shared) move |c: char| {
+                    enclose! { (span, shared) async move {
+                        let expr = format!(
+                            r#"(princ (jsown:to-json (ichiran/kanji:kanji-info-json #\{})))"#,
+                            c
+                        );
+                        let output = shared.evaluate(expr).await?;
+                        let kanji = if output.trim() == "[]" {
+                            None
+                        } else {
+                            Some(serde_json::from_str::<Kanji>(&output)?)
+                        };
+                        Ok::<_, IchiranError>((c, kanji))
+                    }.instrument(span)}
+                }},
+            )
+            .try_collect()
+            .await?;
 
         let kanji_cache = &mut self.shared.state.lock().unwrap().kanji_cache;
-        for json in output {
-            if json != "[]" {
-                let kanji: Kanji = serde_json::from_str(&json)?;
-                let chr = kanji.text().chars().next().unwrap();
+        for (chr, maybe_kanji) in results {
+            if let Some(kanji) = maybe_kanji {
                 kanji_info.insert(chr, kanji.clone());
                 kanji_cache.put(chr, kanji);
             }
@@ -273,13 +310,12 @@ impl Ichiran {
             .shared
             .evaluate(r#"(format t "~{~a~^,~}" ichiran/conn::*connection*)"#)
             .await?;
-        let parse_error = || IchiranError::Parsing(conn_params.clone());
+        let parse_error = || IchiranError::Server(format!("parse error:\n{conn_params}"));
 
         let conn_params = conn_params
-            .lines()
-            .next()
-            .map(|x| x.split(','))
-            .and_then(|x| x.collect_tuple())
+            .trim()
+            .split(',')
+            .collect_tuple()
             .ok_or_else(parse_error)?;
 
         let (database, user, password, hostname, _, port) = conn_params;
