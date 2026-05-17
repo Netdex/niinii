@@ -92,4 +92,10 @@ impl Parser {
     pub async fn parse_kanji(&self, text: &str) -> Result<HashMap<char, Kanji>, Error> {
         Ok(self.shared.ichiran.kanji_from_str(text).await?)
     }
+
+    /// Borrow of the underlying ichiran handle. Cloning it is cheap
+    /// (`Ichiran` is `Arc`-backed) and safe to share across tasks.
+    pub fn ichiran(&self) -> Ichiran {
+        self.shared.ichiran.clone()
+    }
 }

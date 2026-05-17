@@ -8,3 +8,4 @@ pub mod settings;
 pub mod style_editor;
 pub mod term;
 pub mod translator;
+pub mod vndb;

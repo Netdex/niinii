@@ -71,6 +71,7 @@ nu-ansi-term = "0.50.3"
 # interned
 ichiran = { path = "../ichiran" }
 openai = { path = "../openai" }
+vndb = { path = "../vndb" }
 
 [target.'cfg(windows)'.dependencies]
 imgui-dx11-renderer = { path = "../third-party/imgui-dx11-renderer" }
