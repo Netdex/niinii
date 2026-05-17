@@ -234,9 +234,10 @@ async fn handle_request(
 }
 
 fn parse_response(line: &str) -> Result<String, IchiranError> {
-    let (tag, b64) = line
-        .split_once(' ')
-        .ok_or_else(|| IchiranError::Server(format!("malformed frame: {line}")))?;
+    // Empty payloads come back as "ok " (note trailing space), which
+    // trim_end() upstream collapses to "ok". Treat a tag-only line as
+    // an empty payload rather than a malformed frame.
+    let (tag, b64) = line.split_once(' ').unwrap_or((line, ""));
     let bytes = B64
         .decode(b64)
         .map_err(|e| IchiranError::Server(format!("invalid base64: {e}")))?;
