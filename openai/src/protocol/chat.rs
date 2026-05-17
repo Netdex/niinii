@@ -210,6 +210,11 @@ pub struct Message {
     pub tool_calls: Option<Vec<ToolCall>>,
     /// Set on `role: tool` messages that return a tool's output to the model.
     pub tool_call_id: Option<String>,
+    /// Reasoning trace from thinking-capable models (llama.cpp with
+    /// `--reasoning-format deepseek`, DeepSeek API, etc.). Deserialize-only --
+    /// we never echo this back as part of subsequent context.
+    #[serde(skip_serializing)]
+    pub reasoning_content: Option<String>,
 }
 impl Message {
     pub fn estimate_tokens(&self) -> u32 {
@@ -240,6 +245,7 @@ impl Default for Message {
             name: None,
             tool_calls: None,
             tool_call_id: None,
+            reasoning_content: None,
         }
     }
 }
@@ -252,6 +258,9 @@ pub struct PartialMessage {
     pub content: Option<String>,
     #[serde(default)]
     pub tool_calls: Option<Vec<PartialToolCall>>,
+    /// Streaming reasoning fragment from thinking-capable models.
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
