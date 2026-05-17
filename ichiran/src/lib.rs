@@ -110,10 +110,68 @@ fn lisp_string(s: &str) -> String {
     out
 }
 
+/// A custom dictionary entry to inject via [`Ichiran::add_custom_entry`].
+///
+/// Pure-kana names (e.g. アリス) should set `kanji = None`; otherwise both
+/// fields are required. `pos` is a JMdict part-of-speech code -- use
+/// `"n-pr"` for proper nouns (the right choice for character names).
+#[derive(Debug, Clone)]
+pub struct CustomEntry {
+    pub kanji: Option<String>,
+    pub kana: String,
+    pub pos: String,
+    pub gloss: String,
+}
+
+impl CustomEntry {
+    fn to_xml(&self) -> String {
+        let mut out = String::new();
+        out.push_str("<entry><ent_seq></ent_seq>");
+        if let Some(kanji) = &self.kanji {
+            out.push_str("<k_ele><keb>");
+            xml_escape_into(kanji, &mut out);
+            out.push_str("</keb></k_ele>");
+        }
+        out.push_str("<r_ele><reb>");
+        xml_escape_into(&self.kana, &mut out);
+        out.push_str("</reb></r_ele><sense><pos>");
+        xml_escape_into(&self.pos, &mut out);
+        out.push_str("</pos><gloss xml:lang=\"eng\">");
+        xml_escape_into(&self.gloss, &mut out);
+        out.push_str("</gloss></sense></entry>");
+        out
+    }
+}
+
+fn xml_escape_into(s: &str, out: &mut String) {
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            _ => out.push(c),
+        }
+    }
+}
+
+/// Seq sentinel for entries inserted via [`Ichiran::add_custom_entry`].
+/// JMdict's real seqs sit in the low millions, so this is well above
+/// any upstream row but well below i32 max (`entry.seq` is a 32-bit
+/// integer in the schema). Exposed so callers can detect "is this term
+/// one we injected?" -- e.g. for highlighting -- but the seq itself is
+/// allocated internally and never accepted from the outside, so no
+/// caller can collide with a real JMdict entry by passing the wrong
+/// number.
+pub const CUSTOM_SEQ_BASE: u32 = 1_000_000_000;
+
 struct State {
     kanji_cache: LruCache<char, Kanji>,
     segment_cache: LruCache<String, Segment>,
     jmdict: Option<JmDictData>,
+    /// Next seq to hand out from [`CUSTOM_SEQ_BASE`]. Reset by
+    /// [`Ichiran::clear_custom_entries`].
+    next_custom_seq: u32,
 }
 
 impl Ichiran {
@@ -127,6 +185,7 @@ impl Ichiran {
                     kanji_cache: LruCache::new(nonzero!(512usize)),
                     segment_cache: LruCache::new(nonzero!(512usize)),
                     jmdict: None,
+                    next_custom_seq: CUSTOM_SEQ_BASE,
                 }),
                 pool: OnceCell::new(),
             }),
@@ -303,6 +362,80 @@ impl Ichiran {
             state.jmdict.replace(jmdict.clone());
         }
         jmdict
+    }
+
+    /// Inject a custom dictionary entry into the running ichiran DB.
+    ///
+    /// Allocates a fresh seq from the [`CUSTOM_SEQ_BASE`] range; the
+    /// caller never sees the seq, which makes it impossible to collide
+    /// with real JMdict rows by passing the wrong number. Calls
+    /// `ichiran/dict::load-entry` with `:if-exists :overwrite` and
+    /// `:conjugate-p nil`.
+    ///
+    /// Returns the allocated seq, mostly so callers can correlate
+    /// terms in romanize output with their injected source. Most
+    /// callers can ignore it.
+    ///
+    /// Clears the segment cache so subsequent romanize calls see the
+    /// new entry. The kanji cache is left alone (per-char DB lookups
+    /// stay correct).
+    #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
+    pub async fn add_custom_entry(&self, entry: &CustomEntry) -> Result<u32, IchiranError> {
+        let seq = {
+            let mut state = self.shared.state.lock().unwrap();
+            let s = state.next_custom_seq;
+            state.next_custom_seq = s.checked_add(1).expect("custom seq counter overflow");
+            s
+        };
+        let xml = entry.to_xml();
+        let expr = format!(
+            r#"(postmodern:with-connection ichiran/conn:*connection* (ichiran/dict::load-entry {} :seq {} :if-exists :overwrite))"#,
+            lisp_string(&xml),
+            seq,
+        );
+        self.shared.evaluate(expr).await?;
+        self.invalidate_segment_cache();
+        Ok(seq)
+    }
+
+    /// Delete every entry [`add_custom_entry`] could have inserted.
+    ///
+    /// Resets the seq allocator and runs a single
+    /// `DELETE FROM entry WHERE seq >= CUSTOM_SEQ_BASE`. FK cascades
+    /// on `entry.seq` clean up `kanji_text`, `kana_text`, `sense`,
+    /// `gloss`, `sense_prop`, `restricted_readings`, and the
+    /// conjugation tables.
+    #[tracing::instrument(level = Level::DEBUG, skip_all, err)]
+    pub async fn clear_custom_entries(&self) -> Result<(), IchiranError> {
+        let expr = format!(
+            r#"(postmodern:with-connection ichiran/conn:*connection* (postmodern:query (:delete-from 'entry :where (:>= 'seq {}))))"#,
+            CUSTOM_SEQ_BASE,
+        );
+        self.shared.evaluate(expr).await?;
+        {
+            let mut state = self.shared.state.lock().unwrap();
+            state.next_custom_seq = CUSTOM_SEQ_BASE;
+        }
+        self.invalidate_segment_cache();
+        Ok(())
+    }
+
+    /// Drop all cached segment results. Call after mutating the DB.
+    pub fn invalidate_segment_cache(&self) {
+        self.shared.state.lock().unwrap().segment_cache.clear();
+    }
+
+    /// Convert a romaji string to hiragana via ichiran's `romaji-kana`.
+    /// Pure roman-to-kana with no DB dependency. Returns the canonical
+    /// kana form.
+    #[tracing::instrument(level = Level::DEBUG, skip(self), err)]
+    pub async fn romaji_to_kana(&self, romaji: &str) -> Result<String, IchiranError> {
+        let expr = format!(
+            r#"(princ (ichiran:romaji-kana {}))"#,
+            lisp_string(romaji),
+        );
+        let out = self.shared.evaluate(expr).await?;
+        Ok(out.trim().to_string())
     }
 
     pub async fn conn_params(&self) -> Result<ConnParams, IchiranError> {

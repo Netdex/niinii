@@ -100,6 +100,19 @@ impl Term {
             Term::Alternative(alt) => alt.alts().iter().max_by_key(|x| x.meta().score()).unwrap(),
         }
     }
+
+    /// Whether any candidate word for this term is an entry that was
+    /// inserted via [`crate::Ichiran::add_custom_entry`] (i.e. its seq
+    /// sits in the [`crate::CUSTOM_SEQ_BASE`] range). Returns `true`
+    /// for `Term::Alternative` if *any* alternative qualifies, since
+    /// any of them would render as the user's injected name when the
+    /// user scrolls between alternatives.
+    pub fn is_custom(&self) -> bool {
+        match self {
+            Term::Word(w) => w.is_custom(),
+            Term::Alternative(alt) => alt.alts().iter().any(Word::is_custom),
+        }
+    }
 }
 
 /// An alternative, representing multiple words.
@@ -127,6 +140,16 @@ impl Word {
         match self {
             Word::Plain(Plain { meta, .. }) | Word::Compound(Compound { meta, .. }) => meta,
         }
+    }
+
+    /// Whether this word's dictionary entry was inserted via
+    /// [`crate::Ichiran::add_custom_entry`]. Compound words have no
+    /// single seq and are never custom by this check.
+    pub fn is_custom(&self) -> bool {
+        matches!(
+            self,
+            Word::Plain(p) if matches!(p.seq(), Some(s) if s >= crate::CUSTOM_SEQ_BASE),
+        )
     }
 }
 
