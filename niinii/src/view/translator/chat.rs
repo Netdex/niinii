@@ -76,6 +76,12 @@ impl TranslatorWindow {
         }
     }
 
+    /// Borrow the underlying chat handle. Used to wire external producers
+    /// (e.g. the VNDB integration) directly to the translator's state.
+    pub fn handle(&self) -> &ChatHandle {
+        &self.translator
+    }
+
     pub fn show_menu_item(&mut self, ui: &Ui) {
         if ui.menu_item("Translator") {
             self.open = true;
@@ -236,6 +242,35 @@ impl TranslatorWindow {
                 )
                 .build();
 
+                // System-addendum row (e.g. VNDB-derived character info),
+                // read-only. We render the text directly from the snapshot's
+                // `Arc<str>` -- no local buffer, no per-frame diffing. The
+                // chat state Arc is the live source of truth.
+                if let Some(addendum) = state.system_addendum.as_deref() {
+                    ui.table_next_column();
+                    ui.disabled(true, || drag_handle(ui));
+                    ui.table_next_column();
+                    ui.table_next_column();
+                    ui.disabled(true, || {
+                        let mut dummy = true;
+                        ui.checkbox("##vlock", &mut dummy);
+                    });
+                    ui.table_next_column();
+                    ui.disabled(true, || {
+                        ui.set_next_item_width(ui.current_font_size() * 6.0);
+                        let mut system_role = Role::System;
+                        combo_enum(ui, "##vrole", &mut system_role);
+                    });
+                    ui.table_next_column();
+                    ui.child_window("##addendum")
+                        .size([ui.content_region_avail()[0], 200.0])
+                        .border(true)
+                        .build(|| {
+                            let _wrap = ui.push_text_wrap_pos_with_pos(0.0);
+                            ui.text_disabled(addendum);
+                        });
+                }
+
                 // Sweep buffers whose messages are gone; keep the rest. Stable
                 // MsgIds make this robust to reorder/insert/delete.
                 let live: std::collections::HashSet<MsgId> =
@@ -345,6 +380,12 @@ impl TranslatorWindow {
 /// Render one exchange's assistant turn, streaming-aware.
 fn draw_exchange(ui: &Ui, ex: &ExchangeView) {
     let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
+    let reasoning = ex.response.reasoning();
+    if !reasoning.is_empty() {
+        ui.tree_node_config("thinking").build(|| {
+            ui.text_disabled(reasoning);
+        });
+    }
     ui.text(""); // anchor for line wrapping
     ui.same_line();
     let draw_list = ui.get_window_draw_list();
