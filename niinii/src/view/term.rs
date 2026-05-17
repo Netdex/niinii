@@ -105,6 +105,7 @@ impl<'a> TermView<'a> {
                         RubyTextMode::None,
                         KanjiStyle {
                             highlight: kanji.is_some(),
+                            highlight_color: None,
                             stroke: false,
                             preview: false,
                             underline: UnderlineMode::None,
