@@ -113,6 +113,9 @@ pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, thick: f32) {
 
 pub struct KanjiStyle {
     pub highlight: bool,
+    /// Override for the highlight rectangle color. `None` falls back to
+    /// `StyleColor::TextSelectedBg`. Ignored when `highlight` is false.
+    pub highlight_color: Option<[f32; 4]>,
     pub stroke: bool,
     pub preview: bool,
     pub underline: UnderlineMode,
@@ -126,6 +129,7 @@ pub fn draw_kanji_text(
 ) -> bool {
     let KanjiStyle {
         highlight,
+        highlight_color,
         stroke,
         preview,
         underline,
@@ -181,12 +185,9 @@ pub fn draw_kanji_text(
     y += ruby_sz[1];
 
     if highlight {
+        let color = highlight_color.unwrap_or_else(|| ui.style_color(StyleColor::TextSelectedBg));
         draw_list
-            .add_rect(
-                [cx, y],
-                [cx + kanji_sz[0], y + kanji_sz[1]],
-                ui.style_color(StyleColor::TextSelectedBg),
-            )
+            .add_rect([cx, y], [cx + kanji_sz[0], y + kanji_sz[1]], color)
             .rounding(5.0)
             .filled(true)
             .build();

@@ -16,6 +16,11 @@ use crate::settings::{RubyTextType, Settings};
 use crate::support::regex::CachedRegex;
 use crate::view::{raw::RawView, term::TermView};
 
+/// Highlight color for terms that came from an injected custom entry
+/// (`Term::is_custom()`). Distinct enough from the default
+/// `TextSelectedBg` to be obvious at a glance.
+const NAME_HIGHLIGHT: [f32; 4] = [0.85, 0.55, 0.20, 0.55];
+
 const CLIPBOARD_POLL_INTERVAL: Duration = Duration::from_millis(33);
 
 enum View {
@@ -80,6 +85,10 @@ impl GlossView {
         }
     }
 
+    pub fn parser(&self) -> &Parser {
+        &self.parser
+    }
+
     pub fn ast(&self) -> Option<&SyntaxTree> {
         if let Some(View::Interpret { ast, .. }) = &self.view {
             Some(ast)
@@ -115,7 +124,7 @@ impl GlossView {
         // wrapping; ichiran segments per-line so embedded newlines wreck the
         // parse. Strip them along with leading/trailing whitespace.
         let text = text
-            .replace(|c: char| c == '\n' || c == '\r', "")
+            .replace(['\n', '\r'], "")
             .trim()
             .to_owned();
         if text.is_empty() {
@@ -289,6 +298,7 @@ impl GlossView {
             },
             KanjiStyle {
                 highlight: false,
+                highlight_color: None,
                 stroke: !preview && settings.stroke_text,
                 preview,
                 underline: UnderlineMode::None,
@@ -311,6 +321,7 @@ impl GlossView {
             },
             KanjiStyle {
                 highlight: true,
+                highlight_color: None,
                 stroke: false,
                 preview: true,
                 underline: UnderlineMode::None,
@@ -342,6 +353,7 @@ impl GlossView {
             fg_text,
             KanjiStyle {
                 highlight: true,
+                highlight_color: term.is_custom().then_some(NAME_HIGHLIGHT),
                 stroke: settings.stroke_text,
                 preview: false,
                 underline,

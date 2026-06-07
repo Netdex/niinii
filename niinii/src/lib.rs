@@ -8,3 +8,4 @@ pub mod support;
 pub mod translator;
 pub mod tts;
 pub mod view;
+pub mod vndb;

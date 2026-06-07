@@ -93,10 +93,12 @@ impl TranslateConfig {
 pub enum Response {
     Streaming {
         content: String,
+        reasoning: String,
         tool_calls: ToolCallAccumulator,
     },
     Completed {
         content: String,
+        reasoning: String,
         tool_calls: Vec<ToolCall>,
     },
     Errored(Arc<str>),
@@ -109,6 +111,16 @@ impl Response {
     pub fn content(&self) -> &str {
         match self {
             Response::Streaming { content, .. } | Response::Completed { content, .. } => content,
+            Response::Errored(_) | Response::Cancelled => "",
+        }
+    }
+    /// Reasoning trace from thinking-capable models, if any. Not echoed back
+    /// into context.
+    pub fn reasoning(&self) -> &str {
+        match self {
+            Response::Streaming { reasoning, .. } | Response::Completed { reasoning, .. } => {
+                reasoning
+            }
             Response::Errored(_) | Response::Cancelled => "",
         }
     }
@@ -133,6 +145,11 @@ pub struct ChatState {
     pub exchanges: Vec<ExchangeView>,
     pub models: Vec<ModelId>,
     pub last_error: Option<Arc<str>>,
+    /// Extra text appended to the system message at prompt-build time. Owned
+    /// here so prompt sources external to the translator (e.g. the VNDB
+    /// integration) can push their contribution once and have it survive
+    /// across translations without per-call plumbing.
+    pub system_addendum: Option<Arc<str>>,
 }
 
 impl ChatState {
@@ -170,6 +187,7 @@ pub enum ChatCommand {
     EditContext(ContextEdit),
     ClearContext,
     RefreshModels,
+    SetSystemAddendum(Option<Arc<str>>),
 }
 
 pub enum ChatEvent {
@@ -179,6 +197,10 @@ pub enum ChatEvent {
         user_message: Message,
     },
     Delta {
+        id: ExchangeId,
+        content: String,
+    },
+    ReasoningDelta {
         id: ExchangeId,
         content: String,
     },
@@ -239,6 +261,9 @@ fn handle_command(
         }
         ChatCommand::EditContext(edit) => apply_edit(state, edit),
         ChatCommand::ClearContext => state.context.clear(),
+        ChatCommand::SetSystemAddendum(text) => {
+            state.system_addendum = text.filter(|s| !s.is_empty());
+        }
         ChatCommand::RefreshModels => {
             let client = client.clone();
             let tx = evt_tx.clone();
@@ -271,6 +296,7 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
                 user_message,
                 response: Response::Streaming {
                     content: String::new(),
+                    reasoning: String::new(),
                     tool_calls: ToolCallAccumulator::new(),
                 },
                 usage: None,
@@ -280,6 +306,13 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
             if let Some(ex) = find_mut(&mut state.exchanges, id) {
                 if let Response::Streaming { content: acc, .. } = &mut ex.response {
                     acc.push_str(&content);
+                }
+            }
+        }
+        ChatEvent::ReasoningDelta { id, content } => {
+            if let Some(ex) = find_mut(&mut state.exchanges, id) {
+                if let Response::Streaming { reasoning, .. } = &mut ex.response {
+                    reasoning.push_str(&content);
                 }
             }
         }
@@ -299,11 +332,12 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
                 return;
             };
             let prior = std::mem::replace(&mut ex.response, Response::Cancelled);
-            let (content, tool_calls) = match prior {
+            let (content, reasoning, tool_calls) = match prior {
                 Response::Streaming {
                     content,
+                    reasoning,
                     tool_calls,
-                } => (content, tool_calls.finish()),
+                } => (content, reasoning, tool_calls.finish()),
                 other => {
                     ex.response = other;
                     return;
@@ -311,6 +345,7 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
             };
             ex.response = Response::Completed {
                 content: content.clone(),
+                reasoning,
                 tool_calls: tool_calls.clone(),
             };
             ex.usage = usage;
@@ -348,14 +383,36 @@ fn find_mut(exchanges: &mut [ExchangeView], id: ExchangeId) -> Option<&mut Excha
 }
 
 fn build_prompt(state: &ChatState, config: &TranslateConfig, user: &Message) -> Vec<Message> {
+    // Some chat templates (notably several llama.cpp Jinja templates) only
+    // accept a single System message at the head, so we concatenate the
+    // user-edited prompt and the system addendum (e.g. VNDB-derived text)
+    // into a single message.
+    let mut system = config.system_prompt.clone();
+    if let Some(extra) = &state.system_addendum {
+        if !extra.is_empty() {
+            if !system.is_empty() {
+                system.push_str("\n\n");
+            }
+            system.push_str(extra);
+        }
+    }
     let mut prompt = Vec::with_capacity(state.context.len() + 2);
     prompt.push(Message {
         role: Role::System,
-        content: Some(config.system_prompt.clone()),
+        content: Some(system),
         ..Default::default()
     });
     prompt.extend(state.context.iter().map(|e| e.message.clone()));
-    prompt.push(user.clone());
+    // Anchor the latest line so the LLM doesn't drift onto a mid-conversation
+    // turn once history grows. Applied only to the live message at build time
+    // -- `ex.user_message` (and therefore future context) keeps the raw text,
+    // so historical turns don't accumulate stale "Translate this line:"
+    // prefixes.
+    let mut anchored = user.clone();
+    if let Some(content) = anchored.content.as_mut() {
+        *content = format!("Translate this line:\n{}", content);
+    }
+    prompt.push(anchored);
     prompt
 }
 
@@ -475,6 +532,12 @@ fn spawn_adapter(
                                         content: content.replace('\n', ""),
                                     }).await;
                                 }
+                                if let Some(reasoning) = choice.delta.reasoning_content {
+                                    let _ = evt_tx.send(ChatEvent::ReasoningDelta {
+                                        id,
+                                        content: reasoning,
+                                    }).await;
+                                }
                                 if let Some(calls) = choice.delta.tool_calls {
                                     let _ = evt_tx.send(ChatEvent::ToolCallDelta {
                                         id,
@@ -509,6 +572,11 @@ fn spawn_adapter(
                     Ok(cmpl) => {
                         let usage = Some(cmpl.usage.clone());
                         if let Some(choice) = cmpl.choices.into_iter().next() {
+                            if let Some(reasoning) = choice.message.reasoning_content {
+                                let _ = evt_tx.send(ChatEvent::ReasoningDelta {
+                                    id, content: reasoning,
+                                }).await;
+                            }
                             if let Some(content) = choice.message.content {
                                 let _ = evt_tx.send(ChatEvent::Delta { id, content }).await;
                             }
@@ -575,6 +643,12 @@ impl ChatHandle {
     }
     pub fn refresh_models(&self) {
         self.send(ChatCommand::RefreshModels);
+    }
+    /// Set or clear the extra text appended to the system message at
+    /// prompt-build time. Used by the VNDB integration to push character
+    /// information once the active VN's characters have loaded.
+    pub fn set_system_addendum(&self, text: Option<Arc<str>>) {
+        self.send(ChatCommand::SetSystemAddendum(text));
     }
 }
 

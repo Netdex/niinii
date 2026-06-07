@@ -12,6 +12,7 @@ use crate::{
         settings::SettingsView,
         style_editor::StyleEditor,
         translator::TranslatorWindow,
+        vndb::VndbView,
     },
 };
 
@@ -37,6 +38,7 @@ pub struct App {
     settings_view: SettingsView,
     inject_view: InjectView,
     style_editor: StyleEditor,
+    vndb_view: VndbView,
 
     auto_tts_regex: CachedRegex,
 }
@@ -46,6 +48,11 @@ impl App {
         let tts = TtsEngine::new(&settings);
         let gloss = GlossView::new(&settings).await;
         let translator_window = TranslatorWindow::new(&settings);
+        let vndb_view = VndbView::new(
+            translator_window.handle().clone(),
+            gloss.parser().ichiran(),
+            &settings,
+        );
         App {
             show_metrics_window: false,
             no_inputs: false,
@@ -57,6 +64,7 @@ impl App {
             settings_view: SettingsView::new(),
             inject_view: InjectView::new(),
             style_editor: StyleEditor::new(),
+            vndb_view,
             auto_tts_regex: CachedRegex::default(),
         }
     }
@@ -124,6 +132,7 @@ impl App {
                 ui.separator();
                 self.style_editor.show_menu_item(ui);
                 self.translator_window.show_menu_item(ui);
+                self.vndb_view.show_menu_item(ui);
                 ui.separator();
                 self.settings_view.show_menu_item(ui);
                 ui.separator();
@@ -265,6 +274,7 @@ impl App {
         self.inject_view.ui(ui, &mut self.settings);
         self.style_editor.ui(ui, &mut self.settings);
         self.translator_window.ui(ui, &mut self.settings);
+        self.vndb_view.ui(ui, &mut self.settings);
         if self.show_metrics_window {
             ui.show_metrics_window(&mut self.show_metrics_window);
         }
