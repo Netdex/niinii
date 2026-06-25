@@ -2,7 +2,7 @@ use imgui::*;
 
 use crate::{
     renderer::context::{Context, ContextFlags},
-    settings::Settings,
+    settings::{Settings, TranslatorType},
 };
 
 use super::mixins::{self, checkbox_option, combo_enum};
@@ -99,12 +99,27 @@ impl SettingsView {
             ui.input_text("OpenAI API key*", &mut settings.openai_api_key)
                 .password(true)
                 .build();
-            ui.input_text("OpenAI API endpoint*", &mut settings.chat.api_endpoint)
+            ui.input_text("OpenAI API endpoint*", &mut settings.openai_api_endpoint)
                 .build();
+            // Timeouts remain per-backend; show the active backend's.
+            let (connection_timeout, timeout) = match settings.translator_type {
+                TranslatorType::Chat => (
+                    &mut settings.chat.connection_timeout,
+                    &mut settings.chat.timeout,
+                ),
+                TranslatorType::Responses => (
+                    &mut settings.responses.connection_timeout,
+                    &mut settings.responses.timeout,
+                ),
+                TranslatorType::Realtime => (
+                    &mut settings.realtime.connection_timeout,
+                    &mut settings.realtime.timeout,
+                ),
+            };
             ui.slider_config("OpenAI connection timeout (ms)*", 100, 10000)
-                .build(&mut settings.chat.connection_timeout);
+                .build(connection_timeout);
             ui.slider_config("OpenAI timeout (ms)*", 100, 10000)
-                .build(&mut settings.chat.timeout);
+                .build(timeout);
         }
 
         if cfg!(feature = "voicevox")

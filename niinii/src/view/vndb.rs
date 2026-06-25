@@ -6,7 +6,7 @@ use ichiran::prelude::Ichiran;
 
 use crate::{
     settings::Settings,
-    translator::chat::ChatHandle,
+    translator::Backend,
     vndb::{self, clean_description, SearchParams, SortKey, VndbHandle, VnSummary},
 };
 
@@ -46,15 +46,14 @@ pub struct VndbView {
 impl VndbView {
     /// Create the view and spawn the VNDB writer task.
     ///
-    /// `chat_handle` receives the active VN's prompt fragment via
-    /// `set_system_addendum`. `ichiran` is used to push character
-    /// names into the dictionary whenever the active VN changes, so
-    /// the segmenter recognises them as proper nouns.
-    pub fn new(chat_handle: ChatHandle, ichiran: Ichiran, settings: &Settings) -> Self {
-        let chat = chat_handle.clone();
+    /// `backend` receives the active VN's prompt fragment via
+    /// `set_system_addendum`, regardless of which translator backend is active.
+    /// `ichiran` is used to push character names into the dictionary whenever
+    /// the active VN changes, so the segmenter recognises them as proper nouns.
+    pub fn new(backend: Arc<dyn Backend>, ichiran: Ichiran, settings: &Settings) -> Self {
         let vndb = vndb::spawn(
             move |prompt: Option<Arc<str>>| {
-                chat.set_system_addendum(prompt);
+                backend.set_system_addendum(prompt);
             },
             ichiran,
         );

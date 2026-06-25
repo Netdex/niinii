@@ -6,6 +6,8 @@
 //! A: Yes, and?
 
 pub mod chat;
+pub mod realtime;
+pub mod responses;
 mod protocol;
 
 use std::{sync::Arc, time::Duration};
@@ -17,6 +19,16 @@ use thiserror::Error;
 
 pub use crate::protocol::{ModelId, ReasoningEffort, Role, ServiceTier, Verbosity};
 
+/// Rough token count for a plain text string, using the o200k_base tokenizer
+/// (the gpt-4o / gpt-realtime family encoding). For UI display only -- the
+/// server's own tokenizer is authoritative, and this ignores the per-message
+/// framing overhead the chat protocol adds.
+pub fn estimate_text_tokens(text: &str) -> u32 {
+    use tiktoken_rs::o200k_base_singleton;
+    let bpe = o200k_base_singleton();
+    bpe.encode_ordinary(text).len() as u32
+}
+
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
@@ -27,6 +39,10 @@ pub enum Error {
     Protocol(#[from] protocol::Error),
     #[error(transparent)]
     EventStream(#[from] eventsource_stream::EventStreamError<reqwest::Error>),
+    #[error(transparent)]
+    Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
+    #[error("Realtime Error: {0}")]
+    Realtime(String),
 }
 
 #[derive(Clone)]

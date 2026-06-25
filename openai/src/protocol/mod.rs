@@ -3,6 +3,8 @@ use strum_macros::{EnumIter, IntoStaticStr};
 use thiserror::Error;
 
 pub mod chat;
+pub mod realtime;
+pub mod responses;
 
 #[derive(Error, Debug, Clone, Deserialize, PartialEq, Eq)]
 #[error("{error_type}: {message} (param={param:?}, code={code:?}, event_id={event_id:?})")]
@@ -94,10 +96,13 @@ pub enum ServiceTier {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
+    /// GPT-5 (non-.5) level; not a GPT-5.5 level.
     Minimal,
     Low,
     Medium,
     High,
+    /// GPT-5.5: hardest asynchronous tasks where latency is acceptable.
+    Xhigh,
     None,
 }
 

@@ -24,21 +24,16 @@ use std::{
 use arc_swap::ArcSwap;
 use enclose::enclose;
 use openai::{
-    chat::{
-        self, Message, PartialToolCall, Role, Tool, ToolCall, ToolCallAccumulator, ToolChoice,
-        Usage,
-    },
-    ConnectionPolicy, ModelId, ReasoningEffort, ServiceTier, Verbosity,
+    chat::{self, Message, PartialToolCall, Role, ToolCallAccumulator, Usage},
+    ConnectionPolicy, ModelId,
 };
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+use super::{Backend, ExchangeId, ExchangeView, Response, TranslateConfig, UsageView};
 use crate::settings::Settings;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ExchangeId(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MsgId(pub u64);
@@ -49,88 +44,11 @@ pub struct ContextMessage {
     pub message: Message,
 }
 
-/// Per-request parameters snapshotted from `Settings` when a translation is
-/// submitted. The backend never reads `Settings` directly.
+/// Chat-internal exchange record. Keeps the raw `user_message` for context
+/// push-back and the native `chat::Usage`; projected to the shared
+/// [`ExchangeView`] by [`Backend::exchange`].
 #[derive(Clone, Debug)]
-pub struct TranslateConfig {
-    pub model: ModelId,
-    pub system_prompt: String,
-    pub max_context_tokens: [u32; 2],
-    pub temperature: Option<f32>,
-    pub top_p: Option<f32>,
-    pub max_tokens: Option<u32>,
-    pub presence_penalty: Option<f32>,
-    pub service_tier: Option<ServiceTier>,
-    pub reasoning_effort: Option<ReasoningEffort>,
-    pub verbosity: Option<Verbosity>,
-    pub stream: bool,
-    pub tools: Vec<Tool>,
-    pub tool_choice: Option<ToolChoice>,
-}
-
-impl TranslateConfig {
-    pub fn from_settings(settings: &Settings) -> Self {
-        let c = &settings.chat;
-        Self {
-            model: c.model.clone(),
-            system_prompt: c.system_prompt.clone(),
-            max_context_tokens: c.max_context_tokens,
-            temperature: c.temperature,
-            top_p: c.top_p,
-            max_tokens: c.max_tokens,
-            presence_penalty: c.presence_penalty,
-            service_tier: c.service_tier,
-            reasoning_effort: c.reasoning_effort,
-            verbosity: c.verbosity,
-            stream: c.stream,
-            tools: Vec::new(),
-            tool_choice: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum Response {
-    Streaming {
-        content: String,
-        reasoning: String,
-        tool_calls: ToolCallAccumulator,
-    },
-    Completed {
-        content: String,
-        reasoning: String,
-        tool_calls: Vec<ToolCall>,
-    },
-    Errored(Arc<str>),
-    Cancelled,
-}
-
-impl Response {
-    /// Text rendered for the assistant turn so far. Works during streaming
-    /// and post-completion.
-    pub fn content(&self) -> &str {
-        match self {
-            Response::Streaming { content, .. } | Response::Completed { content, .. } => content,
-            Response::Errored(_) | Response::Cancelled => "",
-        }
-    }
-    /// Reasoning trace from thinking-capable models, if any. Not echoed back
-    /// into context.
-    pub fn reasoning(&self) -> &str {
-        match self {
-            Response::Streaming { reasoning, .. } | Response::Completed { reasoning, .. } => {
-                reasoning
-            }
-            Response::Errored(_) | Response::Cancelled => "",
-        }
-    }
-    pub fn is_terminal(&self) -> bool {
-        !matches!(self, Response::Streaming { .. })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ExchangeView {
+pub struct ChatExchange {
     pub id: ExchangeId,
     pub model: ModelId,
     pub user_message: Message,
@@ -142,7 +60,7 @@ pub struct ExchangeView {
 pub struct ChatState {
     pub context: VecDeque<ContextMessage>,
     next_msg_id: u64,
-    pub exchanges: Vec<ExchangeView>,
+    pub exchanges: Vec<ChatExchange>,
     pub models: Vec<ModelId>,
     pub last_error: Option<Arc<str>>,
     /// Extra text appended to the system message at prompt-build time. Owned
@@ -153,7 +71,7 @@ pub struct ChatState {
 }
 
 impl ChatState {
-    pub fn exchange(&self, id: ExchangeId) -> Option<&ExchangeView> {
+    pub fn exchange(&self, id: ExchangeId) -> Option<&ChatExchange> {
         self.exchanges.iter().find(|e| e.id == id)
     }
     fn mint_id(&mut self) -> MsgId {
@@ -290,7 +208,7 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
             model,
             user_message,
         } => {
-            state.exchanges.push(ExchangeView {
+            state.exchanges.push(ChatExchange {
                 id,
                 model,
                 user_message,
@@ -378,7 +296,7 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
     }
 }
 
-fn find_mut(exchanges: &mut [ExchangeView], id: ExchangeId) -> Option<&mut ExchangeView> {
+fn find_mut(exchanges: &mut [ChatExchange], id: ExchangeId) -> Option<&mut ChatExchange> {
     exchanges.iter_mut().find(|e| e.id == id)
 }
 
@@ -652,10 +570,63 @@ impl ChatHandle {
     }
 }
 
+fn usage_view(usage: &Usage) -> UsageView {
+    UsageView {
+        input_tokens: usage.prompt_tokens,
+        cached_tokens: usage
+            .prompt_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens)
+            .unwrap_or_default(),
+        output_tokens: usage.completion_tokens,
+        reasoning_tokens: usage
+            .completion_tokens_details
+            .as_ref()
+            .map(|d| d.reasoning_tokens)
+            .unwrap_or_default(),
+        total_tokens: usage.total_tokens,
+    }
+}
+
+impl Backend for ChatHandle {
+    // Inherent methods take precedence in method-call syntax, so these delegate
+    // to them without recursing into the trait method.
+    fn translate(&self, text: String, config: Arc<TranslateConfig>) -> ExchangeId {
+        self.translate(text, config)
+    }
+    fn cancel(&self, id: ExchangeId) {
+        self.cancel(id)
+    }
+    fn clear(&self) {
+        self.clear_context();
+    }
+    fn refresh_models(&self) {
+        self.refresh_models();
+    }
+    fn set_system_addendum(&self, text: Option<Arc<str>>) {
+        self.set_system_addendum(text);
+    }
+    fn exchange(&self, id: ExchangeId) -> Option<ExchangeView> {
+        let state = self.state();
+        state.exchange(id).map(|ex| ExchangeView {
+            id: ex.id,
+            model: ex.model.clone(),
+            response: ex.response.clone(),
+            usage: ex.usage.as_ref().map(usage_view),
+        })
+    }
+    fn models(&self) -> Vec<ModelId> {
+        self.state().models.clone()
+    }
+    fn last_error(&self) -> Option<Arc<str>> {
+        self.state().last_error.clone()
+    }
+}
+
 pub fn spawn(settings: &Settings) -> ChatHandle {
     let client = openai::Client::new(
         &settings.openai_api_key,
-        &settings.chat.api_endpoint,
+        &settings.openai_api_endpoint,
         ConnectionPolicy {
             timeout: Duration::from_millis(settings.chat.timeout),
             connect_timeout: Duration::from_millis(settings.chat.connection_timeout),
