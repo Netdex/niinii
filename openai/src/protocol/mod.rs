@@ -3,6 +3,7 @@ use strum_macros::{EnumIter, IntoStaticStr};
 use thiserror::Error;
 
 pub mod chat;
+pub mod realtime;
 pub mod responses;
 
 #[derive(Error, Debug, Clone, Deserialize, PartialEq, Eq)]
