@@ -3,12 +3,12 @@
 //!
 //! Config is read from the workspace `niinii.toml`. Tests acquire the client
 //! and model via [`fixture!`], which skips (prints a notice and returns)
-//! when the config file or required fields are missing — so `cargo test` is
+//! when the config file or required fields are missing -- so `cargo test` is
 //! always safe to run.
 //!
 //! Required in `niinii.toml`:
-//! - `[chat].api_endpoint`
-//! - `[chat].model`
+//! - `openai_api_endpoint`
+//! - `openai_model`
 //!
 //! Optional:
 //! - `openai_api_key` (defaults to `"no-key"` for local servers)
@@ -23,12 +23,13 @@ pub struct ServerConfig {
     pub api_key: String,
 }
 
+/// Endpoint/model/key shared by all translator backends, read from the
+/// top-level `niinii.toml` keys.
 pub fn load_config() -> Option<ServerConfig> {
     let text = std::fs::read_to_string(CONFIG_PATH).ok()?;
     let v: toml::Value = toml::from_str(&text).ok()?;
-    let chat = v.get("chat")?;
-    let endpoint = chat.get("api_endpoint")?.as_str()?.to_string();
-    let model = chat.get("model")?.as_str()?.to_string();
+    let endpoint = v.get("openai_api_endpoint")?.as_str()?.to_string();
+    let model = v.get("openai_model")?.as_str()?.to_string();
     let api_key = v
         .get("openai_api_key")
         .and_then(|k| k.as_str())
@@ -49,7 +50,7 @@ pub fn build(cfg: ServerConfig) -> (Client, ModelId) {
 
 /// Acquire `(Client, ModelId)` or skip the enclosing test (prints a notice
 /// and `return`s) if `niinii.toml` is missing or incomplete. The skip branch
-/// is why this is a macro — a function can't return from its caller.
+/// is why this is a macro -- a function can't return from its caller.
 #[macro_export]
 macro_rules! fixture {
     () => {
@@ -62,7 +63,7 @@ macro_rules! fixture {
                 }
                 let test_name = type_name_of(f).strip_suffix("::f").unwrap_or("<test>");
                 eprintln!(
-                    "SKIP {}: niinii.toml missing [chat].api_endpoint / [chat].model",
+                    "SKIP {}: niinii.toml missing openai_api_endpoint / openai_model",
                     test_name
                 );
                 return;

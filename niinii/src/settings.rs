@@ -30,13 +30,13 @@ pub enum RubyTextType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
 pub enum TranslatorType {
     Chat,
+    Responses,
+    Realtime,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ChatSettings {
-    pub api_endpoint: String,
-    pub model: openai::ModelId,
     pub system_prompt: String,
     pub max_context_tokens: [u32; 2],
     pub temperature: Option<f32>,
@@ -53,8 +53,6 @@ pub struct ChatSettings {
 impl Default for ChatSettings {
     fn default() -> Self {
         Self {
-            api_endpoint: "https://api.openai.com".into(),
-            model: Default::default(),
             system_prompt: "You will translate the following visual novel script into English."
                 .into(),
             max_context_tokens: [64, 64],
@@ -68,6 +66,116 @@ impl Default for ChatSettings {
             service_tier: Some(openai::ServiceTier::Priority),
             reasoning_effort: None,
             verbosity: None,
+        }
+    }
+}
+
+/// Settings for the Responses API backend. Mirrors `ChatSettings` but drops the
+/// context-buffer knobs (state lives server-side via `previous_response_id`).
+/// Latency-oriented defaults (per the
+/// OpenAI latency-optimization + GPT-5.5 guides): streaming on, priority
+/// service tier, capped output tokens, low reasoning effort (the recommended
+/// efficient setting for most production workflows), and low verbosity (fewer
+/// output tokens). All are adjustable in the tuning UI.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ResponsesSettings {
+    pub system_prompt: String,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub reasoning_effort: Option<openai::ReasoningEffort>,
+    pub verbosity: Option<openai::Verbosity>,
+    pub service_tier: Option<openai::ServiceTier>,
+    pub stream: bool,
+    /// Maintain server-side conversation state across turns via
+    /// `previous_response_id` (`store: true`). When off, each line is
+    /// translated independently (no `previous_response_id`, `store: false`), so
+    /// the conversation never inflates -- lowest/flattest latency and cost, at
+    /// the expense of cross-line memory (the VNDB addendum still supplies
+    /// character/speaker context).
+    pub chain: bool,
+    pub connection_timeout: u64,
+    pub timeout: u64,
+}
+impl Default for ResponsesSettings {
+    fn default() -> Self {
+        Self {
+            system_prompt: "You will translate the following visual novel script into English."
+                .into(),
+            temperature: None,
+            top_p: None,
+            max_tokens: Some(128),
+            reasoning_effort: Some(openai::ReasoningEffort::Low),
+            verbosity: Some(openai::Verbosity::Low),
+            service_tier: Some(openai::ServiceTier::Priority),
+            stream: true,
+            chain: true,
+            connection_timeout: 3000,
+            timeout: 10000,
+        }
+    }
+}
+
+/// Conversation-truncation strategy for the Realtime session, mirroring the GA
+/// `RealtimeTruncation` schema. `Auto` drops the oldest messages once the input
+/// token limit is hit; `Disabled` never truncates (the server errors instead);
+/// `RetentionRatio` truncates early, keeping messages up to
+/// [`RealtimeSettings::truncation_retention_ratio`] of the model's max context
+/// (fewer future truncations, better cache rate). The ratio is held separately
+/// so toggling between modes in the UI does not discard it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
+pub enum TruncationMode {
+    Auto,
+    Disabled,
+    #[strum(serialize = "Retention ratio")]
+    RetentionRatio,
+}
+
+/// Settings for the Realtime API (WebSocket) backend. The Realtime API is a
+/// stateful, always-streaming text session. It exposes the realtime-applicable
+/// generation knobs only: `reasoning_effort` (reasoning-capable realtime models
+/// such as `gpt-realtime-2`) and `max_tokens`. It has no service-tier /
+/// verbosity / temperature / top_p surface (none are fields on the GA
+/// `RealtimeSessionCreateRequest`). `chain` keeps the server-side conversation
+/// across turns; turning it off reconnects per line so context never
+/// accumulates.
+///
+/// `reasoning_effort` defaults to off so non-reasoning realtime models (e.g.
+/// `gpt-realtime`) are not sent an unsupported field.
+///
+/// Requires a realtime-capable model in the shared `openai_model` setting.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct RealtimeSettings {
+    pub system_prompt: String,
+    pub reasoning_effort: Option<openai::ReasoningEffort>,
+    pub max_tokens: Option<u32>,
+    pub chain: bool,
+    pub truncation: TruncationMode,
+    /// Fraction (0.0..=1.0) of the model's max context to retain when
+    /// `truncation` is [`TruncationMode::RetentionRatio`]; ignored otherwise.
+    pub truncation_retention_ratio: f32,
+    /// Optional cap on tokens kept after the instructions
+    /// (`token_limits.post_instructions`) when `truncation` is
+    /// [`TruncationMode::RetentionRatio`]. `None` uses the model default.
+    pub truncation_post_instructions_token_limit: Option<u32>,
+    pub connection_timeout: u64,
+    pub timeout: u64,
+}
+impl Default for RealtimeSettings {
+    fn default() -> Self {
+        Self {
+            system_prompt: "You will translate the following visual novel script into English."
+                .into(),
+            reasoning_effort: None,
+            max_tokens: Some(128),
+            chain: true,
+            truncation: TruncationMode::Auto,
+            truncation_retention_ratio: 0.8,
+            truncation_post_instructions_token_limit: None,
+            connection_timeout: 3000,
+            timeout: 10000,
         }
     }
 }
@@ -94,7 +202,13 @@ pub struct Settings {
     pub translator_type: TranslatorType,
     pub auto_translate: bool,
     pub openai_api_key: String,
+    /// OpenAI(-compatible) API base URL, shared by all translator backends.
+    pub openai_api_endpoint: String,
+    /// Model id, shared by all translator backends.
+    pub openai_model: openai::ModelId,
     pub chat: ChatSettings,
+    pub responses: ResponsesSettings,
+    pub realtime: RealtimeSettings,
 
     pub vv_model_path: String,
     pub auto_tts_regex: Option<String>,
@@ -134,7 +248,11 @@ impl Default for Settings {
             translator_type: TranslatorType::Chat,
             auto_translate: false,
             openai_api_key: Default::default(),
+            openai_api_endpoint: "https://api.openai.com".into(),
+            openai_model: Default::default(),
             chat: Default::default(),
+            responses: Default::default(),
+            realtime: Default::default(),
 
             vv_model_path: Default::default(),
             auto_tts_regex: None,

@@ -49,7 +49,7 @@ impl App {
         let gloss = GlossView::new(&settings).await;
         let translator_window = TranslatorWindow::new(&settings);
         let vndb_view = VndbView::new(
-            translator_window.handle().clone(),
+            translator_window.backend(),
             gloss.parser().ichiran(),
             &settings,
         );
