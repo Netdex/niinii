@@ -22,7 +22,9 @@ fn weather_tool() -> Tool {
                 "location": { "type": "string" },
                 "unit": { "type": "string", "enum": ["celsius", "fahrenheit"] }
             },
-            "required": ["location"],
+            // Strict function schemas require every key in `properties` to be
+            // listed in `required`.
+            "required": ["location", "unit"],
             "additionalProperties": false,
         })),
         strict: Some(true),
