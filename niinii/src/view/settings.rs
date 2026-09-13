@@ -1,9 +1,6 @@
 use imgui::*;
 
-use crate::{
-    renderer::context::{Context, ContextFlags},
-    settings::{Settings, TranslatorType},
-};
+use crate::settings::{Settings, TranslatorType};
 
 use super::mixins::{self, checkbox_option, combo_enum};
 
@@ -23,7 +20,7 @@ impl SettingsView {
         }
     }
 
-    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &mut Settings) {
+    pub fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
         if !self.open {
             return;
         }
@@ -141,33 +138,31 @@ impl SettingsView {
             .default_open(true)
             .build(ui)
         {
-            if !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT) {
-                combo_enum(ui, "Renderer*", &mut settings.renderer_type);
+            combo_enum(ui, "Renderer*", &mut settings.renderer_type);
+            ui.same_line();
+            mixins::help_marker(ui, "Renderer backend (Direct3D11 recommended)");
+
+            ui.checkbox("##", &mut settings.use_force_dpi);
+            ui.same_line();
+            ui.disabled(!settings.use_force_dpi, || {
+                ui.slider_config("Force DPI*", 0.5f64, 2.0f64)
+                    .display_format("%.2f")
+                    .flags(SliderFlags::ALWAYS_CLAMP)
+                    .build(&mut settings.force_dpi);
                 ui.same_line();
-                mixins::help_marker(ui, "Renderer backend (Direct3D11 recommended)");
+            });
+            mixins::help_marker(
+                ui,
+                "Force DPI used for global scaling factor (CTRL+click to type)",
+            );
 
-                ui.checkbox("##", &mut settings.use_force_dpi);
+            ui.checkbox("Always on-top*", &mut settings.on_top);
+
+            #[cfg(windows)]
+            {
+                ui.checkbox("Overlay mode*", &mut settings.overlay_mode);
                 ui.same_line();
-                ui.disabled(!settings.use_force_dpi, || {
-                    ui.slider_config("Force DPI*", 0.5f64, 2.0f64)
-                        .display_format("%.2f")
-                        .flags(SliderFlags::ALWAYS_CLAMP)
-                        .build(&mut settings.force_dpi);
-                    ui.same_line();
-                });
-                mixins::help_marker(
-                    ui,
-                    "Force DPI used for global scaling factor (CTRL+click to type)",
-                );
-
-                ui.checkbox("Always on-top*", &mut settings.on_top);
-
-                #[cfg(windows)]
-                {
-                    ui.checkbox("Overlay mode*", &mut settings.overlay_mode);
-                    ui.same_line();
-                    mixins::help_marker(ui, "Overlay on top of all other windows (D3D11 only)");
-                }
+                mixins::help_marker(ui, "Overlay on top of all other windows (D3D11 only)");
             }
             ui.checkbox("Transparent", &mut settings.transparent);
         }

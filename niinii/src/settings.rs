@@ -220,8 +220,6 @@ pub struct Settings {
     pub regex_match: String,
     pub regex_replace: String,
 
-    pub inject_proc_name: String,
-
     /// VNDB id (e.g. "v17") of the most recently selected active visual
     /// novel. Restored on startup.
     pub vndb_active_id: Option<String>,
@@ -263,8 +261,6 @@ impl Default for Settings {
 
             regex_match: Default::default(),
             regex_replace: Default::default(),
-
-            inject_proc_name: Default::default(),
 
             vndb_active_id: None,
         }

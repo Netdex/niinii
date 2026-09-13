@@ -1,13 +1,12 @@
 use imgui::*;
 
 use crate::{
-    renderer::context::{Context, ContextFlags},
+    renderer::context::Context,
     settings::Settings,
-    support::{docking::UiDocking, regex::CachedRegex},
+    support::{docking::UiDocking, platform::ScrollLockSync, regex::CachedRegex},
     tts::{self, TtsEngine},
     view::{
         gloss::{GlossEvent, GlossInputAction, GlossView},
-        inject::InjectView,
         mixins::{ellipses, stroke_text_with_highlight},
         settings::SettingsView,
         style_editor::StyleEditor,
@@ -29,6 +28,7 @@ enum Error {
 pub struct App {
     show_metrics_window: bool,
     no_inputs: bool,
+    scroll_lock: ScrollLockSync,
 
     settings: Settings,
     error: Option<Error>,
@@ -36,7 +36,6 @@ pub struct App {
     gloss: GlossView,
     translator_window: TranslatorWindow,
     settings_view: SettingsView,
-    inject_view: InjectView,
     style_editor: StyleEditor,
     vndb_view: VndbView,
 
@@ -56,13 +55,13 @@ impl App {
         App {
             show_metrics_window: false,
             no_inputs: false,
+            scroll_lock: ScrollLockSync::new(false),
             settings,
             error: None,
             tts,
             gloss,
             translator_window,
             settings_view: SettingsView::new(),
-            inject_view: InjectView::new(),
             style_editor: StyleEditor::new(),
             vndb_view,
             auto_tts_regex: CachedRegex::default(),
@@ -136,8 +135,14 @@ impl App {
                 ui.separator();
                 self.settings_view.show_menu_item(ui);
                 ui.separator();
-                ui.menu_item_config("Disable interaction")
-                    .build_with_ref(&mut self.no_inputs);
+                let mut no_inputs = self.no_inputs;
+                if ui
+                    .menu_item_config("Disable interaction")
+                    .shortcut("ScrLk")
+                    .build_with_ref(&mut no_inputs)
+                {
+                    self.set_no_inputs(no_inputs);
+                }
             }
             if let Some(_menu) = ui.begin_menu("Gloss") {
                 self.gloss.show_menu(ctx, ui);
@@ -145,11 +150,6 @@ impl App {
             if let Some(_menu) = ui.begin_menu("Debug") {
                 if ui.menu_item("Debugger") {
                     self.show_metrics_window = true;
-                }
-                if cfg!(feature = "hook")
-                    && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
-                {
-                    self.inject_view.show_menu_item(ui);
                 }
             }
             ui.separator();
@@ -184,6 +184,11 @@ impl App {
             });
     }
 
+    fn set_no_inputs(&mut self, no_inputs: bool) {
+        self.no_inputs = no_inputs;
+        self.scroll_lock.set(no_inputs);
+    }
+
     fn show_input_toggle(&mut self, ui: &Ui) -> bool {
         let mut hovered = false;
         ui.window("Interaction")
@@ -196,8 +201,9 @@ impl App {
             .bg_alpha(0.75)
             .build(|| {
                 ui.text("Interaction disabled");
+                ui.text_disabled("(ScrLk to toggle)");
                 if ui.button_with_size("Enable interaction", [180.0, 0.0]) {
-                    self.no_inputs = false;
+                    self.set_no_inputs(false);
                 }
                 hovered = ui.is_window_hovered();
             });
@@ -205,11 +211,13 @@ impl App {
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
-        if self.settings().overlay_mode
-            && !ctx.flags().contains(ContextFlags::SHARED_RENDER_CONTEXT)
-        {
+        if self.settings().overlay_mode {
             ui.dockspace_over_viewport();
-        };
+        }
+
+        if let Some(scroll_lock) = self.scroll_lock.poll() {
+            self.no_inputs = scroll_lock;
+        }
 
         let no_inputs = self.no_inputs;
         let mut toggle_hovered = false;
@@ -270,8 +278,7 @@ impl App {
             }
         });
 
-        self.settings_view.ui(ctx, ui, &mut self.settings);
-        self.inject_view.ui(ui, &mut self.settings);
+        self.settings_view.ui(ui, &mut self.settings);
         self.style_editor.ui(ui, &mut self.settings);
         self.translator_window.ui(ui, &mut self.settings);
         self.vndb_view.ui(ui, &mut self.settings);

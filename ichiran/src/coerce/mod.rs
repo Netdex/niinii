@@ -2,4 +2,3 @@
 
 pub mod bool_seq;
 pub mod no_zwnj;
-pub mod option_seq;

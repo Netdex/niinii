@@ -1,6 +1,5 @@
 pub mod gloss;
 pub mod index;
-pub mod inject;
 pub mod kanji;
 pub mod mixins;
 pub mod raw;

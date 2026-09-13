@@ -1,5 +1,3 @@
-use std::f32::consts::PI;
-
 use imgui::{DrawListMut, MouseCursor, StyleColor, Ui};
 use strum::IntoEnumIterator;
 
@@ -105,10 +103,6 @@ pub fn stroke_text_with_highlight(
         );
         ui.dummy(sz)
     }
-}
-
-pub fn stroke_text(ui: &Ui, draw_list: &DrawListMut, text: &str, thick: f32) {
-    stroke_text_with_highlight(ui, draw_list, text, thick, None)
 }
 
 pub struct KanjiStyle {
@@ -322,39 +316,6 @@ where
             }
         }
     }
-}
-
-/// https://github.com/ocornut/imgui/issues/1901
-pub fn spinner(ui: &Ui, radius: f32, thickness: f32, color: StyleColor) {
-    let frame_padding_y = unsafe { ui.style().frame_padding[1] };
-    let now = ui.time() as f32;
-    let pos = ui.cursor_screen_pos();
-    let size = [radius * 2.0, (radius + frame_padding_y) * 2.0];
-    ui.dummy(size);
-
-    let draw_list = ui.get_window_draw_list();
-    let num_segments = 30;
-    let start = f32::abs(f32::sin(now * 1.8) * ((num_segments - 5) as f32));
-
-    let a_min = PI * 2.0 * start / (num_segments as f32);
-    let a_max = PI * 2.0 * ((num_segments - 3) as f32) / (num_segments as f32);
-
-    let center = [pos[0] + radius, pos[1] + radius + frame_padding_y];
-
-    let mut points = Vec::with_capacity(num_segments);
-    for i in 0..num_segments {
-        let a = a_min + ((i as f32) / (num_segments as f32)) * (a_max - a_min);
-        points.push([
-            center[0] + f32::cos(a + now * 8.0) * radius,
-            center[1] + f32::sin(a + now * 8.0) * radius,
-        ]);
-    }
-
-    draw_list
-        .add_polyline(points, ui.style_color(color))
-        .filled(false)
-        .thickness(thickness)
-        .build();
 }
 
 pub fn ellipses(ui: &Ui) -> &str {

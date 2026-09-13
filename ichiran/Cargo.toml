@@ -32,5 +32,4 @@ win32job = "2.0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
-serde_path_to_error = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

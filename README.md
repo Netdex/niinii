@@ -75,12 +75,6 @@ cd niinii
 cargo build --release
 ```
 
-If using the hooking feature, the bitness of the DLL must match the target
-application. To build a 32-bit application:
-```
-cargo +stable-i686-pc-windows-msvc build --target i686-pc-windows-msvc --release
-```
-
 For Japanese language support, the following additional components are required:
 - ichiran-cli ([Ichiran](https://github.com/tshatrov/ichiran))
 - PostgreSQL installation with Ichiran database
@@ -95,17 +89,6 @@ involved, prebuilt versions are included with the prepackaged builds.
 ### High CPU usage when out of focus
 Seems like a problem with winit. niinii is almost always used in the foreground
 anyways because of always on top, so I'm not going to bother fixing this.
-
-### Hooking not working
-- Most visual novels are written in engines which use D3D9. This is not always
-  true though, you may need to adjust the hooking code as necessary.
-- There is limited recovery code for when frame buffers are resized, devices
-  are reset, contexts are changed etc. This may lead to breakages when
-  switching in and out full-screen mode, resizing the window, and switching to
-  another application.
-- Some visual novel engines will present only when necessary rather than at a
-  fixed framerate. In this case, niinii won't work properly since it expects a
-  fixed refresh rate.
 
 ### Issues with Chromium-based browsers
 In overlay mode, niinii displays a transparent window which covers the entire
