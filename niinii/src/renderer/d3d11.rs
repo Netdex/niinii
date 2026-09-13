@@ -5,7 +5,7 @@ use std::time::Instant;
 use std::{ptr, rc::Weak};
 
 use imgui_winit_support::WinitPlatform;
-use raw_window_handle_05::{HasRawWindowHandle, RawWindowHandle};
+use raw_window_handle_06::{HasWindowHandle, RawWindowHandle};
 use winapi::{
     shared::{
         dxgi::*,
@@ -104,8 +104,8 @@ impl D3D11Renderer {
             // window.set_window_level(WindowLevel::AlwaysOnTop);
         }
 
-        let hwnd = match window.raw_window_handle() {
-            RawWindowHandle::Win32(handle) => handle.hwnd as HWND,
+        let hwnd = match window.window_handle().unwrap().as_raw() {
+            RawWindowHandle::Win32(handle) => handle.hwnd.get() as HWND,
             _ => unreachable!(),
         };
 
@@ -219,8 +219,8 @@ impl Renderer for D3D11Renderer {
                             && last_topmost_refresh.elapsed()
                                 >= std::time::Duration::from_millis(250)
                         {
-                            let hwnd = match window.raw_window_handle() {
-                                RawWindowHandle::Win32(handle) => handle.hwnd as HWND,
+                            let hwnd = match window.window_handle().unwrap().as_raw() {
+                                RawWindowHandle::Win32(handle) => handle.hwnd.get() as HWND,
                                 _ => unreachable!(),
                             };
                             unsafe { apply_overlay_topmost(hwnd) };
@@ -450,8 +450,8 @@ unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM)
                         ..
                     } = &mut *inner;
 
-                    let hwnd = match window.raw_window_handle() {
-                        RawWindowHandle::Win32(handle) => handle.hwnd as HWND,
+                    let hwnd = match window.window_handle().unwrap().as_raw() {
+                        RawWindowHandle::Win32(handle) => handle.hwnd.get() as HWND,
                         _ => unreachable!(),
                     };
 
