@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::{Duration, Instant};
 
 use futures::FutureExt;
 use ichiran::prelude::*;
@@ -13,15 +12,13 @@ use super::mixins::*;
 use crate::parser::{self, Parser, SyntaxTree};
 use crate::renderer::context::{Context, ContextFlags};
 use crate::settings::{RubyTextType, Settings};
-use crate::support::regex::CachedRegex;
+use crate::support::{platform::clipboard_sequence_number, regex::CachedRegex};
 use crate::view::{raw::RawView, term::TermView};
 
 /// Highlight color for terms that came from an injected custom entry
 /// (`Term::is_custom()`). Distinct enough from the default
 /// `TextSelectedBg` to be obvious at a glance.
 const NAME_HIGHLIGHT: [f32; 4] = [0.85, 0.55, 0.20, 0.55];
-
-const CLIPBOARD_POLL_INTERVAL: Duration = Duration::from_millis(33);
 
 enum View {
     /// Preview shown while a parse is in flight: the text chunked by
@@ -55,7 +52,7 @@ pub struct GlossView {
 
     input_text: String,
     last_clipboard: String,
-    last_clipboard_poll: Instant,
+    last_clipboard_seq: u32,
 
     events: VecDeque<GlossEvent>,
 
@@ -75,7 +72,7 @@ impl GlossView {
             match_regex: CachedRegex::default(),
             input_text: String::new(),
             last_clipboard: String::new(),
-            last_clipboard_poll: Instant::now(),
+            last_clipboard_seq: 0,
             events: VecDeque::new(),
             view: None,
             show_term_window: RefCell::new(HashSet::new()),
@@ -162,12 +159,21 @@ impl GlossView {
         Ok(Some(text))
     }
 
+    /// Whether the clipboard may have new contents to watch. An unavailable sequence number (0)
+    /// always counts as changed.
+    fn clipboard_changed(&self, settings: &Settings) -> bool {
+        if !settings.watch_clipboard {
+            return false;
+        }
+        let seq = clipboard_sequence_number();
+        seq == 0 || seq != self.last_clipboard_seq
+    }
+
     /// Drive clipboard watching and pending-parse completion. Returns an event
     /// when a parse finishes so the caller can wire up auto-translate etc.
     pub fn poll(&mut self, ui: &Ui, ctx: &mut Context, settings: &Settings) -> Option<GlossEvent> {
-        if settings.watch_clipboard && self.last_clipboard_poll.elapsed() >= CLIPBOARD_POLL_INTERVAL
-        {
-            self.last_clipboard_poll = Instant::now();
+        if self.clipboard_changed(settings) {
+            self.last_clipboard_seq = clipboard_sequence_number();
             if let Some(clipboard) = ui.clipboard_text() {
                 if clipboard != self.last_clipboard {
                     self.input_text.clone_from(&clipboard);
