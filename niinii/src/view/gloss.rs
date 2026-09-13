@@ -58,7 +58,8 @@ pub struct GlossView {
 
     view: Option<View>,
     show_term_window: RefCell<HashSet<Romanized>>,
-    selected_clause: RefCell<HashMap<Segment, i32>>,
+    /// Selected alternative per segment, keyed by segment index in the current gloss.
+    selected_clause: RefCell<HashMap<usize, i32>>,
     show_raw: bool,
     show_glossary: bool,
 }
@@ -141,6 +142,7 @@ impl GlossView {
             .map(|(kind, s)| (kind, s.to_string()))
             .collect();
         self.view = Some(View::Text(splits.clone()));
+        self.selected_clause.get_mut().clear();
 
         let parser_ast = self.parser.clone();
         let ast_text = text.clone();
@@ -262,7 +264,7 @@ impl GlossView {
         romanized: &Romanized,
     ) -> bool {
         let mut opened = true;
-        ui.window(&romanized.term().text().to_string())
+        ui.window(romanized.term().text())
             .size_constraints([300.0, 100.0], [1000.0, 1000.0])
             .save_settings(false)
             .focus_on_appearing(true)
@@ -379,14 +381,21 @@ impl GlossView {
         ul_hover
     }
 
-    fn add_segment(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, segment: &Segment) {
+    fn add_segment(
+        &self,
+        ctx: &mut Context,
+        ui: &Ui,
+        settings: &Settings,
+        segment_idx: usize,
+        segment: &Segment,
+    ) {
         match segment {
             Segment::Skipped(skipped) => {
                 self.add_skipped(ctx, ui, settings, skipped, false);
             }
             Segment::Clauses(clauses) => {
                 let mut selected_clause = self.selected_clause.borrow_mut();
-                let mut clause_idx = selected_clause.get(segment).cloned().unwrap_or(0);
+                let mut clause_idx = selected_clause.get(&segment_idx).cloned().unwrap_or(0);
 
                 let clause = clauses.get(clause_idx as usize);
                 if let Some(clause) = clause {
@@ -415,7 +424,7 @@ impl GlossView {
                             clause_idx -= scroll;
                             clause_idx = clause_idx.clamp(0, clauses.len() as i32 - 1);
                             if scroll != 0 {
-                                selected_clause.insert(segment.clone(), clause_idx);
+                                selected_clause.insert(segment_idx, clause_idx);
                             }
                             ui.tooltip(|| {
                                 ui.text(format!(
@@ -446,8 +455,8 @@ impl GlossView {
     }
 
     fn add_root(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, root: &Root) {
-        for segment in root.segments() {
-            self.add_segment(ctx, ui, settings, segment);
+        for (segment_idx, segment) in root.segments().iter().enumerate() {
+            self.add_segment(ctx, ui, settings, segment_idx, segment);
         }
     }
 
