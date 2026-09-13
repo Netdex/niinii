@@ -231,11 +231,8 @@ impl Renderer for D3D11Renderer {
                             context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
                         }
 
-                        let now = std::time::Instant::now();
-                        if ctx.update_fonts(imgui, platform.hidpi_factor()) {
+                        if ctx.poll_fonts(imgui, platform.hidpi_factor()) {
                             unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
-                            let elapsed = now.elapsed();
-                            tracing::info!("rebuilt font atlas (took {:?})", elapsed);
                         }
                         let ui = imgui.frame();
                         let mut run = true;
@@ -378,19 +375,17 @@ unsafe fn create_render_target(
 }
 
 unsafe fn apply_overlay_topmost(hwnd: HWND) {
-    let style = winuser::GetWindowLongA(hwnd, winuser::GWL_EXSTYLE);
-    let mut ex_style = style as u32;
-    ex_style |= winuser::WS_EX_TOPMOST | winuser::WS_EX_LAYERED | winuser::WS_EX_TOOLWINDOW;
-    SetWindowLongA(hwnd, winuser::GWL_EXSTYLE, ex_style as i32);
-    SetWindowPos(
-        hwnd,
-        HWND_TOPMOST,
-        0,
-        0,
-        0,
-        0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
-    );
+    let style = winuser::GetWindowLongA(hwnd, winuser::GWL_EXSTYLE) as u32;
+    let ex_style =
+        style | winuser::WS_EX_TOPMOST | winuser::WS_EX_LAYERED | winuser::WS_EX_TOOLWINDOW;
+    let mut flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW;
+    // SWP_FRAMECHANGED forces a non-client recalculation, so only request it when the style
+    // actually changed.
+    if ex_style != style {
+        SetWindowLongA(hwnd, winuser::GWL_EXSTYLE, ex_style as i32);
+        flags |= SWP_FRAMECHANGED;
+    }
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags);
 }
 
 thread_local! {
