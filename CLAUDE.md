@@ -67,6 +67,12 @@ The workspace uses a forked `imgui-rs` (branch `glow-viewports-mdpi`) patched fo
 
 Japanese language support requires `ichiran-cli` and a PostgreSQL instance with the Ichiran database. Paths are configured in `niinii.toml`. The `data/` directory contains these runtime dependencies for packaged builds.
 
+## Code Style
+
+- Only add a comment when it explains a requirement or constraint that is not self-evident from the code (e.g. an OS quirk, an API contract, a non-obvious invariant). Don't restate what the code does.
+- Comments must stand alone against the current code. Don't describe history, previous implementations, alternatives that were tried, or why something changed -- that belongs in commit messages.
+- Keep comments concise: a line or two, not paragraphs.
+
 ## Target Platform
 
 Primary target is `x86_64-pc-windows-msvc`. Cross-platform support is possible via the Glow renderer but is not actively maintained.
