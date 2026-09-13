@@ -34,7 +34,7 @@ cargo build --features voicevox         # Text-to-speech (Windows only)
 
 ### Workspace Crates
 
-- **`niinii/`** — Main application crate (binary + library). Contains the GUI, application logic, and glue between subsystems.
+- **`niinii/`** — Main application crate (binary). Contains the GUI, application logic, and glue between subsystems.
 - **`openai/`** — Custom OpenAI API client library (Chat Completions, Realtime WebSocket, Responses API). Not published; built specifically for this project.
 - **`ichiran/`** — Rust wrapper around `ichiran-cli`, a Common Lisp program for Japanese text segmentation. Manages a PostgreSQL subprocess and communicates via CLI invocations with S-expressions. Includes LRU caching for segments and kanji lookups.
 - **`vndb/`** — Minimal client for the VNDB Kana API (`https://api.vndb.org/kana`). Implements only the endpoints niinii needs (VN search, VN-by-id, characters-by-vn) and the search filters it surfaces in the UI.

@@ -23,7 +23,6 @@ mod untagged_ok_result {
     use crate::protocol::Error;
     use serde::{Deserialize, Deserializer};
 
-    #[allow(unused)]
     pub(crate) fn deserialize<'de, D, T>(de: D) -> Result<Result<T, Error>, D::Error>
     where
         D: Deserializer<'de>,

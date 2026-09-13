@@ -1,9 +1,0 @@
-pub mod app;
-pub mod parser;
-pub mod renderer;
-pub mod settings;
-pub mod support;
-pub mod translator;
-pub mod tts;
-pub mod view;
-pub mod vndb;

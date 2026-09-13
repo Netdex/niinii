@@ -5,8 +5,10 @@ use std::sync::mpsc::Sender;
 
 use crate::settings::Settings;
 
+#[cfg(feature = "voicevox")]
 use self::protocol::ModelData;
 
+#[cfg(feature = "voicevox")]
 pub mod protocol;
 
 #[derive(thiserror::Error, Debug)]
@@ -27,6 +29,7 @@ enum Request {
 
 struct State {
     tx_channel: Sender<Request>,
+    #[cfg(feature = "voicevox")]
     model_data: ModelData,
     _thread: JoinHandle<()>,
 }
@@ -53,12 +56,14 @@ impl TtsEngine {
             .map_err(|_| Error::Channel)
     }
 
+    #[cfg(feature = "voicevox")]
     pub fn stop(&self) {
         if let Ok(state) = self.state() {
             let _ = state.tx_channel.send(Request::Stop);
         }
     }
 
+    #[cfg(feature = "voicevox")]
     pub fn get_model_data(&self) -> Result<&ModelData, Error> {
         let state = self.state()?;
         Ok(&state.model_data)

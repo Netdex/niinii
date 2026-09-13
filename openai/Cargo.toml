@@ -32,6 +32,5 @@ tokio-tungstenite = { version = "0.29.0", features = ["rustls-tls-native-roots"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
-# tracing-test = { version = "0.2.4", features = ["no-env-filter"] }
 tracing-test = "0.2.6"
 toml = "0.8"

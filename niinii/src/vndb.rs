@@ -28,7 +28,7 @@ use arc_swap::ArcSwap;
 use ichiran::prelude::*;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
-pub use vndb::{Character, NameRef, SearchParams, Sex, SortKey, VnSummary};
+pub use vndb::{Character, SearchParams, SortKey, VnSummary};
 
 pub const VNDB_PROMPT_PREAMBLE: &str = "Use the information in the following character summaries. When the speaker needs to be inferred, try your best using the character information provided. If you are unsure of the speaker's gender, use neutral pronouns such as 'singular -they'.";
 
@@ -48,17 +48,6 @@ pub struct VndbState {
     pub loading_active: bool,
     pub active: Option<ActiveVn>,
     pub last_error: Option<Arc<str>>,
-}
-
-impl VndbState {
-    /// Borrow of the active VN's pre-rendered system-prompt fragment, if any.
-    /// Returns `None` when no VN is active or the fragment is empty.
-    pub fn prompt(&self) -> Option<&str> {
-        self.active
-            .as_ref()
-            .map(|a| a.prompt.as_str())
-            .filter(|s| !s.is_empty())
-    }
 }
 
 #[derive(Clone)]

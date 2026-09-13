@@ -2,9 +2,19 @@
 // their own consoles
 // #![windows_subsystem = "windows"]
 
+mod app;
+mod parser;
+mod renderer;
+mod settings;
+mod support;
+mod translator;
+mod tts;
+mod view;
+mod vndb;
+
 #[cfg(windows)]
-use libniinii::renderer::d3d11::D3D11Renderer;
-use libniinii::{
+use crate::renderer::d3d11::D3D11Renderer;
+use crate::{
     app::App,
     renderer::{glow_viewports::GlowRenderer, Renderer},
     settings::{RendererType, Settings},
