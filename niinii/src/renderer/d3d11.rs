@@ -231,11 +231,8 @@ impl Renderer for D3D11Renderer {
                             context.ClearRenderTargetView(main_rtv.as_raw(), &clear_color);
                         }
 
-                        let now = std::time::Instant::now();
-                        if ctx.update_fonts(imgui, platform.hidpi_factor()) {
+                        if ctx.poll_fonts(imgui, platform.hidpi_factor()) {
                             unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
-                            let elapsed = now.elapsed();
-                            tracing::info!("rebuilt font atlas (took {:?})", elapsed);
                         }
                         let ui = imgui.frame();
                         let mut run = true;
