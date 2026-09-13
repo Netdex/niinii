@@ -1,6 +1,4 @@
 pub mod app;
-#[cfg(feature = "hook")]
-pub mod hook;
 pub mod parser;
 pub mod renderer;
 pub mod settings;

@@ -28,17 +28,13 @@ cargo test -p vndb
 cargo build --features tracing-tracy    # Tracy profiler support
 cargo build --features tracing-chrome   # Chrome tracing support
 cargo build --features voicevox         # Text-to-speech (Windows only)
-cargo build --features hook             # DLL injection/hooking (Windows only)
-
-# 32-bit build (for hooking into 32-bit applications)
-cargo +stable-i686-pc-windows-msvc build --target i686-pc-windows-msvc --release
 ```
 
 ## Architecture
 
 ### Workspace Crates
 
-- **`niinii/`** — Main application crate (binary + cdylib). Contains the GUI, application logic, and glue between subsystems.
+- **`niinii/`** — Main application crate (binary + library). Contains the GUI, application logic, and glue between subsystems.
 - **`openai/`** — Custom OpenAI API client library (Chat Completions, Realtime WebSocket, Responses API). Not published; built specifically for this project.
 - **`ichiran/`** — Rust wrapper around `ichiran-cli`, a Common Lisp program for Japanese text segmentation. Manages a PostgreSQL subprocess and communicates via CLI invocations with S-expressions. Includes LRU caching for segments and kanji lookups.
 - **`vndb/`** — Minimal client for the VNDB Kana API (`https://api.vndb.org/kana`). Implements only the endpoints niinii needs (VN search, VN-by-id, characters-by-vn) and the search filters it surfaces in the UI.
@@ -50,10 +46,9 @@ cargo +stable-i686-pc-windows-msvc build --target i686-pc-windows-msvc --release
 - **`renderer/`** — Rendering backends implementing the `Renderer` trait: `glow_viewports` (OpenGL, cross-platform) and `d3d11` (Direct3D 11, Windows-only). Manages imgui context, font loading, and the main event loop.
 - **`translator/`** — Two backends behind the shared `Backend` trait (`translator/mod.rs`): `chat` (OpenAI Chat Completions) and `responses` (OpenAI Responses API). Each is a command/event/state store: the UI sends commands, a single writer task applies them and reduces events emitted by adapter tasks, and publishes immutable state snapshots via `ArcSwap`. UI reads are wait-free (`state.load_full()`) and never `async`. Per-request knobs are snapshotted into the shared `TranslateConfig` at submission time (selected by `Settings::translator_type`); backends never read `Settings` live. `system_addendum` is a separate text fragment appended to the system message / `instructions` at prompt-build time -- external producers (e.g. VNDB) push it via `Backend::set_system_addendum` so the translator owns the prompt without per-call plumbing. The `chat` backend keeps a local editable context buffer with token trimming; the `responses` backend keeps conversation state server-side, chaining turns via `previous_response_id` (`store: true`) and resending `instructions` each turn. Shared render types (`ExchangeId`, `Response`, `ExchangeView`, `UsageView`) live in `translator/mod.rs`. Latency is a first-class concern for the `responses` backend (streaming, `service_tier`, `reasoning.effort`, opt-in reasoning summary, a stable per-process `prompt_cache_key`).
 - **`vndb.rs`** — Same command/event/state shape as the translator backends. `vndb::spawn(callback)` takes a `Fn(Option<Arc<str>>)` invoked from the writer task whenever the active VN's pre-rendered prompt fragment changes; this is wired in `VndbView::new` to call `Backend::set_system_addendum` on the active translator (type-erased `Arc<dyn Backend>`). Persists the active VN id in `Settings::vndb_active_id` and restores it on startup.
-- **`view/`** — imgui UI components. Each top-level window (translator, settings, inject, style editor, vndb) is a persistent struct that owns its own `open: bool` and any edit-buffer state. Convention: `show_menu_item(ui)` to render the menu entry that opens it, and `ui(...)` self-renders the window with `.opened(&mut self.open)` and early-returns when closed. `App` holds one instance of each and calls `ui(...)` unconditionally each frame. `VndbView` additionally owns the `VndbHandle` and the wiring from VNDB -> translator, so `App` doesn't see either.
+- **`view/`** — imgui UI components. Each top-level window (translator, settings, style editor, vndb) is a persistent struct that owns its own `open: bool` and any edit-buffer state. Convention: `show_menu_item(ui)` to render the menu entry that opens it, and `ui(...)` self-renders the window with `.opened(&mut self.open)` and early-returns when closed. `App` holds one instance of each and calls `ui(...)` unconditionally each frame. `VndbView` additionally owns the `VndbHandle` and the wiring from VNDB -> translator, so `App` doesn't see either.
 - **`settings.rs`** — Application configuration. Serialized to/from `niinii.toml` using serde.
 - **`parser.rs`** — Wraps the `ichiran` crate to produce a `SyntaxTree` from Japanese input text.
-- **`hook.rs`** — DLL injection support via `hudhook` for rendering the overlay inside another process (feature-gated).
 
 ### Configuration
 

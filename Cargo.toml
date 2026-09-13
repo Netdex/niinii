@@ -9,8 +9,6 @@ imgui-winit-glow-renderer-viewports = { git = "https://github.com/Netdex/imgui-r
 # imgui-sys = { path = "../../imgui-rs/imgui-sys" }
 # imgui-winit-support = { path = "../../imgui-rs/imgui-winit-support" }
 # imgui-winit-glow-renderer-viewports = { path = "../../imgui-rs/imgui-winit-glow-renderer-viewports" }
-# hudhook = { git = "https://github.com/veeenu/hudhook.git" }
-
 [workspace]
 members = ["niinii", "ichiran", "openai", "vndb"]
 exclude = ["third-party"]
