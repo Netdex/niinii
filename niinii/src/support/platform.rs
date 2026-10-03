@@ -2,7 +2,9 @@ use std::time::{Duration, Instant};
 
 use copypasta::{ClipboardContext, ClipboardProvider};
 use imgui::ClipboardBackend;
-use winapi::um::winuser::{keybd_event, GetKeyState, KEYEVENTF_KEYUP, VK_SCROLL};
+use winapi::um::winuser::{
+    keybd_event, GetClipboardSequenceNumber, GetKeyState, KEYEVENTF_KEYUP, VK_SCROLL,
+};
 
 pub struct ClipboardSupport(ClipboardContext);
 
@@ -17,6 +19,11 @@ impl ClipboardBackend for ClipboardSupport {
     fn set(&mut self, text: &str) {
         let _ = self.0.set_contents(text.to_owned());
     }
+}
+
+/// Changes whenever the clipboard contents change. Returns 0 if the sequence number is unavailable.
+pub fn clipboard_sequence_number() -> u32 {
+    unsafe { GetClipboardSequenceNumber() }
 }
 
 pub fn get_scroll_lock() -> bool {
