@@ -9,6 +9,8 @@ use crate::{app::App, settings::Settings};
 pub mod context;
 #[cfg(windows)]
 pub mod d3d11;
+#[cfg(windows)]
+pub mod d3d11_viewports;
 pub mod glow_viewports;
 mod ranges;
 

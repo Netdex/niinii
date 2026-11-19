@@ -1780,6 +1780,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "imgui-winit-dx11-renderer-viewports"
+version = "0.12.0"
+dependencies = [
+ "imgui",
+ "raw-window-handle 0.6.2",
+ "thiserror 1.0.69",
+ "winapi",
+ "winit",
+ "wio",
+]
+
+[[package]]
 name = "imgui-winit-glow-renderer-viewports"
 version = "0.12.0"
 source = "git+https://github.com/Netdex/imgui-rs?branch=glow-viewports-mdpi#611aaa547e0f5ba8d4bea6886c3d9936d7836236"
@@ -2294,6 +2306,7 @@ dependencies = [
  "imgui",
  "imgui-dx11-renderer",
  "imgui-sys",
+ "imgui-winit-dx11-renderer-viewports",
  "imgui-winit-glow-renderer-viewports",
  "imgui-winit-support",
  "itertools",

@@ -146,6 +146,9 @@ impl TranslatorWindow {
         else {
             return;
         };
+        if let Some(err) = self.backend.last_error() {
+            ui.text_colored([1.0, 0.4, 0.4, 1.0], format!("error: {}", err));
+        }
         match &mut self.kind {
             BackendKind::Chat { handle, buffers } => chat::window(ui, settings, handle, buffers),
             BackendKind::Responses { handle } => responses::window(ui, settings, handle),

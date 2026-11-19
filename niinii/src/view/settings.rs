@@ -51,11 +51,7 @@ impl SettingsView {
             mixins::help_marker(ui, "Path of postgres database directory");
 
             let mut pool_size = settings.ichiran_pool_size as i32;
-            if ui
-                .input_int("pool size*", &mut pool_size)
-                .step(1)
-                .build()
-            {
+            if ui.input_int("pool size*", &mut pool_size).step(1).build() {
                 settings.ichiran_pool_size = pool_size.max(1) as usize;
             }
             ui.same_line();

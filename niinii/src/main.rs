@@ -13,7 +13,7 @@ mod view;
 mod vndb;
 
 #[cfg(windows)]
-use crate::renderer::d3d11::D3D11Renderer;
+use crate::renderer::{d3d11::D3D11Renderer, d3d11_viewports::D3D11ViewportsRenderer};
 use crate::{
     app::App,
     renderer::{glow_viewports::GlowRenderer, Renderer},
@@ -69,6 +69,8 @@ fn main() -> std::io::Result<()> {
         RendererType::Glow => Box::new(GlowRenderer::new(app.settings())),
         #[cfg(windows)]
         RendererType::Direct3D11 => Box::new(D3D11Renderer::new(app.settings())),
+        #[cfg(windows)]
+        RendererType::Direct3D11Viewports => Box::new(D3D11ViewportsRenderer::new(app.settings())),
     };
 
     renderer.run(&mut app);

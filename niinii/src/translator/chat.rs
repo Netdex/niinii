@@ -24,7 +24,7 @@ use std::{
 use arc_swap::ArcSwap;
 use enclose::enclose;
 use openai::{
-    chat::{self, Message, PartialToolCall, Role, ToolCallAccumulator, Usage},
+    chat::{self, Message, Role, Usage},
     ConnectionPolicy, ModelId,
 };
 use tokio::sync::mpsc;
@@ -122,10 +122,6 @@ pub enum ChatEvent {
         id: ExchangeId,
         content: String,
     },
-    ToolCallDelta {
-        id: ExchangeId,
-        partials: Vec<PartialToolCall>,
-    },
     Completed {
         id: ExchangeId,
         usage: Option<Usage>,
@@ -215,7 +211,6 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
                 response: Response::Streaming {
                     content: String::new(),
                     reasoning: String::new(),
-                    tool_calls: ToolCallAccumulator::new(),
                 },
                 usage: None,
             });
@@ -234,28 +229,18 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
                 }
             }
         }
-        ChatEvent::ToolCallDelta { id, partials } => {
-            if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                if let Response::Streaming { tool_calls, .. } = &mut ex.response {
-                    tool_calls.extend(partials);
-                }
-            }
-        }
         ChatEvent::Completed {
             id,
             usage,
             max_context_tokens,
         } => {
+            state.last_error = None;
             let Some(ex) = find_mut(&mut state.exchanges, id) else {
                 return;
             };
             let prior = std::mem::replace(&mut ex.response, Response::Cancelled);
-            let (content, reasoning, tool_calls) = match prior {
-                Response::Streaming {
-                    content,
-                    reasoning,
-                    tool_calls,
-                } => (content, reasoning, tool_calls.finish()),
+            let (content, reasoning) = match prior {
+                Response::Streaming { content, reasoning } => (content, reasoning),
                 other => {
                     ex.response = other;
                     return;
@@ -264,13 +249,11 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
             ex.response = Response::Completed {
                 content: content.clone(),
                 reasoning,
-                tool_calls: tool_calls.clone(),
             };
             ex.usage = usage;
             let assistant = Message {
                 role: Role::Assistant,
                 content: Some(content),
-                tool_calls: (!tool_calls.is_empty()).then_some(tool_calls),
                 ..Default::default()
             };
             let user_clone = ex.user_message.clone();
@@ -291,7 +274,10 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
                 }
             }
         }
-        ChatEvent::ModelsRefreshed(models) => state.models = models,
+        ChatEvent::ModelsRefreshed(models) => {
+            state.models = models;
+            state.last_error = None;
+        }
         ChatEvent::Error(err) => state.last_error = Some(err),
     }
 }
@@ -456,12 +442,6 @@ fn spawn_adapter(
                                         content: reasoning,
                                     }).await;
                                 }
-                                if let Some(calls) = choice.delta.tool_calls {
-                                    let _ = evt_tx.send(ChatEvent::ToolCallDelta {
-                                        id,
-                                        partials: calls,
-                                    }).await;
-                                }
                             }
                         }
                         Some(Err(err)) => {
@@ -497,20 +477,6 @@ fn spawn_adapter(
                             }
                             if let Some(content) = choice.message.content {
                                 let _ = evt_tx.send(ChatEvent::Delta { id, content }).await;
-                            }
-                            if let Some(calls) = choice.message.tool_calls {
-                                let partials = calls.into_iter().enumerate()
-                                    .map(|(i, call)| PartialToolCall {
-                                        index: i as u32,
-                                        id: Some(call.id),
-                                        kind: Some(call.kind),
-                                        function: Some(openai::chat::PartialFunctionCall {
-                                            name: Some(call.function.name),
-                                            arguments: Some(call.function.arguments),
-                                        }),
-                                    })
-                                    .collect();
-                                let _ = evt_tx.send(ChatEvent::ToolCallDelta { id, partials }).await;
                             }
                         }
                         let _ = evt_tx.send(ChatEvent::Completed {
@@ -597,9 +563,6 @@ impl Backend for ChatHandle {
     fn cancel(&self, id: ExchangeId) {
         self.cancel(id)
     }
-    fn clear(&self) {
-        self.clear_context();
-    }
     fn refresh_models(&self) {
         self.refresh_models();
     }
@@ -614,9 +577,6 @@ impl Backend for ChatHandle {
             response: ex.response.clone(),
             usage: ex.usage.as_ref().map(usage_view),
         })
-    }
-    fn models(&self) -> Vec<ModelId> {
-        self.state().models.clone()
     }
     fn last_error(&self) -> Option<Arc<str>> {
         self.state().last_error.clone()

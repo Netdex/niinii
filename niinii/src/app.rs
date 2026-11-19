@@ -3,7 +3,7 @@ use imgui::*;
 use crate::{
     renderer::context::Context,
     settings::Settings,
-    support::{docking::UiDocking, platform::ScrollLockSync, regex::CachedRegex},
+    support::{platform::ScrollLockSync, regex::CachedRegex},
     tts::{self, TtsEngine},
     view::{
         gloss::{GlossEvent, GlossInputAction, GlossView},
@@ -211,10 +211,6 @@ impl App {
     }
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
-        if self.settings().overlay_mode {
-            ui.dockspace_over_viewport();
-        }
-
         if let Some(scroll_lock) = self.scroll_lock.poll() {
             self.no_inputs = scroll_lock;
         }
@@ -293,8 +289,5 @@ impl App {
 
     pub fn settings(&self) -> &Settings {
         &self.settings
-    }
-    pub fn settings_mut(&mut self) -> &mut Settings {
-        &mut self.settings
     }
 }

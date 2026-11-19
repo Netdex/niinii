@@ -7,7 +7,7 @@ use ichiran::prelude::Ichiran;
 use crate::{
     settings::Settings,
     translator::Backend,
-    vndb::{self, clean_description, SearchParams, SortKey, VndbHandle, VnSummary},
+    vndb::{self, clean_description, SearchParams, SortKey, VnSummary, VndbHandle},
 };
 
 const SORT_OPTIONS: &[(SortKey, &str)] = &[
@@ -244,10 +244,10 @@ impl VndbView {
                     _ => ui.text(""),
                 }
                 ui.table_next_column();
-                ui.text_wrapped(&vn.platforms.join(", "));
+                ui.text_wrapped(vn.platforms.join(", "));
                 ui.table_next_column();
                 let devs: Vec<&str> = vn.developers.iter().map(|d| d.name.as_str()).collect();
-                ui.text_wrapped(&devs.join(", "));
+                ui.text_wrapped(devs.join(", "));
             }
         }
     }

@@ -73,9 +73,19 @@ vndb = { path = "../vndb" }
 
 [target.'cfg(windows)'.dependencies]
 imgui-dx11-renderer = { path = "../third-party/imgui-dx11-renderer" }
+imgui-winit-dx11-renderer-viewports = { path = "../../imgui-winit-dx11-renderer-viewports" }
 vvcore = { path = "../third-party/vvcore", optional = true }
 
-winapi = { version = "0.3", features = ["winuser"] }
+winapi = { version = "0.3", features = [
+    "d3d11",
+    "d3dcommon",
+    "dxgi",
+    "dxgiformat",
+    "dxgitype",
+    "minwindef",
+    "windef",
+    "winuser",
+] }
 wio = "0.2"
 
 [build-dependencies]

@@ -100,10 +100,6 @@ impl GlossView {
         self.pending_ast.is_some()
     }
 
-    pub fn input_text(&self) -> &str {
-        &self.input_text
-    }
-
     /// Preprocess `text` through the configured match/replace regex and spawn
     /// a parse. Aborts any prior in-flight parse. The preview text is shown
     /// immediately; `poll` will transition to the parsed AST on completion.
@@ -121,10 +117,7 @@ impl GlossView {
         // VN/clipboard text often arrives with hard line breaks from dialogue
         // wrapping; ichiran segments per-line so embedded newlines wreck the
         // parse. Strip them along with leading/trailing whitespace.
-        let text = text
-            .replace(['\n', '\r'], "")
-            .trim()
-            .to_owned();
+        let text = text.replace(['\n', '\r'], "").trim().to_owned();
         if text.is_empty() {
             return Ok(None);
         }

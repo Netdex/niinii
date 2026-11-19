@@ -38,7 +38,6 @@ use std::{
 
 use arc_swap::ArcSwap;
 use openai::{
-    chat::ToolCallAccumulator,
     realtime::{
         ClientEvent, Item, Realtime, RealtimeReasoning, RealtimeTruncation, RealtimeUsage,
         ServerEvent, SessionConfig,
@@ -86,11 +85,25 @@ pub enum RealtimeCommand {
 /// Events emitted by the connection task (and the models refresh) into the
 /// writer task, which reduces them into [`RealtimeState`].
 enum RealtimeEvent {
-    Started { id: ExchangeId, model: ModelId },
-    Delta { id: ExchangeId, content: String },
-    Completed { id: ExchangeId, usage: Option<UsageView> },
-    Failed { id: ExchangeId, error: Arc<str> },
-    Cancelled { id: ExchangeId },
+    Started {
+        id: ExchangeId,
+        model: ModelId,
+    },
+    Delta {
+        id: ExchangeId,
+        content: String,
+    },
+    Completed {
+        id: ExchangeId,
+        usage: Option<UsageView>,
+    },
+    Failed {
+        id: ExchangeId,
+        error: Arc<str>,
+    },
+    Cancelled {
+        id: ExchangeId,
+    },
     Connected,
     Disconnected,
     ModelsRefreshed(Vec<ModelId>),
@@ -262,6 +275,7 @@ async fn on_server_event(
                     })
                     .await;
             } else {
+                tracing::error!(message = %error.message, "realtime session error");
                 let _ = evt_tx
                     .send(RealtimeEvent::Error(Arc::from(error.message)))
                     .await;
@@ -402,6 +416,7 @@ async fn fail_pending(
     error: Arc<str>,
     cancel: &CancellationToken,
 ) {
+    tracing::error!(%error, "realtime connect failed");
     let _ = evt_tx.send(RealtimeEvent::Error(error.clone())).await;
     let _ = evt_tx.send(RealtimeEvent::Disconnected).await;
     loop {
@@ -538,7 +553,9 @@ fn handle_command(
                     }
                     Err(err) => {
                         tracing::error!(?err, "failed to refresh models");
-                        let _ = tx.send(RealtimeEvent::Error(Arc::from(err.to_string()))).await;
+                        let _ = tx
+                            .send(RealtimeEvent::Error(Arc::from(err.to_string())))
+                            .await;
                     }
                 }
             });
@@ -555,7 +572,6 @@ fn reduce(state: &mut RealtimeState, event: RealtimeEvent) {
                 response: Response::Streaming {
                     content: String::new(),
                     reasoning: String::new(),
-                    tool_calls: ToolCallAccumulator::new(),
                 },
                 usage: None,
             });
@@ -568,6 +584,7 @@ fn reduce(state: &mut RealtimeState, event: RealtimeEvent) {
             }
         }
         RealtimeEvent::Completed { id, usage } => {
+            state.last_error = None;
             let Some(ex) = find_mut(&mut state.exchanges, id) else {
                 return;
             };
@@ -581,11 +598,7 @@ fn reduce(state: &mut RealtimeState, event: RealtimeEvent) {
                     return;
                 }
             };
-            ex.response = Response::Completed {
-                content,
-                reasoning,
-                tool_calls: Vec::new(),
-            };
+            ex.response = Response::Completed { content, reasoning };
             ex.usage = usage;
         }
         RealtimeEvent::Failed { id, error } => {
@@ -603,7 +616,10 @@ fn reduce(state: &mut RealtimeState, event: RealtimeEvent) {
         }
         RealtimeEvent::Connected => state.connected = true,
         RealtimeEvent::Disconnected => state.connected = false,
-        RealtimeEvent::ModelsRefreshed(models) => state.models = models,
+        RealtimeEvent::ModelsRefreshed(models) => {
+            state.models = models;
+            state.last_error = None;
+        }
         RealtimeEvent::Error(err) => state.last_error = Some(err),
     }
 }
@@ -643,9 +659,6 @@ impl Backend for RealtimeHandle {
     fn cancel(&self, id: ExchangeId) {
         self.send(RealtimeCommand::Cancel(id));
     }
-    fn clear(&self) {
-        self.send(RealtimeCommand::ResetConversation);
-    }
     fn refresh_models(&self) {
         self.send(RealtimeCommand::RefreshModels);
     }
@@ -654,9 +667,6 @@ impl Backend for RealtimeHandle {
     }
     fn exchange(&self, id: ExchangeId) -> Option<ExchangeView> {
         self.state().exchange(id).cloned()
-    }
-    fn models(&self) -> Vec<ModelId> {
-        self.state().models.clone()
     }
     fn last_error(&self) -> Option<Arc<str>> {
         self.state().last_error.clone()

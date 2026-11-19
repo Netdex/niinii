@@ -208,8 +208,7 @@ impl VndbHandle {
                             if active_id_is(s, &id) {
                                 s.active = None;
                                 s.loading_active = false;
-                                s.last_error =
-                                    Some(Arc::from(format!("vndb id {id} not found")));
+                                s.last_error = Some(Arc::from(format!("vndb id {id} not found")));
                             }
                         });
                         return;
@@ -524,7 +523,10 @@ fn build_prompt(summary: &VnSummary, characters: &[Character]) -> String {
             if !cleaned.is_empty() {
                 out.push_str(": ");
                 // Flatten -- one character, one line.
-                for (i, segment) in cleaned.split('\n').filter(|s| !s.trim().is_empty()).enumerate()
+                for (i, segment) in cleaned
+                    .split('\n')
+                    .filter(|s| !s.trim().is_empty())
+                    .enumerate()
                 {
                     if i > 0 {
                         out.push_str(" / ");

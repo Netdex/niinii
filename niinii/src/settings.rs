@@ -18,6 +18,8 @@ pub enum RendererType {
     Glow,
     #[cfg(windows)]
     Direct3D11,
+    #[cfg(windows)]
+    Direct3D11Viewports,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]

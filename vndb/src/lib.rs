@@ -191,20 +191,15 @@ pub struct SearchParams {
     pub reverse: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortKey {
+    #[default]
     SearchRank,
     Title,
     Released,
     Rating,
     VoteCount,
     Popularity,
-}
-
-impl Default for SortKey {
-    fn default() -> Self {
-        Self::SearchRank
-    }
 }
 
 impl SortKey {
