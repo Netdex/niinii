@@ -5,7 +5,10 @@ use openai::chat::{Message, Role};
 
 use crate::{
     settings::Settings,
-    translator::{ChatHandle, ContextEdit, MsgId},
+    translator::{
+        chat::{CONTEXT_NOTE, LINE_FORMAT_NOTE},
+        ChatHandle, ContextEdit, MsgId,
+    },
     view::mixins::{
         checkbox_option, checkbox_option_with_default, combo_enum, combo_list, drag_handle,
         help_marker,
@@ -155,31 +158,14 @@ pub fn window(
             )
             .build();
 
-            // System-addendum row (e.g. VNDB-derived character info),
-            // read-only. Rendered directly from the snapshot's `Arc<str>`.
+            // Read-only rows for the rest of the system message, in the order
+            // it is assembled.
+            static_system_row(ui, "line_note", LINE_FORMAT_NOTE, None);
             if let Some(addendum) = state.system_addendum.as_deref() {
-                ui.table_next_column();
-                ui.disabled(true, || drag_handle(ui));
-                ui.table_next_column();
-                ui.table_next_column();
-                ui.disabled(true, || {
-                    let mut dummy = true;
-                    ui.checkbox("##vlock", &mut dummy);
-                });
-                ui.table_next_column();
-                ui.disabled(true, || {
-                    ui.set_next_item_width(ui.current_font_size() * 6.0);
-                    let mut system_role = Role::System;
-                    combo_enum(ui, "##vrole", &mut system_role);
-                });
-                ui.table_next_column();
-                ui.child_window("##addendum")
-                    .size([ui.content_region_avail()[0], 200.0])
-                    .border(true)
-                    .build(|| {
-                        let _wrap = ui.push_text_wrap_pos_with_pos(0.0);
-                        ui.text_disabled(addendum);
-                    });
+                static_system_row(ui, "addendum", addendum, Some(200.0));
+            }
+            if !state.context.is_empty() {
+                static_system_row(ui, "context_note", CONTEXT_NOTE, None);
             }
 
             // Sweep buffers whose messages are gone; keep the rest. Stable
@@ -241,10 +227,17 @@ pub fn window(
                 let buf = buffers
                     .entry(entry.id)
                     .or_insert_with(|| message.content.clone().unwrap_or_default());
+                let not_sent = message.role == Role::Assistant && message.name.is_none();
                 ui.set_next_item_width(ui.content_region_avail()[0]);
-                ui.input_text("##content", buf).build();
+                ui.disabled(not_sent, || {
+                    ui.input_text("##content", buf).build();
+                });
                 if ui.is_item_deactivated_after_edit() {
                     interact = Some(Interaction::CommitContent(idx, buf.clone()));
+                }
+                if not_sent && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED)
+                {
+                    ui.tooltip_text("Kept for reference; not sent to the model");
                 }
             }
 
@@ -284,4 +277,35 @@ pub fn window(
             ui.text_disabled("drag and drop by handle to reorder");
         }
     });
+}
+
+/// A read-only System row in the context table. `height: None` fits the box
+/// to the text's line count.
+fn static_system_row(ui: &Ui, id: &str, text: &str, height: Option<f32>) {
+    let _id = ui.push_id(id);
+    ui.table_next_column();
+    ui.disabled(true, || drag_handle(ui));
+    ui.table_next_column();
+    ui.table_next_column();
+    ui.disabled(true, || {
+        let mut dummy = true;
+        ui.checkbox("##lock", &mut dummy);
+    });
+    ui.table_next_column();
+    ui.disabled(true, || {
+        ui.set_next_item_width(ui.current_font_size() * 6.0);
+        let mut system_role = Role::System;
+        combo_enum(ui, "##role", &mut system_role);
+    });
+    ui.table_next_column();
+    let height = height.unwrap_or_else(|| {
+        let lines = text.lines().count().max(1) as f32;
+        ui.frame_height() + (lines - 1.0) * ui.text_line_height()
+    });
+    // Read-only rather than disabled: disabled styling marks content that is
+    // not sent, and this is. Also keeps long text scrollable and copyable.
+    let mut buf = text.to_owned();
+    ui.input_text_multiline("##text", &mut buf, [ui.content_region_avail()[0], height])
+        .read_only(true)
+        .build();
 }

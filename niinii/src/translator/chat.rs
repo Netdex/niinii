@@ -125,6 +125,7 @@ pub enum ChatEvent {
     Completed {
         id: ExchangeId,
         usage: Option<Usage>,
+        finish_reason: Option<String>,
         max_context_tokens: [u32; 2],
     },
     Failed {
@@ -232,9 +233,12 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
         ChatEvent::Completed {
             id,
             usage,
+            finish_reason,
             max_context_tokens,
         } => {
-            state.last_error = None;
+            state.last_error = finish_reason
+                .filter(|r| r != "stop")
+                .map(|r| Arc::from(format!("response ended early: finish_reason={r}")));
             let Some(ex) = find_mut(&mut state.exchanges, id) else {
                 return;
             };
@@ -291,8 +295,39 @@ fn build_prompt(state: &ChatState, config: &TranslateConfig, user: &Message) -> 
     // accept a single System message at the head, so we concatenate the
     // user-edited prompt and the system addendum (e.g. VNDB-derived text)
     // into a single message.
+    // Context is sent as source lines only: the model's own earlier replies,
+    // if shown as turns, become examples it copies (including any that ended
+    // early), which degrades every following reply. Pinned (named) and
+    // non-user/assistant messages are kept as turns.
+    let mut source_lines = String::new();
+    let mut kept = Vec::new();
+    for e in &state.context {
+        let m = &e.message;
+        match (&m.role, &m.name) {
+            (Role::User, None) => {
+                if let Some(content) = &m.content {
+                    source_lines.push_str(content);
+                    source_lines.push('\n');
+                }
+            }
+            (Role::Assistant, None) => {}
+            _ => kept.push(m),
+        }
+    }
+
     let mut system = config.system_prompt.clone();
-    if let Some(extra) = &state.system_addendum {
+    let context_block = (!source_lines.is_empty())
+        .then(|| format!("{CONTEXT_NOTE}\n<context>\n{source_lines}</context>"));
+    // The context block goes last: it only grows at its end, so successive
+    // requests share the prefix through the previous request's block.
+    for extra in [
+        Some(LINE_FORMAT_NOTE),
+        state.system_addendum.as_deref(),
+        context_block.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
         if !extra.is_empty() {
             if !system.is_empty() {
                 system.push_str("\n\n");
@@ -300,24 +335,34 @@ fn build_prompt(state: &ChatState, config: &TranslateConfig, user: &Message) -> 
             system.push_str(extra);
         }
     }
-    let mut prompt = Vec::with_capacity(state.context.len() + 2);
+    let mut prompt = Vec::with_capacity(kept.len() + 2);
     prompt.push(Message {
         role: Role::System,
         content: Some(system),
         ..Default::default()
     });
-    prompt.extend(state.context.iter().map(|e| e.message.clone()));
-    // Anchor the latest line so the LLM doesn't drift onto a mid-conversation
-    // turn once history grows. Applied only to the live message at build time
-    // -- `ex.user_message` (and therefore future context) keeps the raw text,
-    // so historical turns don't accumulate stale "Translate this line:"
-    // prefixes.
-    let mut anchored = user.clone();
-    if let Some(content) = anchored.content.as_mut() {
-        *content = format!("Translate this line:\n{}", content);
-    }
-    prompt.push(anchored);
+    // User turns are wrapped at build time only; stored context keeps the
+    // raw text.
+    prompt.extend(kept.into_iter().chain(std::iter::once(user)).map(wrap_line));
     prompt
+}
+
+/// Placed before the system addendum so it stays in the cached prefix when
+/// the addendum changes.
+pub const LINE_FORMAT_NOTE: &str =
+    "Each user message is one line of the script, wrapped in <line></line> tags.";
+
+pub const CONTEXT_NOTE: &str = "The script lines preceding the current line, oldest first, \
+    for context only (they are already translated; do not translate them):";
+
+fn wrap_line(message: &Message) -> Message {
+    let mut message = message.clone();
+    if message.role == Role::User {
+        if let Some(content) = message.content.as_mut() {
+            *content = format!("<line>{content}</line>");
+        }
+    }
+    message
 }
 
 fn apply_edit(state: &mut ChatState, edit: ContextEdit) {
@@ -419,6 +464,7 @@ fn spawn_adapter(
                 }
             };
             let mut usage = None;
+            let mut finish_reason = None;
             loop {
                 tokio::select! {
                     biased;
@@ -430,6 +476,9 @@ fn spawn_adapter(
                         Some(Ok(cmpl)) => {
                             if let Some(u) = cmpl.usage { usage = Some(u); }
                             for choice in cmpl.choices {
+                                if choice.finish_reason.is_some() {
+                                    finish_reason = choice.finish_reason;
+                                }
                                 if let Some(content) = choice.delta.content {
                                     let _ = evt_tx.send(ChatEvent::Delta {
                                         id,
@@ -453,7 +502,7 @@ fn spawn_adapter(
                         }
                         None => {
                             let _ = evt_tx.send(ChatEvent::Completed {
-                                id, usage, max_context_tokens: max_ctx,
+                                id, usage, finish_reason, max_context_tokens: max_ctx,
                             }).await;
                             return;
                         }
@@ -469,7 +518,9 @@ fn spawn_adapter(
                 res = client.chat(req) => match res {
                     Ok(cmpl) => {
                         let usage = Some(cmpl.usage.clone());
+                        let mut finish_reason = None;
                         if let Some(choice) = cmpl.choices.into_iter().next() {
+                            finish_reason = choice.finish_reason;
                             if let Some(reasoning) = choice.message.reasoning_content {
                                 let _ = evt_tx.send(ChatEvent::ReasoningDelta {
                                     id, content: reasoning,
@@ -480,7 +531,7 @@ fn spawn_adapter(
                             }
                         }
                         let _ = evt_tx.send(ChatEvent::Completed {
-                            id, usage, max_context_tokens: max_ctx,
+                            id, usage, finish_reason, max_context_tokens: max_ctx,
                         }).await;
                     }
                     Err(err) => {
