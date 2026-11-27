@@ -1,0 +1,30 @@
+[package]
+name = "dear-imgui-reflect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Reflection-based UI helpers for dear-imgui-rs (auto-generate ImGui widgets for Rust structs)"
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+
+[dependencies]
+dear-imgui-rs.workspace = true
+
+# Optional derive macro crate; enabled by default for ergonomics.
+dear-imgui-reflect-derive = { workspace = true, optional = true }
+
+# Optional math crates for better interop in ImGuiValue implementations.
+glam = { workspace = true, optional = true }
+mint = { workspace = true, optional = true }
+
+[features]
+default = ["derive"]
+derive = ["dep:dear-imgui-reflect-derive"]
+glam = ["dep:glam"]
+mint = ["dep:mint"]
+
+[dev-dependencies]
+static_assertions = "1.1"

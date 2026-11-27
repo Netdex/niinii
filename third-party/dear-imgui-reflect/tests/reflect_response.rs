@@ -1,0 +1,63 @@
+use dear_imgui_reflect as reflect;
+use dear_imgui_reflect::imgui::Context;
+use reflect::ImGuiReflect;
+
+use std::collections::HashMap;
+
+mod common;
+
+use common::test_guard;
+
+/// Simple struct to exercise container-level events with stable field paths.
+#[derive(ImGuiReflect, Default)]
+struct ResponseDemo {
+    samples: Vec<i32>,
+    offsets: [i32; 3],
+    map: HashMap<String, i32>,
+}
+
+#[test]
+fn reflect_response_tracks_container_events_with_paths() {
+    let _guard = test_guard();
+
+    let mut ctx = Context::create();
+    {
+        let io = ctx.io_mut();
+        io.set_display_size([800.0, 600.0]);
+        io.set_delta_time(1.0 / 60.0);
+    }
+    ctx.font_atlas()
+        .try_claim_legacy_renderer()
+        .expect("headless test requires the legacy font-atlas capability")
+        .build();
+    let _ = ctx.set_ini_filename::<std::path::PathBuf>(None);
+
+    let mut demo = ResponseDemo::default();
+    let session = reflect::ReflectSession::new();
+
+    // First pass: no changes should produce no events.
+    let ui = ctx.frame();
+    let mut inspector = session.inspector(ui);
+    let _changed = inspector.input("ResponseDemo", &mut demo);
+    let resp = inspector.into_response();
+    assert!(resp.is_empty());
+
+    // Mutate the data before the next frame so that container editors have
+    // something to operate on.
+    demo.samples.extend_from_slice(&[1, 2]);
+    demo.offsets = [0, 1, 2];
+    demo.map.insert("a".to_owned(), 1);
+
+    // End the first frame to satisfy Dear ImGui's frame lifecycle assertions.
+    drop(ctx.render_legacy());
+
+    let ui = ctx.frame();
+
+    // Second pass: containers have elements; we still don't simulate clicks,
+    // but this ensures that simply reflecting does not spuriously emit events.
+    let mut inspector = session.inspector(ui);
+    let _changed = inspector.input("ResponseDemo", &mut demo);
+    let resp = inspector.into_response();
+    assert!(resp.is_empty());
+    drop(ctx.render_legacy());
+}
