@@ -13,6 +13,8 @@ pub struct TermView<'a> {
     kanji_info: &'a HashMap<char, Kanji>,
     romaji: &'a Romanized,
     wrap_w: f32,
+    /// Senses shown per gloss list; the rest are summarized as a count.
+    max_senses: Option<usize>,
 }
 impl<'a> TermView<'a> {
     pub fn new(
@@ -26,7 +28,13 @@ impl<'a> TermView<'a> {
             kanji_info,
             romaji,
             wrap_w,
+            max_senses: None,
         }
+    }
+
+    pub fn max_senses(mut self, n: usize) -> Self {
+        self.max_senses = Some(n);
+        self
     }
 
     fn add_pos(&self, _ctx: &mut Context, ui: &Ui, pos: &str) {
@@ -39,7 +47,8 @@ impl<'a> TermView<'a> {
     }
 
     fn add_glosses(&self, ctx: &mut Context, ui: &Ui, glosses: &[Gloss]) {
-        for (i, gloss) in glosses.iter().enumerate() {
+        let shown = self.max_senses.unwrap_or(usize::MAX).min(glosses.len());
+        for (i, gloss) in glosses[..shown].iter().enumerate() {
             // index
             ui.text(format!("{}.", i + 1));
             ui.same_line();
@@ -65,6 +74,9 @@ impl<'a> TermView<'a> {
                     ui.text(format!("({})", info));
                 }
             });
+        }
+        if shown < glosses.len() {
+            ui.text_disabled(format!("+{} more", glosses.len() - shown));
         }
     }
 

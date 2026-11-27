@@ -13,12 +13,19 @@ use crate::parser::{self, Parser, SyntaxTree};
 use crate::renderer::context::{Context, ContextFlags};
 use crate::settings::{RubyTextType, Settings};
 use crate::support::{platform::clipboard_sequence_number, regex::CachedRegex};
+use crate::translator::ExchangeId;
 use crate::view::{raw::RawView, term::TermView};
 
 /// Highlight color for terms that came from an injected custom entry
 /// (`Term::is_custom()`). Distinct enough from the default
 /// `TextSelectedBg` to be obvious at a glance.
 const NAME_HIGHLIGHT: [f32; 4] = [0.85, 0.55, 0.20, 0.55];
+
+/// Lines kept for stepping back through recent text.
+const HISTORY_LEN: usize = 100;
+
+/// Senses per gloss list in the hover tooltip.
+const TOOLTIP_SENSES: usize = 3;
 
 enum View {
     /// Preview shown while a parse is in flight: the text chunked by
@@ -27,6 +34,17 @@ enum View {
     Interpret {
         ast: SyntaxTree,
     },
+}
+
+/// One line of text with its gloss and translation.
+struct Line {
+    id: u64,
+    /// The text as glossed and translated (after the match/replace regex).
+    text: String,
+    view: View,
+    /// Selected alternative per segment, keyed by segment index.
+    selected_clause: RefCell<HashMap<usize, i32>>,
+    translation: Option<ExchangeId>,
 }
 
 /// Emitted from `GlossView::poll`. `ClipboardReceived` surfaces new clipboard
@@ -56,10 +74,13 @@ pub struct GlossView {
 
     events: VecDeque<GlossEvent>,
 
-    view: Option<View>,
+    history: VecDeque<Line>,
+    /// Index into `history` of the line being shown.
+    cursor: usize,
+    next_line_id: u64,
+    /// The line `pending_ast` / `pending_kanji` are parsing.
+    pending_line: Option<u64>,
     show_term_window: RefCell<HashSet<Romanized>>,
-    /// Selected alternative per segment, keyed by segment index in the current gloss.
-    selected_clause: RefCell<HashMap<usize, i32>>,
     show_raw: bool,
     show_glossary: bool,
 }
@@ -75,9 +96,11 @@ impl GlossView {
             last_clipboard: String::new(),
             last_clipboard_seq: 0,
             events: VecDeque::new(),
-            view: None,
+            history: VecDeque::new(),
+            cursor: 0,
+            next_line_id: 0,
+            pending_line: None,
             show_term_window: RefCell::new(HashSet::new()),
-            selected_clause: RefCell::new(HashMap::new()),
             show_raw: false,
             show_glossary: false,
         }
@@ -87,12 +110,71 @@ impl GlossView {
         &self.parser
     }
 
+    fn current(&self) -> Option<&Line> {
+        self.history.get(self.cursor)
+    }
+
+    fn view(&self) -> Option<&View> {
+        self.current().map(|line| &line.view)
+    }
+
     pub fn ast(&self) -> Option<&SyntaxTree> {
-        if let Some(View::Interpret { ast, .. }) = &self.view {
-            Some(ast)
-        } else {
-            None
+        match self.view() {
+            Some(View::Interpret { ast }) => Some(ast),
+            _ => None,
         }
+    }
+
+    /// Translation of the line being shown.
+    pub fn translation(&self) -> Option<ExchangeId> {
+        self.current().and_then(|line| line.translation)
+    }
+
+    pub fn set_translation(&mut self, id: ExchangeId) {
+        if let Some(line) = self.history.get_mut(self.cursor) {
+            line.translation = Some(id);
+        }
+    }
+
+    /// 1-based position of the line being shown, and the number of lines.
+    pub fn history_position(&self) -> (usize, usize) {
+        (self.cursor + 1, self.history.len())
+    }
+
+    /// Whether the line being shown is not the latest one.
+    pub fn showing_earlier_line(&self) -> bool {
+        self.cursor + 1 < self.history.len()
+    }
+
+    pub fn history_back(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    pub fn history_forward(&mut self) {
+        self.cursor = (self.cursor + 1).min(self.history.len().saturating_sub(1));
+    }
+
+    /// Each line's index, text and translation, oldest first.
+    pub fn lines(&self) -> impl Iterator<Item = (usize, &str, Option<ExchangeId>)> {
+        self.history
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| (idx, line.text.as_str(), line.translation))
+    }
+
+    /// Identifies the newest line; changes whenever a line is added.
+    pub fn latest_line_id(&self) -> Option<u64> {
+        self.history.back().map(|line| line.id)
+    }
+
+    pub fn show_line(&mut self, idx: usize) {
+        if idx < self.history.len() {
+            self.cursor = idx;
+        }
+    }
+
+    pub fn history_latest(&mut self) {
+        self.cursor = self.history.len().saturating_sub(1);
     }
 
     pub fn is_processing(&self) -> bool {
@@ -128,14 +210,32 @@ impl GlossView {
         if let Some(prev) = self.pending_kanji.take() {
             prev.abort();
         }
+        // A line replaced before its parse finished was never shown glossed.
+        if let Some(prev) = self.pending_line.take() {
+            if self.history.back().is_some_and(|line| line.id == prev) {
+                self.history.pop_back();
+            }
+        }
 
         let variants = if settings.more_variants { 5 } else { 1 };
         let splits: Vec<(Split, String)> = basic_split(&text)
             .into_iter()
             .map(|(kind, s)| (kind, s.to_string()))
             .collect();
-        self.view = Some(View::Text(splits.clone()));
-        self.selected_clause.get_mut().clear();
+        let id = self.next_line_id;
+        self.next_line_id += 1;
+        self.history.push_back(Line {
+            id,
+            text: text.clone(),
+            view: View::Text(splits.clone()),
+            selected_clause: RefCell::new(HashMap::new()),
+            translation: None,
+        });
+        if self.history.len() > HISTORY_LEN {
+            self.history.pop_front();
+        }
+        self.history_latest();
+        self.pending_line = Some(id);
 
         let parser_ast = self.parser.clone();
         let ast_text = text.clone();
@@ -182,6 +282,9 @@ impl GlossView {
             }
         }
 
+        let pending = self
+            .pending_line
+            .and_then(|id| self.history.iter().position(|line| line.id == id));
         if let Some(handle) = self.pending_ast.as_mut() {
             if let Some(poll) = handle.now_or_never() {
                 self.pending_ast = None;
@@ -190,7 +293,9 @@ impl GlossView {
                         if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
                             ctx.add_unknown_glyphs_from_root(&ast.root);
                         }
-                        self.view = Some(View::Interpret { ast });
+                        if let Some(idx) = pending {
+                            self.history[idx].view = View::Interpret { ast };
+                        }
                     }
                     Ok(Err(err)) => self.events.push_back(GlossEvent::Failed(err)),
                     // Aborted by a follow-up request; the replacement is already in flight.
@@ -201,10 +306,16 @@ impl GlossView {
 
         // Only drain kanji once the AST has landed -- the JoinHandle holds a
         // completed result for us, so there's no need for a separate buffer.
-        if let Some(View::Interpret { ast, .. }) = &mut self.view {
+        let line = pending.and_then(|idx| self.history.get_mut(idx));
+        if let Some(Line {
+            view: View::Interpret { ast },
+            ..
+        }) = line
+        {
             if let Some(handle) = self.pending_kanji.as_mut() {
                 if let Some(poll) = handle.now_or_never() {
                     self.pending_kanji = None;
+                    self.pending_line = None;
                     match poll {
                         Ok(Ok(kanji_info)) => ast.kanji_info = kanji_info,
                         Ok(Err(err)) => self.events.push_back(GlossEvent::Failed(err)),
@@ -263,7 +374,7 @@ impl GlossView {
             .focus_on_appearing(true)
             .opened(&mut opened)
             .build(|| {
-                if let Some(View::Interpret { ast: gloss, .. }) = &self.view {
+                if let Some(View::Interpret { ast: gloss, .. }) = self.view() {
                     TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 0.0)
                         .ui(ctx, ui, settings);
                 }
@@ -273,8 +384,10 @@ impl GlossView {
 
     fn term_tooltip(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, romanized: &Romanized) {
         ui.tooltip(|| {
-            if let Some(View::Interpret { ast: gloss, .. }) = &self.view {
+            if let Some(View::Interpret { ast: gloss, .. }) = self.view() {
+                // The term window (click) shows the full entry.
                 TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 30.0)
+                    .max_senses(TOOLTIP_SENSES)
                     .ui(ctx, ui, settings)
             }
         });
@@ -288,6 +401,9 @@ impl GlossView {
         skipped: &str,
         preview: bool,
     ) {
+        let _hl = self
+            .showing_earlier_line()
+            .then(|| push_earlier_line_highlight(ui));
         draw_kanji_text(
             ui,
             ctx,
@@ -311,6 +427,9 @@ impl GlossView {
     /// Drawn with `highlight: true` so it visually hints at the eventual
     /// clause boxes.
     fn add_preview_text(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, text: &str) {
+        let _hl = self
+            .showing_earlier_line()
+            .then(|| push_earlier_line_highlight(ui));
         draw_kanji_text(
             ui,
             ctx,
@@ -347,22 +466,33 @@ impl GlossView {
             RubyTextType::Romaji => RubyTextMode::Text(romanized.romaji()),
             _ => RubyTextMode::Pad,
         };
-        let ul_hover = draw_kanji_text(
-            ui,
-            ctx,
-            term.text(),
-            fg_text,
-            KanjiStyle {
-                highlight: true,
-                highlight_color: term.is_custom().then_some(NAME_HIGHLIGHT),
-                stroke: settings.stroke_text,
-                preview: false,
-                underline,
-            },
-        );
+        let ul_hover = {
+            // Dropped before the tooltip below so the tooltip keeps its colors.
+            let _hl = self
+                .showing_earlier_line()
+                .then(|| push_earlier_line_highlight(ui));
+            draw_kanji_text(
+                ui,
+                ctx,
+                term.text(),
+                fg_text,
+                KanjiStyle {
+                    highlight: true,
+                    highlight_color: term.is_custom().then_some(NAME_HIGHLIGHT),
+                    stroke: settings.stroke_text,
+                    preview: false,
+                    underline,
+                },
+            )
+        };
 
         if ui.is_item_hovered() {
             ui.set_mouse_cursor(Some(MouseCursor::Hand));
+        }
+        // Delayed so sweeping the mouse across the line doesn't flash a
+        // tooltip per word; imgui shares the delay, so moving to a neighbor
+        // after one is shown is immediate.
+        if ui.is_item_hovered_with_flags(ItemHoveredFlags::DELAY_SHORT) {
             self.term_tooltip(ctx, ui, settings, romanized);
         }
 
@@ -387,7 +517,8 @@ impl GlossView {
                 self.add_skipped(ctx, ui, settings, skipped, false);
             }
             Segment::Clauses(clauses) => {
-                let mut selected_clause = self.selected_clause.borrow_mut();
+                let Some(line) = self.current() else { return };
+                let mut selected_clause = line.selected_clause.borrow_mut();
                 let mut clause_idx = selected_clause.get(&segment_idx).cloned().unwrap_or(0);
 
                 let clause = clauses.get(clause_idx as usize);
@@ -455,8 +586,11 @@ impl GlossView {
 
     pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
         ui.text(""); // anchor for line wrapping
-        match &self.view {
-            Some(View::Interpret { ast }) => {
+        let Some(line) = self.history.get(self.cursor) else {
+            return;
+        };
+        match &line.view {
+            View::Interpret { ast } => {
                 self.add_root(ctx, ui, settings, &ast.root);
 
                 if self.show_raw {
@@ -476,7 +610,7 @@ impl GlossView {
                         });
                 }
             }
-            Some(View::Text(splits)) => {
+            View::Text(splits) => {
                 for (kind, chunk) in splits {
                     match kind {
                         Split::Text => self.add_preview_text(ctx, ui, settings, chunk),
@@ -484,7 +618,6 @@ impl GlossView {
                     }
                 }
             }
-            _ => {}
         }
         ui.new_line();
 

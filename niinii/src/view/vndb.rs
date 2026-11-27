@@ -73,6 +73,23 @@ impl VndbView {
         }
     }
 
+    /// Menu-bar label naming the VN whose characters the translator uses.
+    /// Opens the window when clicked.
+    pub fn show_status(&mut self, ui: &Ui) {
+        let state = self.vndb.state();
+        let label = match (&state.active, state.loading_active) {
+            (_, true) => "loading VN...",
+            (Some(active), false) => active.summary.title.as_str(),
+            (None, false) => "no VN",
+        };
+        let _dim = state.active.is_none().then(|| {
+            ui.push_style_color(StyleColor::Text, ui.style_color(StyleColor::TextDisabled))
+        });
+        if ui.menu_item(format!("{label}##vndb_status")) {
+            self.open = true;
+        }
+    }
+
     pub fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
         if !self.open {
             return;

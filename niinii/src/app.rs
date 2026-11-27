@@ -2,20 +2,20 @@ use imgui::*;
 
 use crate::{
     renderer::context::Context,
-    settings::Settings,
+    settings::{RubyTextType, Settings},
     support::{platform::ScrollLockSync, regex::CachedRegex},
     tts::{self, TtsEngine},
     view::{
         gloss::{GlossEvent, GlossInputAction, GlossView},
+        help::HelpView,
         mixins::{ellipses, stroke_text_with_highlight},
         settings::SettingsView,
         style_editor::StyleEditor,
+        transcript::TranscriptView,
         translator::TranslatorWindow,
         vndb::VndbView,
     },
 };
-
-const ERROR_MODAL_ID: &str = "Error";
 
 #[derive(thiserror::Error, Debug)]
 enum Error {
@@ -31,6 +31,7 @@ pub struct App {
     scroll_lock: ScrollLockSync,
 
     settings: Settings,
+    /// Shown under the transcript until the next line.
     error: Option<Error>,
     tts: TtsEngine,
     gloss: GlossView,
@@ -38,6 +39,8 @@ pub struct App {
     settings_view: SettingsView,
     style_editor: StyleEditor,
     vndb_view: VndbView,
+    help_view: HelpView,
+    transcript: TranscriptView,
 
     auto_tts_regex: CachedRegex,
 }
@@ -64,24 +67,24 @@ impl App {
             settings_view: SettingsView::new(),
             style_editor: StyleEditor::new(),
             vndb_view,
+            help_view: HelpView::new(),
+            transcript: TranscriptView::new(),
             auto_tts_regex: CachedRegex::default(),
         }
     }
 
-    fn request_gloss(&mut self, ui: &Ui, text: &str) {
+    fn request_gloss(&mut self, text: &str) {
         let processed = match self.gloss.request(text, &self.settings) {
             Ok(Some(p)) => p,
             Ok(None) => return,
-            Err(err) => return self.error(ui, Error::Gloss(err)),
+            Err(err) => return self.error(Error::Gloss(err)),
         };
+        self.error = None;
         // Auto-translate and auto-tts both run on the regex-processed input
         // text and don't need the parsed AST, so kick them off here in
         // parallel with the still-running parse.
         if self.settings.auto_translate {
-            self.translator_window
-                .translate(&self.settings, processed.clone());
-        } else {
-            self.translator_window.clear_current();
+            self.translate(processed.clone());
         }
         if let Some(pattern) = self.settings.auto_tts_regex.clone() {
             let tts_text = self.auto_tts_regex.get(&pattern).ok().and_then(|regex| {
@@ -93,31 +96,83 @@ impl App {
                 })
             });
             if let Some(tts_text) = tts_text {
-                self.request_tts(ui, &tts_text);
+                self.request_tts(&tts_text);
             }
         }
     }
 
-    fn request_tts(&mut self, ui: &Ui, text: &str) {
-        let span = tracing::debug_span!("tts");
-        let _enter = span.enter();
-        if let Err(err) = self.tts.request_tts(text) {
-            self.error(ui, err.into());
+    /// Translate `text` as the line being shown.
+    fn translate(&mut self, text: String) {
+        let id = self.translator_window.translate(&self.settings, text);
+        self.gloss.set_translation(id);
+    }
+
+    fn translate_current(&mut self) {
+        if let Some(text) = self.gloss.ast().map(|ast| ast.original_text.clone()) {
+            self.translate(text);
         }
     }
 
-    fn error(&mut self, ui: &Ui, err: Error) {
+    fn speak_current(&mut self) {
+        if let Some(text) = self.gloss.ast().map(|ast| ast.original_text.clone()) {
+            self.request_tts(&text);
+        }
+    }
+
+    fn request_tts(&mut self, text: &str) {
+        let span = tracing::debug_span!("tts");
+        let _enter = span.enter();
+        if let Err(err) = self.tts.request_tts(text) {
+            self.error(err.into());
+        }
+    }
+
+    fn error(&mut self, err: Error) {
         tracing::error!(%err);
         self.error = Some(err);
-        ui.open_popup(ERROR_MODAL_ID);
     }
 
     fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
         while let Some(event) = self.gloss.poll(ui, ctx, &self.settings) {
             match event {
-                GlossEvent::ClipboardReceived(text) => self.request_gloss(ui, &text),
-                GlossEvent::Failed(err) => self.error(ui, err.into()),
+                GlossEvent::ClipboardReceived(text) => self.request_gloss(&text),
+                GlossEvent::Failed(err) => self.error(err.into()),
             }
+        }
+    }
+
+    fn cycle_ruby_text(&mut self) {
+        self.settings.ruby_text_type = match self.settings.ruby_text_type {
+            RubyTextType::None => RubyTextType::Furigana,
+            RubyTextType::Furigana => RubyTextType::Romaji,
+            RubyTextType::Romaji => RubyTextType::None,
+        };
+    }
+
+    /// Keys act while any niinii window has focus, except when typing. Listed
+    /// for the user in `view::help::SHORTCUTS`.
+    fn handle_shortcuts(&mut self, ui: &Ui) {
+        if ui.io().want_text_input {
+            return;
+        }
+        let processing = self.gloss.is_processing();
+        if ui.is_key_pressed_no_repeat(Key::T) && !processing {
+            self.translate_current();
+        }
+        if cfg!(feature = "voicevox") && ui.is_key_pressed_no_repeat(Key::S) && !processing {
+            self.speak_current();
+        }
+        if ui.is_key_pressed_no_repeat(Key::R) {
+            self.cycle_ruby_text();
+        }
+        if ui.is_key_pressed(Key::LeftArrow) {
+            self.gloss.history_back();
+        }
+        if ui.is_key_pressed(Key::RightArrow) {
+            self.gloss.history_forward();
+        }
+        if ui.is_key_pressed_no_repeat(Key::End) {
+            self.gloss.history_latest();
         }
     }
 
@@ -128,9 +183,31 @@ impl App {
                     .build_with_ref(&mut self.settings.watch_clipboard);
                 ui.menu_item_config("Show input")
                     .build_with_ref(&mut self.settings.show_manual_input);
+                ui.menu_item_config("Auto-translate")
+                    .build_with_ref(&mut self.settings.auto_translate);
+                if let Some(_menu) = ui.begin_menu("Ruby text") {
+                    for (label, kind) in [
+                        ("None", RubyTextType::None),
+                        ("Furigana", RubyTextType::Furigana),
+                        ("Romaji", RubyTextType::Romaji),
+                    ] {
+                        if ui
+                            .menu_item_config(label)
+                            .selected(self.settings.ruby_text_type == kind)
+                            .build()
+                        {
+                            self.settings.ruby_text_type = kind;
+                        }
+                    }
+                    ui.separator();
+                    if ui.menu_item_config("Cycle").shortcut("R").build() {
+                        self.cycle_ruby_text();
+                    }
+                }
                 ui.separator();
                 self.style_editor.show_menu_item(ui);
                 self.translator_window.show_menu_item(ui);
+                self.transcript.show_menu_item(ui);
                 self.vndb_view.show_menu_item(ui);
                 ui.separator();
                 self.settings_view.show_menu_item(ui);
@@ -147,6 +224,9 @@ impl App {
             if let Some(_menu) = ui.begin_menu("Gloss") {
                 self.gloss.show_menu(ctx, ui);
             }
+            if let Some(_menu) = ui.begin_menu("Help") {
+                self.help_view.show_menu_item(ui);
+            }
             if let Some(_menu) = ui.begin_menu("Debug") {
                 if ui.menu_item("Debugger") {
                     self.show_metrics_window = true;
@@ -154,34 +234,55 @@ impl App {
             }
             ui.separator();
             let disable_state = ui.begin_disabled(self.gloss.is_processing());
-            if ui.menu_item("Translate") {
-                if let Some(gloss) = self.gloss.ast() {
-                    let text = gloss.original_text.clone();
-                    self.translator_window.translate(&self.settings, text);
-                }
+            if ui.menu_item_config("Translate").shortcut("T").build() {
+                self.translate_current();
             }
-            if cfg!(feature = "voicevox") && ui.menu_item("Speak") {
-                if let Some(gloss) = self.gloss.ast() {
-                    self.request_tts(ui, &gloss.original_text.clone());
-                }
+            if cfg!(feature = "voicevox") && ui.menu_item_config("Speak").shortcut("S").build() {
+                self.speak_current();
             }
             drop(disable_state);
+
+            ui.separator();
+            let (pos, len) = self.gloss.history_position();
+            {
+                let _disabled = ui.begin_disabled(pos <= 1);
+                if ui.menu_item_config("<").shortcut("Left").build() {
+                    self.gloss.history_back();
+                }
+            }
+            {
+                let _disabled = ui.begin_disabled(pos >= len);
+                if ui.menu_item_config(">").shortcut("Right").build() {
+                    self.gloss.history_forward();
+                }
+            }
+            if len > 0 {
+                ui.text_disabled(format!("{pos}/{len}"));
+            }
+
+            ui.separator();
+            self.vndb_view.show_status(ui);
         }
     }
 
-    fn show_error_modal(&mut self, _ctx: &mut Context, ui: &Ui) {
-        ui.modal_popup_config(ERROR_MODAL_ID)
-            .always_auto_resize(true)
-            .build(|| {
-                let _wrap_token = ui.push_text_wrap_pos_with_pos(300.0);
-                if let Some(err) = &self.error {
-                    ui.text(err.to_string());
-                }
-                ui.separator();
-                if ui.button_with_size("OK", [120.0, 0.0]) {
-                    ui.close_current_popup();
-                }
-            });
+    /// Errors for the line being shown, under the transcript.
+    fn show_notes(&self, ui: &Ui) {
+        let mut notes: Vec<String> = self.error.iter().map(|e| e.to_string()).collect();
+        notes.extend(self.translator_window.notes(self.gloss.translation()));
+        if notes.is_empty() {
+            return;
+        }
+        let draw_list = ui.get_window_draw_list();
+        let _wrap = ui.push_text_wrap_pos_with_pos(0.0);
+        for note in notes {
+            stroke_text_with_highlight(
+                ui,
+                &draw_list,
+                &note,
+                1.0,
+                Some(StyleColor::PlotLinesHovered),
+            );
+        }
     }
 
     fn set_no_inputs(&mut self, no_inputs: bool) {
@@ -231,7 +332,6 @@ impl App {
         }
         niinii.build(|| {
             self.show_menu(ctx, ui);
-            self.show_error_modal(ctx, ui);
 
             if no_inputs {
                 stroke_text_with_highlight(
@@ -244,22 +344,31 @@ impl App {
                 return;
             }
             self.poll(ui, ctx);
+            self.handle_shortcuts(ui);
 
             if self.settings().show_manual_input {
                 let action = self.gloss.show_input(ui);
-                self.translator_window.draw_current_usage(ui);
+                if let Some(id) = self.gloss.translation() {
+                    self.translator_window.draw_usage(ui, id);
+                }
                 if let Some(action) = action {
                     match action {
-                        GlossInputAction::Gloss(text) => self.request_gloss(ui, &text),
-                        GlossInputAction::Translate(text) => {
-                            self.translator_window.translate(&self.settings, text);
-                        }
+                        GlossInputAction::Gloss(text) => self.request_gloss(&text),
+                        GlossInputAction::Translate(text) => self.translate(text),
                     }
                 }
             }
 
             self.gloss.ui(ctx, ui, &self.settings);
-            self.translator_window.draw_current_exchange(ui);
+            if let Some(id) = self.gloss.translation() {
+                self.translator_window.draw_exchange(
+                    ui,
+                    ctx,
+                    id,
+                    self.gloss.showing_earlier_line(),
+                );
+            }
+            self.show_notes(ui);
 
             if ctx.font_atlas_dirty() {
                 ui.new_line();
@@ -278,6 +387,9 @@ impl App {
         self.style_editor.ui(ui, &mut self.settings);
         self.translator_window.ui(ui, &mut self.settings);
         self.vndb_view.ui(ui, &mut self.settings);
+        self.help_view.ui(ui);
+        self.transcript
+            .ui(ui, &mut self.gloss, &self.translator_window);
         if self.show_metrics_window {
             ui.show_metrics_window(&mut self.show_metrics_window);
         }
