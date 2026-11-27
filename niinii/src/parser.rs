@@ -74,10 +74,8 @@ impl Parser {
     ) -> Result<SyntaxTree, Error> {
         let ichiran = &self.shared.ichiran;
 
-        let (root, jmdict_data) = tokio::try_join!(
-            ichiran.romanize(splits, variants),
-            ichiran.jmdict_data(),
-        )?;
+        let (root, jmdict_data) =
+            tokio::try_join!(ichiran.romanize(splits, variants), ichiran.jmdict_data(),)?;
 
         Ok(SyntaxTree {
             root,

@@ -24,7 +24,7 @@ use std::{
 use arc_swap::ArcSwap;
 use enclose::enclose;
 use openai::{
-    chat::{self, Message, PartialToolCall, Role, ToolCallAccumulator, Usage},
+    chat::{self, Message, Role, Usage},
     ConnectionPolicy, ModelId,
 };
 use tokio::sync::mpsc;
@@ -122,13 +122,10 @@ pub enum ChatEvent {
         id: ExchangeId,
         content: String,
     },
-    ToolCallDelta {
-        id: ExchangeId,
-        partials: Vec<PartialToolCall>,
-    },
     Completed {
         id: ExchangeId,
         usage: Option<Usage>,
+        finish_reason: Option<String>,
         max_context_tokens: [u32; 2],
     },
     Failed {
@@ -215,7 +212,6 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
                 response: Response::Streaming {
                     content: String::new(),
                     reasoning: String::new(),
-                    tool_calls: ToolCallAccumulator::new(),
                 },
                 usage: None,
             });
@@ -234,28 +230,21 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
                 }
             }
         }
-        ChatEvent::ToolCallDelta { id, partials } => {
-            if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                if let Response::Streaming { tool_calls, .. } = &mut ex.response {
-                    tool_calls.extend(partials);
-                }
-            }
-        }
         ChatEvent::Completed {
             id,
             usage,
+            finish_reason,
             max_context_tokens,
         } => {
+            state.last_error = finish_reason
+                .filter(|r| r != "stop")
+                .map(|r| Arc::from(format!("response ended early: finish_reason={r}")));
             let Some(ex) = find_mut(&mut state.exchanges, id) else {
                 return;
             };
             let prior = std::mem::replace(&mut ex.response, Response::Cancelled);
-            let (content, reasoning, tool_calls) = match prior {
-                Response::Streaming {
-                    content,
-                    reasoning,
-                    tool_calls,
-                } => (content, reasoning, tool_calls.finish()),
+            let (content, reasoning) = match prior {
+                Response::Streaming { content, reasoning } => (content, reasoning),
                 other => {
                     ex.response = other;
                     return;
@@ -264,13 +253,11 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
             ex.response = Response::Completed {
                 content: content.clone(),
                 reasoning,
-                tool_calls: tool_calls.clone(),
             };
             ex.usage = usage;
             let assistant = Message {
                 role: Role::Assistant,
                 content: Some(content),
-                tool_calls: (!tool_calls.is_empty()).then_some(tool_calls),
                 ..Default::default()
             };
             let user_clone = ex.user_message.clone();
@@ -291,7 +278,10 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
                 }
             }
         }
-        ChatEvent::ModelsRefreshed(models) => state.models = models,
+        ChatEvent::ModelsRefreshed(models) => {
+            state.models = models;
+            state.last_error = None;
+        }
         ChatEvent::Error(err) => state.last_error = Some(err),
     }
 }
@@ -320,19 +310,28 @@ fn build_prompt(state: &ChatState, config: &TranslateConfig, user: &Message) -> 
         content: Some(system),
         ..Default::default()
     });
-    prompt.extend(state.context.iter().map(|e| e.message.clone()));
-    // Anchor the latest line so the LLM doesn't drift onto a mid-conversation
-    // turn once history grows. Applied only to the live message at build time
-    // -- `ex.user_message` (and therefore future context) keeps the raw text,
-    // so historical turns don't accumulate stale "Translate this line:"
-    // prefixes.
-    let mut anchored = user.clone();
-    if let Some(content) = anchored.content.as_mut() {
-        *content = format!("Translate this line:\n{}", content);
-    }
-    prompt.push(anchored);
+    // Earlier lines go out as the user/assistant turns that produced them, so
+    // names and terms stay consistent. Every unpinned user line, history and
+    // live alike, carries the same prefix: a line's message then reads the
+    // same when it later becomes history, which keeps the request prefix
+    // stable for the prompt cache. Pinned (named) messages are sent as-is.
+    let prefixed = |m: &Message| {
+        let mut m = m.clone();
+        if m.role == Role::User && m.name.is_none() {
+            if let Some(content) = m.content.as_mut() {
+                *content = format!("{LINE_PREFIX}{content}");
+            }
+        }
+        m
+    };
+    prompt.extend(state.context.iter().map(|e| prefixed(&e.message)));
+    prompt.push(prefixed(user));
     prompt
 }
+
+/// Prepended to every unpinned user line. An instruction next to the line
+/// holds better than rules at the top of a long system message.
+pub const LINE_PREFIX: &str = "Translate into English:\n";
 
 fn apply_edit(state: &mut ChatState, edit: ContextEdit) {
     let context = &mut state.context;
@@ -433,6 +432,7 @@ fn spawn_adapter(
                 }
             };
             let mut usage = None;
+            let mut finish_reason = None;
             loop {
                 tokio::select! {
                     biased;
@@ -444,6 +444,9 @@ fn spawn_adapter(
                         Some(Ok(cmpl)) => {
                             if let Some(u) = cmpl.usage { usage = Some(u); }
                             for choice in cmpl.choices {
+                                if choice.finish_reason.is_some() {
+                                    finish_reason = choice.finish_reason;
+                                }
                                 if let Some(content) = choice.delta.content {
                                     let _ = evt_tx.send(ChatEvent::Delta {
                                         id,
@@ -454,12 +457,6 @@ fn spawn_adapter(
                                     let _ = evt_tx.send(ChatEvent::ReasoningDelta {
                                         id,
                                         content: reasoning,
-                                    }).await;
-                                }
-                                if let Some(calls) = choice.delta.tool_calls {
-                                    let _ = evt_tx.send(ChatEvent::ToolCallDelta {
-                                        id,
-                                        partials: calls,
                                     }).await;
                                 }
                             }
@@ -473,7 +470,7 @@ fn spawn_adapter(
                         }
                         None => {
                             let _ = evt_tx.send(ChatEvent::Completed {
-                                id, usage, max_context_tokens: max_ctx,
+                                id, usage, finish_reason, max_context_tokens: max_ctx,
                             }).await;
                             return;
                         }
@@ -489,7 +486,9 @@ fn spawn_adapter(
                 res = client.chat(req) => match res {
                     Ok(cmpl) => {
                         let usage = Some(cmpl.usage.clone());
+                        let mut finish_reason = None;
                         if let Some(choice) = cmpl.choices.into_iter().next() {
+                            finish_reason = choice.finish_reason;
                             if let Some(reasoning) = choice.message.reasoning_content {
                                 let _ = evt_tx.send(ChatEvent::ReasoningDelta {
                                     id, content: reasoning,
@@ -498,23 +497,9 @@ fn spawn_adapter(
                             if let Some(content) = choice.message.content {
                                 let _ = evt_tx.send(ChatEvent::Delta { id, content }).await;
                             }
-                            if let Some(calls) = choice.message.tool_calls {
-                                let partials = calls.into_iter().enumerate()
-                                    .map(|(i, call)| PartialToolCall {
-                                        index: i as u32,
-                                        id: Some(call.id),
-                                        kind: Some(call.kind),
-                                        function: Some(openai::chat::PartialFunctionCall {
-                                            name: Some(call.function.name),
-                                            arguments: Some(call.function.arguments),
-                                        }),
-                                    })
-                                    .collect();
-                                let _ = evt_tx.send(ChatEvent::ToolCallDelta { id, partials }).await;
-                            }
                         }
                         let _ = evt_tx.send(ChatEvent::Completed {
-                            id, usage, max_context_tokens: max_ctx,
+                            id, usage, finish_reason, max_context_tokens: max_ctx,
                         }).await;
                     }
                     Err(err) => {
@@ -597,9 +582,6 @@ impl Backend for ChatHandle {
     fn cancel(&self, id: ExchangeId) {
         self.cancel(id)
     }
-    fn clear(&self) {
-        self.clear_context();
-    }
     fn refresh_models(&self) {
         self.refresh_models();
     }
@@ -614,9 +596,6 @@ impl Backend for ChatHandle {
             response: ex.response.clone(),
             usage: ex.usage.as_ref().map(usage_view),
         })
-    }
-    fn models(&self) -> Vec<ModelId> {
-        self.state().models.clone()
     }
     fn last_error(&self) -> Option<Arc<str>> {
         self.state().last_error.clone()

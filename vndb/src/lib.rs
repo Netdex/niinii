@@ -191,20 +191,15 @@ pub struct SearchParams {
     pub reverse: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortKey {
+    #[default]
     SearchRank,
     Title,
     Released,
     Rating,
     VoteCount,
     Popularity,
-}
-
-impl Default for SortKey {
-    fn default() -> Self {
-        Self::SearchRank
-    }
 }
 
 impl SortKey {
@@ -243,6 +238,8 @@ pub enum Sex {
     Female,
     #[serde(rename = "b")]
     Both,
+    #[serde(rename = "n")]
+    Sexless,
 }
 
 impl Sex {
@@ -251,6 +248,7 @@ impl Sex {
             Sex::Male => "male",
             Sex::Female => "female",
             Sex::Both => "both",
+            Sex::Sexless => "sexless",
         }
     }
 }

@@ -36,7 +36,7 @@ use wio::com::ComPtr;
 use super::context::Context;
 use super::context::ContextFlags;
 use super::Renderer;
-use crate::{app::App, settings::Settings};
+use crate::{app::App, settings::Settings, support::docking::UiDocking};
 
 struct Inner {
     window: winit::window::Window,
@@ -55,7 +55,6 @@ struct Inner {
 
     low_level_mouse_proc: Option<HHOOK>,
     last_want_capture_mouse: bool,
-    // winit_wnd_proc: winuser::WNDPROC,
 }
 impl Drop for Inner {
     fn drop(&mut self) {
@@ -137,14 +136,6 @@ impl D3D11Renderer {
                     ptr::null_mut(),
                     0,
                 ));
-
-                // let mut winit_wnd_proc: winuser::WNDPROC = None;
-                // let orig_wnd_proc = SetWindowLongPtrA(
-                //     hwnd as HWND,
-                //     winuser::GWL_WNDPROC as i32,
-                //     window_proc as *const () as isize,
-                // );
-                // winit_wnd_proc.replace(std::mem::transmute(orig_wnd_proc));
             }
         }
 
@@ -164,7 +155,6 @@ impl D3D11Renderer {
                     device,
                     low_level_mouse_proc,
                     last_want_capture_mouse: false,
-                    // winit_wnd_proc,
                 }),
                 event_loop: Cell::new(Some(event_loop)),
             }),
@@ -235,6 +225,9 @@ impl Renderer for D3D11Renderer {
                             unsafe { renderer.rebuild_font_texture(imgui.fonts()).unwrap() };
                         }
                         let ui = imgui.frame();
+                        if *overlay_mode {
+                            ui.dockspace_over_viewport();
+                        }
                         let mut run = true;
                         app.ui(ctx, ui, &mut run);
                         if !run {
@@ -392,42 +385,6 @@ thread_local! {
     static SYSTEM: RefCell<WeakD3D11Renderer> = RefCell::new(WeakD3D11Renderer::new());
 }
 
-// unsafe extern "system" fn window_proc(
-//     hwnd: HWND,
-//     msg: u32,
-//     wparam: WPARAM,
-//     lparam: LPARAM,
-// ) -> LRESULT {
-//     SYSTEM.with(|system| {
-//         let weak_d3d11_renderer = system.borrow();
-//         if let Some(d3d11_renderer) = weak_d3d11_renderer.upgrade() {
-//             let inner = d3d11_renderer.shared.inner.try_borrow_mut();
-//             if let Ok(mut inner) = inner {
-//                 let Inner {
-//                     // imgui,
-//                     winit_wnd_proc,
-//                     ..
-//                 } = &mut *inner;
-//                 match msg {
-//                     winuser::WM_NCHITTEST => {}
-//                     _ => {
-//                         if let Some(winit_wnd_proc) = *winit_wnd_proc {
-//                             drop(inner); // RefCell is not re-entrant
-//                             return winuser::CallWindowProcA(
-//                                 Some(winit_wnd_proc),
-//                                 hwnd,
-//                                 msg,
-//                                 wparam,
-//                                 lparam,
-//                             );
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//         0
-//     })
-// }
 unsafe extern "system" fn mouse_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     let ms = &mut *(lparam as *mut MSLLHOOKSTRUCT);
 

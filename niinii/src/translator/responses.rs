@@ -22,7 +22,6 @@ use std::{
 
 use arc_swap::ArcSwap;
 use openai::{
-    chat::ToolCallAccumulator,
     responses::{self, Input, InputItem, Reasoning, Request, StreamEvent, TextConfig},
     ConnectionPolicy, ModelId, Role,
 };
@@ -243,7 +242,6 @@ fn reduce(state: &mut ResponsesState, event: ResponsesEvent) {
                 response: Response::Streaming {
                     content: String::new(),
                     reasoning: String::new(),
-                    tool_calls: ToolCallAccumulator::new(),
                 },
                 usage: None,
             });
@@ -260,6 +258,7 @@ fn reduce(state: &mut ResponsesState, event: ResponsesEvent) {
             response_id,
             usage,
         } => {
+            state.last_error = None;
             let Some(ex) = find_mut(&mut state.exchanges, id) else {
                 return;
             };
@@ -273,11 +272,7 @@ fn reduce(state: &mut ResponsesState, event: ResponsesEvent) {
                     return;
                 }
             };
-            ex.response = Response::Completed {
-                content,
-                reasoning,
-                tool_calls: Vec::new(),
-            };
+            ex.response = Response::Completed { content, reasoning };
             ex.usage = usage;
             // Advance the chain only on success.
             if !response_id.is_empty() {
@@ -297,7 +292,10 @@ fn reduce(state: &mut ResponsesState, event: ResponsesEvent) {
                 }
             }
         }
-        ResponsesEvent::ModelsRefreshed(models) => state.models = models,
+        ResponsesEvent::ModelsRefreshed(models) => {
+            state.models = models;
+            state.last_error = None;
+        }
         ResponsesEvent::Error(err) => state.last_error = Some(err),
     }
 }
@@ -460,9 +458,6 @@ impl Backend for ResponsesHandle {
     fn cancel(&self, id: ExchangeId) {
         self.send(ResponsesCommand::Cancel(id));
     }
-    fn clear(&self) {
-        self.send(ResponsesCommand::ResetChain);
-    }
     fn refresh_models(&self) {
         self.send(ResponsesCommand::RefreshModels);
     }
@@ -471,9 +466,6 @@ impl Backend for ResponsesHandle {
     }
     fn exchange(&self, id: ExchangeId) -> Option<ExchangeView> {
         self.state().exchange(id).cloned()
-    }
-    fn models(&self) -> Vec<ModelId> {
-        self.state().models.clone()
     }
     fn last_error(&self) -> Option<Arc<str>> {
         self.state().last_error.clone()

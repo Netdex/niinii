@@ -1,7 +1,7 @@
 //! Translator runtime: a backend-agnostic surface over the concrete backends
-//! (`chat`, `responses`).
+//! (`chat`, `responses`, `realtime`).
 //!
-//! Both backends share the same command/event/state shape (commands from the
+//! All backends share the same command/event/state shape (commands from the
 //! UI, events from adapter tasks, immutable `ArcSwap` state snapshots for
 //! wait-free reads). The [`Backend`] trait exposes the operations the UI and the
 //! VNDB integration need without caring which backend is active. Backend-private
@@ -14,15 +14,11 @@ pub mod responses;
 
 use std::sync::Arc;
 
-use openai::{
-    chat::{Tool, ToolCall, ToolCallAccumulator, ToolChoice},
-    realtime::RealtimeTruncation,
-    ModelId, ReasoningEffort, ServiceTier, Verbosity,
-};
+use openai::{realtime::RealtimeTruncation, ModelId, ReasoningEffort, ServiceTier, Verbosity};
 
 use crate::settings::{Settings, TranslatorType, TruncationMode};
 
-pub use chat::{ChatHandle, ChatState, ContextEdit, MsgId};
+pub use chat::{ChatHandle, ContextEdit, MsgId};
 pub use realtime::RealtimeHandle;
 pub use responses::ResponsesHandle;
 
@@ -54,10 +50,6 @@ pub struct TranslateConfig {
     /// Realtime only: conversation-truncation strategy sent on the session.
     /// `None` for the other backends (which have no such concept).
     pub truncation: Option<RealtimeTruncation>,
-    /// Chat only.
-    pub tools: Vec<Tool>,
-    /// Chat only.
-    pub tool_choice: Option<ToolChoice>,
 }
 
 impl TranslateConfig {
@@ -80,8 +72,6 @@ impl TranslateConfig {
                     chain: true,
                     stream: c.stream,
                     truncation: None,
-                    tools: Vec::new(),
-                    tool_choice: None,
                 }
             }
             TranslatorType::Responses => {
@@ -100,8 +90,6 @@ impl TranslateConfig {
                     chain: r.chain,
                     stream: r.stream,
                     truncation: None,
-                    tools: Vec::new(),
-                    tool_choice: None,
                 }
             }
             TranslatorType::Realtime => {
@@ -133,28 +121,17 @@ impl TranslateConfig {
                                 .truncation_post_instructions_token_limit,
                         },
                     }),
-                    tools: Vec::new(),
-                    tool_choice: None,
                 }
             }
         }
     }
 }
 
-/// Assistant turn state, shared by both backends. The `tool_calls` fields are
-/// chat-only; the responses backend leaves them empty. Rendering ignores them.
+/// Assistant turn state, shared by all backends.
 #[derive(Clone, Debug)]
 pub enum Response {
-    Streaming {
-        content: String,
-        reasoning: String,
-        tool_calls: ToolCallAccumulator,
-    },
-    Completed {
-        content: String,
-        reasoning: String,
-        tool_calls: Vec<ToolCall>,
-    },
+    Streaming { content: String, reasoning: String },
+    Completed { content: String, reasoning: String },
     Errored(Arc<str>),
     Cancelled,
 }
@@ -176,9 +153,6 @@ impl Response {
             }
             Response::Errored(_) | Response::Cancelled => "",
         }
-    }
-    pub fn is_terminal(&self) -> bool {
-        !matches!(self, Response::Streaming { .. })
     }
 }
 
@@ -203,18 +177,14 @@ pub struct ExchangeView {
     pub usage: Option<UsageView>,
 }
 
-/// Backend-agnostic operations the UI and the VNDB integration use. Both
-/// `ChatHandle` and `ResponsesHandle` implement this; handles are cheap to clone
+/// Backend-agnostic operations the UI and the VNDB integration use. Implemented
+/// by `ChatHandle`, `ResponsesHandle` and `RealtimeHandle`; handles are cheap to clone
 /// and the methods are all wait-free (commands are queued, reads are snapshots).
 pub trait Backend: Send + Sync + 'static {
     fn translate(&self, text: String, config: Arc<TranslateConfig>) -> ExchangeId;
     fn cancel(&self, id: ExchangeId);
-    /// Chat: clear the context buffer. Responses: reset the `previous_response_id`
-    /// chain so the next turn starts a fresh conversation.
-    fn clear(&self);
     fn refresh_models(&self);
     fn set_system_addendum(&self, text: Option<Arc<str>>);
     fn exchange(&self, id: ExchangeId) -> Option<ExchangeView>;
-    fn models(&self) -> Vec<ModelId>;
     fn last_error(&self) -> Option<Arc<str>>;
 }

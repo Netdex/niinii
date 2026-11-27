@@ -5,7 +5,7 @@ use openai::chat::{Message, Role};
 
 use crate::{
     settings::Settings,
-    translator::{ChatHandle, ContextEdit, MsgId},
+    translator::{chat::LINE_PREFIX, ChatHandle, ContextEdit, MsgId},
     view::mixins::{
         checkbox_option, checkbox_option_with_default, combo_enum, combo_list, drag_handle,
         help_marker,
@@ -132,55 +132,30 @@ pub fn window(
             ],
             TableFlags::SIZING_STRETCH_PROP,
         ) {
-            // System prompt row (static, from Settings).
-            ui.table_next_column();
-            ui.disabled(true, || drag_handle(ui));
-            ui.table_next_column();
-            ui.table_next_column();
-            ui.disabled(true, || {
-                let mut dummy = true;
-                ui.checkbox("##lock", &mut dummy);
-            });
-            ui.table_next_column();
-            ui.disabled(true, || {
-                ui.set_next_item_width(ui.current_font_size() * 6.0);
-                let mut system_role = Role::System;
-                combo_enum(ui, "##role", &mut system_role);
-            });
-            ui.table_next_column();
-            ui.input_text_multiline(
-                "##",
-                &mut chatgpt.system_prompt,
-                [ui.content_region_avail()[0], 200.0],
-            )
-            .build();
-
-            // System-addendum row (e.g. VNDB-derived character info),
-            // read-only. Rendered directly from the snapshot's `Arc<str>`.
-            if let Some(addendum) = state.system_addendum.as_deref() {
-                ui.table_next_column();
-                ui.disabled(true, || drag_handle(ui));
-                ui.table_next_column();
-                ui.table_next_column();
-                ui.disabled(true, || {
-                    let mut dummy = true;
-                    ui.checkbox("##vlock", &mut dummy);
-                });
-                ui.table_next_column();
-                ui.disabled(true, || {
-                    ui.set_next_item_width(ui.current_font_size() * 6.0);
-                    let mut system_role = Role::System;
-                    combo_enum(ui, "##vrole", &mut system_role);
-                });
-                ui.table_next_column();
-                ui.child_window("##addendum")
-                    .size([ui.content_region_avail()[0], 200.0])
-                    .border(true)
-                    .build(|| {
-                        let _wrap = ui.push_text_wrap_pos_with_pos(0.0);
-                        ui.text_disabled(addendum);
-                    });
+            // Rows for the parts of the system message, in the order it is
+            // assembled.
+            {
+                let _id = ui.push_id("system_prompt");
+                fixed_row_lead(ui, Role::System);
+                ui.input_text_multiline(
+                    "##text",
+                    &mut chatgpt.system_prompt,
+                    [ui.content_region_avail()[0], 200.0],
+                )
+                .build();
             }
+            if let Some(addendum) = state.system_addendum.as_deref() {
+                static_row(ui, "addendum", Role::System, addendum, 200.0);
+            }
+            // Prepended to every unlocked User row below and to the line
+            // being translated.
+            static_row(
+                ui,
+                "line_prefix",
+                Role::User,
+                LINE_PREFIX,
+                ui.frame_height() + ui.text_line_height(),
+            );
 
             // Sweep buffers whose messages are gone; keep the rest. Stable
             // MsgIds make this robust to reorder/insert/delete.
@@ -284,4 +259,35 @@ pub fn window(
             ui.text_disabled("drag and drop by handle to reorder");
         }
     });
+}
+
+/// The leading cells of a fixed row: disabled drag handle, no delete button,
+/// locked, and a fixed role. The caller fills the last cell.
+fn fixed_row_lead(ui: &Ui, role: Role) {
+    ui.table_next_column();
+    ui.disabled(true, || drag_handle(ui));
+    ui.table_next_column();
+    ui.table_next_column();
+    ui.disabled(true, || {
+        let mut dummy = true;
+        ui.checkbox("##lock", &mut dummy);
+    });
+    ui.table_next_column();
+    ui.disabled(true, || {
+        ui.set_next_item_width(ui.current_font_size() * 6.0);
+        let mut role = role;
+        combo_enum(ui, "##role", &mut role);
+    });
+    ui.table_next_column();
+}
+
+/// A read-only row in the context table for text the app adds itself.
+fn static_row(ui: &Ui, id: &str, role: Role, text: &str, height: f32) {
+    let _id = ui.push_id(id);
+    fixed_row_lead(ui, role);
+    // Read-only rather than disabled so long text stays scrollable and copyable.
+    let mut buf = text.to_owned();
+    ui.input_text_multiline("##text", &mut buf, [ui.content_region_avail()[0], height])
+        .read_only(true)
+        .build();
 }

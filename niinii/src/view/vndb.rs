@@ -7,7 +7,7 @@ use ichiran::prelude::Ichiran;
 use crate::{
     settings::Settings,
     translator::Backend,
-    vndb::{self, clean_description, SearchParams, SortKey, VndbHandle, VnSummary},
+    vndb::{self, clean_description, SearchParams, SortKey, VnSummary, VndbHandle},
 };
 
 const SORT_OPTIONS: &[(SortKey, &str)] = &[
@@ -69,6 +69,23 @@ impl VndbView {
 
     pub fn show_menu_item(&mut self, ui: &Ui) {
         if ui.menu_item("VNDB") {
+            self.open = true;
+        }
+    }
+
+    /// Menu-bar label naming the VN whose characters the translator uses.
+    /// Opens the window when clicked.
+    pub fn show_status(&mut self, ui: &Ui) {
+        let state = self.vndb.state();
+        let label = match (&state.active, state.loading_active) {
+            (_, true) => "loading VN...",
+            (Some(active), false) => active.summary.title.as_str(),
+            (None, false) => "no VN",
+        };
+        let _dim = state.active.is_none().then(|| {
+            ui.push_style_color(StyleColor::Text, ui.style_color(StyleColor::TextDisabled))
+        });
+        if ui.menu_item(format!("{label}##vndb_status")) {
             self.open = true;
         }
     }
@@ -244,10 +261,10 @@ impl VndbView {
                     _ => ui.text(""),
                 }
                 ui.table_next_column();
-                ui.text_wrapped(&vn.platforms.join(", "));
+                ui.text_wrapped(vn.platforms.join(", "));
                 ui.table_next_column();
                 let devs: Vec<&str> = vn.developers.iter().map(|d| d.name.as_str()).collect();
-                ui.text_wrapped(&devs.join(", "));
+                ui.text_wrapped(devs.join(", "));
             }
         }
     }

@@ -1,4 +1,5 @@
 pub mod gloss;
+pub mod help;
 pub mod index;
 pub mod kanji;
 pub mod mixins;
@@ -6,5 +7,6 @@ pub mod raw;
 pub mod settings;
 pub mod style_editor;
 pub mod term;
+pub mod transcript;
 pub mod translator;
 pub mod vndb;

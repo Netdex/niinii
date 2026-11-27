@@ -1,4 +1,4 @@
-use imgui::{DrawListMut, MouseCursor, StyleColor, Ui};
+use imgui::{ColorStackToken, DrawListMut, MouseCursor, StyleColor, Ui};
 use strum::IntoEnumIterator;
 
 use crate::renderer::context::{Context, TextStyle};
@@ -105,6 +105,34 @@ pub fn stroke_text_with_highlight(
     }
 }
 
+/// Run `f` with `style`'s font drawn at `scale`. Scaling a larger font down
+/// stays sharp and needs no extra font in the atlas.
+pub fn with_scaled_font<R>(
+    ui: &Ui,
+    ctx: &Context,
+    style: TextStyle,
+    scale: f32,
+    f: impl FnOnce() -> R,
+) -> R {
+    let _font = ui.push_font(ctx.get_font(style));
+    // The window scale applies to whichever font is current, so it is set
+    // after pushing and reset before the font is popped.
+    ui.set_window_font_scale(scale);
+    let result = f();
+    ui.set_window_font_scale(1.0);
+    result
+}
+
+/// Marks text from an earlier line by drawing its highlight in light gray
+/// while the returned token lives.
+pub fn push_earlier_line_highlight(ui: &Ui) -> ColorStackToken<'_> {
+    let alpha = ui.style_color(StyleColor::TextSelectedBg)[3];
+    ui.push_style_color(StyleColor::TextSelectedBg, [0.75, 0.75, 0.75, alpha])
+}
+
+/// Gap between glossed words, as a fraction of the style's item spacing.
+const GLOSS_SPACING: f32 = 0.5;
+
 pub struct KanjiStyle {
     pub highlight: bool,
     /// Override for the highlight rectangle color. `None` falls back to
@@ -145,7 +173,8 @@ pub fn draw_kanji_text(
     let w = f32::max(kanji_sz[0], ruby_sz[0]);
     let h = kanji_sz[1] + ruby_sz[1] + vpad;
 
-    wrap_line(ui, w);
+    let spacing = unsafe { ui.style().item_spacing[0] } * GLOSS_SPACING;
+    wrap_line_with_spacing(ui, w, spacing);
 
     let x = ui.cursor_screen_pos()[0];
     let mut y = ui.cursor_screen_pos()[1] + vpad;
@@ -187,12 +216,11 @@ pub fn draw_kanji_text(
             .build();
     }
 
-    let item_spacing_x = unsafe { ui.style().item_spacing[0] };
     let ul_thick = 4.0;
     let ul0 = [x, y + kanji_sz[1] + ul_thick / 2.0];
     let ul1 = match underline {
         UnderlineMode::Normal => [x + w, y + kanji_sz[1] + ul_thick / 2.0],
-        UnderlineMode::Pad => [x + w + item_spacing_x, y + kanji_sz[1] + ul_thick / 2.0],
+        UnderlineMode::Pad => [x + w + spacing, y + kanji_sz[1] + ul_thick / 2.0],
         UnderlineMode::None => ul0,
     };
     draw_list
@@ -232,8 +260,7 @@ pub fn wrap_line_with_spacing(ui: &Ui, expected_width: f32, spacing: f32) -> boo
     let max_width = ui.window_content_region_max()[0];
     let visible_x = ui.window_pos()[0] + max_width;
     let last_x = ui.item_rect_max()[0];
-    let item_spacing_x = unsafe { ui.style().item_spacing[0] };
-    let next_x = last_x + item_spacing_x + expected_width;
+    let next_x = last_x + spacing + expected_width;
     // don't wrap if it will fit on the current line, or if it won't even fit on an empty line
     if next_x < visible_x || expected_width >= max_width {
         ui.same_line_with_spacing(0.0, spacing);
@@ -241,11 +268,6 @@ pub fn wrap_line_with_spacing(ui: &Ui, expected_width: f32, spacing: f32) -> boo
     } else {
         true
     }
-}
-
-pub fn wrap_line(ui: &Ui, expected_width: f32) -> bool {
-    let spacing = unsafe { ui.style().item_spacing[0] };
-    wrap_line_with_spacing(ui, expected_width, spacing)
 }
 
 pub fn checkbox_option<T: Default, U>(
