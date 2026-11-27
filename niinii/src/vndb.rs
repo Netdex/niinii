@@ -30,7 +30,7 @@ use tokio::task::JoinHandle;
 use tracing::Instrument;
 pub use vndb::{Character, SearchParams, SortKey, VnSummary};
 
-pub const VNDB_PROMPT_PREAMBLE: &str = "Use the information in the following character summaries. When the speaker needs to be inferred, try your best using the character information provided. If you are unsure of the speaker's gender, use neutral pronouns such as 'singular -they'.";
+pub const VNDB_PROMPT_PREAMBLE: &str = "Use the following character list for names, genders and speakers. When the speaker needs to be inferred, try your best using the character information provided. If you are unsure of the speaker's gender, use neutral pronouns such as 'singular -they'.";
 
 #[derive(Clone, Debug)]
 pub struct ActiveVn {
@@ -517,23 +517,6 @@ fn build_prompt(summary: &VnSummary, characters: &[Character]) -> String {
             .collect();
         if !aliases.is_empty() {
             let _ = write!(out, " (aka: {})", aliases.join("; "));
-        }
-        if let Some(desc) = &ch.description {
-            let cleaned = clean_description(desc);
-            if !cleaned.is_empty() {
-                out.push_str(": ");
-                // Flatten -- one character, one line.
-                for (i, segment) in cleaned
-                    .split('\n')
-                    .filter(|s| !s.trim().is_empty())
-                    .enumerate()
-                {
-                    if i > 0 {
-                        out.push_str(" / ");
-                    }
-                    out.push_str(segment.trim());
-                }
-            }
         }
         out.push('\n');
     }

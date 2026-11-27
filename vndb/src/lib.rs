@@ -238,6 +238,8 @@ pub enum Sex {
     Female,
     #[serde(rename = "b")]
     Both,
+    #[serde(rename = "n")]
+    Sexless,
 }
 
 impl Sex {
@@ -246,6 +248,7 @@ impl Sex {
             Sex::Male => "male",
             Sex::Female => "female",
             Sex::Both => "both",
+            Sex::Sexless => "sexless",
         }
     }
 }

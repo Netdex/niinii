@@ -295,39 +295,8 @@ fn build_prompt(state: &ChatState, config: &TranslateConfig, user: &Message) -> 
     // accept a single System message at the head, so we concatenate the
     // user-edited prompt and the system addendum (e.g. VNDB-derived text)
     // into a single message.
-    // Context is sent as source lines only: the model's own earlier replies,
-    // if shown as turns, become examples it copies (including any that ended
-    // early), which degrades every following reply. Pinned (named) and
-    // non-user/assistant messages are kept as turns.
-    let mut source_lines = String::new();
-    let mut kept = Vec::new();
-    for e in &state.context {
-        let m = &e.message;
-        match (&m.role, &m.name) {
-            (Role::User, None) => {
-                if let Some(content) = &m.content {
-                    source_lines.push_str(content);
-                    source_lines.push('\n');
-                }
-            }
-            (Role::Assistant, None) => {}
-            _ => kept.push(m),
-        }
-    }
-
     let mut system = config.system_prompt.clone();
-    let context_block = (!source_lines.is_empty())
-        .then(|| format!("{CONTEXT_NOTE}\n<context>\n{source_lines}</context>"));
-    // The context block goes last: it only grows at its end, so successive
-    // requests share the prefix through the previous request's block.
-    for extra in [
-        Some(LINE_FORMAT_NOTE),
-        state.system_addendum.as_deref(),
-        context_block.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    {
+    if let Some(extra) = &state.system_addendum {
         if !extra.is_empty() {
             if !system.is_empty() {
                 system.push_str("\n\n");
@@ -335,35 +304,34 @@ fn build_prompt(state: &ChatState, config: &TranslateConfig, user: &Message) -> 
             system.push_str(extra);
         }
     }
-    let mut prompt = Vec::with_capacity(kept.len() + 2);
+    let mut prompt = Vec::with_capacity(state.context.len() + 2);
     prompt.push(Message {
         role: Role::System,
         content: Some(system),
         ..Default::default()
     });
-    // User turns are wrapped at build time only; stored context keeps the
-    // raw text.
-    prompt.extend(kept.into_iter().chain(std::iter::once(user)).map(wrap_line));
+    // Earlier lines go out as the user/assistant turns that produced them, so
+    // names and terms stay consistent. Every unpinned user line, history and
+    // live alike, carries the same prefix: a line's message then reads the
+    // same when it later becomes history, which keeps the request prefix
+    // stable for the prompt cache. Pinned (named) messages are sent as-is.
+    let prefixed = |m: &Message| {
+        let mut m = m.clone();
+        if m.role == Role::User && m.name.is_none() {
+            if let Some(content) = m.content.as_mut() {
+                *content = format!("{LINE_PREFIX}{content}");
+            }
+        }
+        m
+    };
+    prompt.extend(state.context.iter().map(|e| prefixed(&e.message)));
+    prompt.push(prefixed(user));
     prompt
 }
 
-/// Placed before the system addendum so it stays in the cached prefix when
-/// the addendum changes.
-pub const LINE_FORMAT_NOTE: &str =
-    "Each user message is one line of the script, wrapped in <line></line> tags.";
-
-pub const CONTEXT_NOTE: &str = "The script lines preceding the current line, oldest first, \
-    for context only (they are already translated; do not translate them):";
-
-fn wrap_line(message: &Message) -> Message {
-    let mut message = message.clone();
-    if message.role == Role::User {
-        if let Some(content) = message.content.as_mut() {
-            *content = format!("<line>{content}</line>");
-        }
-    }
-    message
-}
+/// Prepended to every unpinned user line. An instruction next to the line
+/// holds better than rules at the top of a long system message.
+pub const LINE_PREFIX: &str = "Translate into English:\n";
 
 fn apply_edit(state: &mut ChatState, edit: ContextEdit) {
     let context = &mut state.context;

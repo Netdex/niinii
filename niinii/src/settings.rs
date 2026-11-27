@@ -57,7 +57,7 @@ impl Default for ChatSettings {
         Self {
             system_prompt: "You will translate the following visual novel script into English."
                 .into(),
-            max_context_tokens: [64, 64],
+            max_context_tokens: [1024, 2048],
             temperature: None,
             top_p: None,
             max_tokens: Some(128),
