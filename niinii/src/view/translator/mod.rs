@@ -1,29 +1,30 @@
+use dear_imgui_reflect::ReflectSession;
 pub mod chat;
+mod history;
 pub mod realtime;
 pub mod responses;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use imgui::*;
+use crate::gui::px2;
+use dear_imgui_rs::*;
 use openai::ModelId;
 
 use crate::{
-    renderer::context::{Context, TextStyle},
+    gui::FontSize,
     settings::{Settings, TranslatorType},
     translator::{
         self, Backend, ChatHandle, ExchangeId, ExchangeView, MsgId, RealtimeHandle, Response,
         ResponsesHandle, TranslateConfig, UsageView,
     },
-    view::mixins::{
-        ellipses, push_earlier_line_highlight, stroke_text_with_highlight, with_scaled_font,
+    view::{
+        mixins::{ellipses, push_earlier_line_highlight, wrapped_field_height, Flow},
+        panel::Panel,
     },
 };
 
-/// Concrete backend handle for backend-specific window rendering. The
-/// type-erased `Arc<dyn Backend>` on [`TranslatorWindow`] covers the shared
-/// control/read surface; this enum is only consulted to render the backend's
-/// own window (chat context editor vs responses chain).
+/// The active backend's handle, with the view state of its window.
 enum BackendKind {
     Chat {
         handle: ChatHandle,
@@ -42,211 +43,184 @@ enum BackendKind {
     },
 }
 
-/// Owns the active translator backend (both as a type-erased `Arc<dyn Backend>`
-/// for shared control + the concrete handle for backend-specific UI) and the
-/// window open flag. Acts as both the controller (submit/cancel translations)
-/// and the view; which exchange to show is up to the caller.
+impl BackendKind {
+    fn backend(&self) -> &dyn Backend {
+        match self {
+            BackendKind::Chat { handle, .. } => handle,
+            BackendKind::Responses { handle } => handle,
+            BackendKind::Realtime { handle, .. } => handle,
+        }
+    }
+}
+
+/// Owns the active translator backend. Acts as both the controller
+/// (submit/cancel translations) and the view; which exchange to show is up to
+/// the caller.
 pub struct TranslatorWindow {
-    backend: Arc<dyn Backend>,
     kind: BackendKind,
     /// Most recently submitted exchange, cancelled when the next one starts.
     latest: Option<ExchangeId>,
-    pub open: bool,
 }
 
 impl TranslatorWindow {
     pub fn new(settings: &Settings) -> Self {
-        let (backend, kind): (Arc<dyn Backend>, BackendKind) = match settings.translator_type {
-            TranslatorType::Chat => {
-                let handle = translator::chat::spawn(settings);
-                (
-                    Arc::new(handle.clone()),
-                    BackendKind::Chat {
-                        handle,
-                        buffers: HashMap::new(),
-                    },
-                )
-            }
-            TranslatorType::Responses => {
-                let handle = translator::responses::spawn(settings);
-                (Arc::new(handle.clone()), BackendKind::Responses { handle })
-            }
-            TranslatorType::Realtime => {
-                let handle = translator::realtime::spawn(settings);
-                (
-                    Arc::new(handle.clone()),
-                    BackendKind::Realtime {
-                        handle,
-                        instr_tokens: realtime::InstrTokens::default(),
-                    },
-                )
-            }
+        let kind = match settings.translation.translator_type {
+            TranslatorType::Chat => BackendKind::Chat {
+                handle: translator::chat::spawn(settings),
+                buffers: HashMap::new(),
+            },
+            TranslatorType::Responses => BackendKind::Responses {
+                handle: translator::responses::spawn(settings),
+            },
+            TranslatorType::Realtime => BackendKind::Realtime {
+                handle: translator::realtime::spawn(settings),
+                instr_tokens: realtime::InstrTokens::default(),
+            },
         };
-        Self {
-            backend,
-            kind,
-            latest: None,
-            open: false,
-        }
+        Self { kind, latest: None }
     }
 
     /// Cancel any in-flight translation and submit a new one.
     pub fn translate(&mut self, settings: &Settings, text: String) -> ExchangeId {
         if let Some(prev) = self.latest {
-            self.backend.cancel(prev);
+            self.kind.backend().cancel(prev);
         }
         let config = Arc::new(TranslateConfig::from_settings(settings));
-        let id = self.backend.translate(text, config);
+        let id = self.kind.backend().translate(text, config);
         self.latest = Some(id);
         id
     }
 
     /// Render the usage bar for an exchange.
     pub fn draw_usage(&self, ui: &Ui, id: ExchangeId) {
-        if let Some(ex) = self.backend.exchange(id) {
-            if let Some(usage) = &ex.usage {
-                draw_usage(ui, &ex.model, usage);
-            }
+        let Some(ex) = self.kind.backend().exchange(id) else {
+            return;
+        };
+        if let Some(usage) = &ex.usage {
+            ui.same_line();
+            ui.text_disabled(usage_text(&ex.model, usage));
         }
     }
 
     /// Render an exchange's translation; `earlier_line` marks it as not
     /// belonging to the latest line.
-    pub fn draw_exchange(&self, ui: &Ui, ctx: &Context, id: ExchangeId, earlier_line: bool) {
-        if let Some(ex) = self.backend.exchange(id) {
+    pub fn draw_exchange(&self, ui: &Ui, id: ExchangeId, earlier_line: bool) {
+        if let Some(ex) = self.kind.backend().exchange(id) {
             let _hl = earlier_line.then(|| push_earlier_line_highlight(ui));
-            draw_exchange(ui, ctx, &ex);
+            draw_exchange(ui, &ex);
         }
     }
 
     /// The translation so far (partial while streaming), or `None` if there
     /// is none to show.
     pub fn translation_text(&self, id: ExchangeId) -> Option<String> {
-        let response = self.backend.exchange(id)?.response;
+        let response = self.kind.backend().exchange(id)?.response;
         Some(response.content().to_owned()).filter(|t| !t.is_empty())
     }
 
-    /// Problems to report under the transcript: the exchange's own failure,
-    /// and the backend's last error when it says something different.
+    /// Problems to report under the transcript: what went wrong with the
+    /// exchange, and the backend's last error.
     pub fn notes(&self, id: Option<ExchangeId>) -> Vec<String> {
-        let mut notes = Vec::new();
-        match id
-            .and_then(|id| self.backend.exchange(id))
-            .map(|ex| ex.response)
-        {
-            Some(Response::Errored(err)) => notes.push(format!("translation failed: {err}")),
-            Some(Response::Cancelled) => notes.push("translation cancelled".to_owned()),
-            _ => {}
-        }
-        if let Some(err) = self.backend.last_error() {
-            if !notes.iter().any(|n| n.ends_with(&*err)) {
-                notes.push(format!("translator: {err}"));
-            }
-        }
-        notes
+        let backend = self.kind.backend();
+        let exchange = id
+            .and_then(|id| backend.exchange(id))
+            .and_then(|ex| ex.response.problem());
+        let backend = backend.last_error().map(|err| format!("translator: {err}"));
+        exchange.into_iter().chain(backend).collect()
     }
 
     /// Type-erased handle to the active backend. Used to wire external producers
     /// (e.g. the VNDB integration) to the translator's prompt without caring
     /// which backend is active.
     pub fn backend(&self) -> Arc<dyn Backend> {
-        self.backend.clone()
-    }
-
-    pub fn show_menu_item(&mut self, ui: &Ui) {
-        if ui.menu_item("Translator") {
-            self.open = true;
+        match &self.kind {
+            BackendKind::Chat { handle, .. } => Arc::new(handle.clone()),
+            BackendKind::Responses { handle } => Arc::new(handle.clone()),
+            BackendKind::Realtime { handle, .. } => Arc::new(handle.clone()),
         }
     }
 
-    pub fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
-        if !self.open {
-            return;
-        }
-        let Some(_window) = ui
-            .window("Translator")
-            .size_constraints([600.0, 300.0], [1200.0, 1200.0])
-            .opened(&mut self.open)
-            .menu_bar(true)
-            .begin()
-        else {
-            return;
-        };
-        if let Some(err) = self.backend.last_error() {
-            ui.text_colored([1.0, 0.4, 0.4, 1.0], format!("error: {}", err));
-        }
-        match &mut self.kind {
-            BackendKind::Chat { handle, buffers } => chat::window(ui, settings, handle, buffers),
-            BackendKind::Responses { handle } => responses::window(ui, settings, handle),
-            BackendKind::Realtime {
-                handle,
-                instr_tokens,
-            } => realtime::window(ui, settings, handle, instr_tokens),
-        }
+    pub fn show(
+        &mut self,
+        panel: &mut Panel,
+        ui: &Ui,
+        reflect: &ReflectSession,
+        settings: &mut Settings,
+    ) {
+        panel.show(
+            ui,
+            |w| {
+                w.size_constraints(px2(ui, [600.0, 300.0]), [f32::MAX, f32::MAX])
+                    .flags(WindowFlags::MENU_BAR)
+            },
+            || match &mut self.kind {
+                BackendKind::Chat { handle, buffers } => {
+                    chat::window(ui, reflect, settings, handle, buffers)
+                }
+                BackendKind::Responses { handle } => {
+                    responses::window(ui, reflect, settings, handle)
+                }
+                BackendKind::Realtime {
+                    handle,
+                    instr_tokens,
+                } => realtime::window(ui, reflect, settings, handle, instr_tokens),
+            },
+        );
     }
 }
 
 /// Render one exchange's assistant turn, streaming-aware. Shared by both
 /// backends (operates on the backend-agnostic [`ExchangeView`]).
-pub(crate) fn draw_exchange(ui: &Ui, ctx: &Context, ex: &ExchangeView) {
-    let _wrap_token = ui.push_text_wrap_pos_with_pos(0.0);
+pub(crate) fn draw_exchange(ui: &Ui, ex: &ExchangeView) {
+    let _wrap_token = ui.push_text_wrap_pos(0.0);
     let reasoning = ex.response.reasoning();
     if !reasoning.is_empty() {
-        ui.tree_node_config("thinking").build(|| {
+        if let Some(_node) = ui.tree_node_config("thinking").push() {
             ui.text_disabled(reasoning);
-        });
-    }
-    with_scaled_font(ui, ctx, TextStyle::Kanji, TRANSLATION_FONT_SCALE, || {
-        ui.text(""); // anchor for line wrapping
-        ui.same_line();
-        let draw_list = ui.get_window_draw_list();
-        let content = ex.response.content();
-        if !content.is_empty() {
-            ui.same_line();
-            stroke_text_with_highlight(
-                ui,
-                &draw_list,
-                content,
-                1.0,
-                Some(StyleColor::TextSelectedBg),
-            );
         }
+    }
+    TRANSLATION_SIZE.with(ui, || {
+        let draw_list = ui.get_window_draw_list();
+        let highlight = Some(StyleColor::TextSelectedBg);
+        let mut flow = Flow::new(ui);
+        flow.stroke_text(ui, &draw_list, ex.response.content(), 1.0, highlight);
         // Failures are reported with the other notes under the transcript.
         if let Response::Streaming { .. } = &ex.response {
-            if content.is_empty() {
-                ui.same_line();
-            } else {
-                ui.same_line_with_spacing(0.0, 0.0);
-            }
-            stroke_text_with_highlight(
-                ui,
-                &draw_list,
-                ellipses(ui),
-                1.0,
-                Some(StyleColor::TextSelectedBg),
-            );
+            flow.stroke_text(ui, &draw_list, ellipses(ui), 1.0, highlight);
         }
     });
 }
 
-/// Translations are drawn with the gloss font scaled down to roughly 1.25x
-/// the UI text size.
-const TRANSLATION_FONT_SCALE: f32 = 0.6;
+const TRANSLATION_SIZE: FontSize = FontSize::BODY.scaled(1.25);
 
-/// Render the usage progress bar for one exchange. `cached_tokens` is surfaced
-/// so prompt-cache hits (a key latency optimization) are visible.
-pub(crate) fn draw_usage(ui: &Ui, model: &ModelId, usage: &UsageView) {
-    ui.same_line();
-    ProgressBar::new(0.0)
-        .overlay_text(format!(
-            "{}: {} input ({} cached) + {} output ({} reasoning) = {}",
-            model.as_ref(),
-            usage.input_tokens,
-            usage.cached_tokens,
-            usage.output_tokens,
-            usage.reasoning_tokens,
-            usage.total_tokens,
-        ))
-        .size([500.0, 0.0])
-        .build(ui);
+/// One exchange's token usage. `cached_tokens` is shown so prompt-cache hits
+/// (a key latency optimization) are visible.
+fn usage_text(model: &ModelId, usage: &UsageView) -> String {
+    format!(
+        "{}: {} input ({} cached) + {} output ({} reasoning) = {}",
+        model.as_ref(),
+        usage.input_tokens,
+        usage.cached_tokens,
+        usage.output_tokens,
+        usage.reasoning_tokens,
+        usage.total_tokens,
+    )
+}
+
+/// Text the user can scroll and copy but not edit, as tall as its wrapped
+/// contents up to `max_height`.
+fn read_only_text(ui: &Ui, id: &str, text: &str, max_height: f32) {
+    let height = wrapped_field_height(ui, text, max_height);
+    let mut buf = text.to_owned();
+    ui.input_text_multiline(id, &mut buf, [ui.content_region_avail()[0], height])
+        .flags(InputTextMultilineFlags::WORD_WRAP)
+        .read_only(true)
+        .build();
+}
+
+/// An editable instruction or message, word-wrapped.
+fn wrapped_editor(ui: &Ui, id: &str, text: &mut String, height: f32) -> bool {
+    ui.input_text_multiline(id, text, [ui.content_region_avail()[0], height])
+        .flags(InputTextMultilineFlags::WORD_WRAP)
+        .build()
 }

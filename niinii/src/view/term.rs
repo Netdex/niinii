@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
+use crate::gui::px;
+use dear_imgui_rs::*;
 use ichiran::prelude::*;
-use imgui::*;
 
 use super::kanji::KanjiView;
 use super::mixins::*;
-use crate::renderer::context::Context;
 use crate::settings::Settings;
 
 pub struct TermView<'a> {
@@ -37,16 +37,14 @@ impl<'a> TermView<'a> {
         self
     }
 
-    fn add_pos(&self, _ctx: &mut Context, ui: &Ui, pos: &str) {
-        ui.text_colored(ui.style_color(StyleColor::NavHighlight), pos);
-        if ui.is_item_hovered() {
-            if let Some(kwpos) = self.jmdict_data.kwpos_by_kw.get(pos) {
-                ui.tooltip_text(kwpos.descr.as_str());
-            }
+    fn add_pos(&self, ui: &Ui, pos: &str) {
+        ui.text_colored(ui.style_color(StyleColor::NavCursor), pos);
+        if let Some(kwpos) = self.jmdict_data.kwpos_by_kw.get(pos) {
+            ui.set_item_tooltip(&kwpos.descr);
         }
     }
 
-    fn add_glosses(&self, ctx: &mut Context, ui: &Ui, glosses: &[Gloss]) {
+    fn add_glosses(&self, ui: &Ui, glosses: &[Gloss]) {
         let shown = self.max_senses.unwrap_or(usize::MAX).min(glosses.len());
         for (i, gloss) in glosses[..shown].iter().enumerate() {
             // index
@@ -58,7 +56,7 @@ impl<'a> TermView<'a> {
                 ui.same_line_with_spacing(0.0, 0.0);
                 let pos_split = gloss.pos_split();
                 for (i, pos) in pos_split.iter().enumerate() {
-                    self.add_pos(ctx, ui, pos);
+                    self.add_pos(ui, pos);
                     ui.same_line_with_spacing(0.0, 0.0);
                     if i != pos_split.len() - 1 {
                         ui.text(",");
@@ -80,19 +78,11 @@ impl<'a> TermView<'a> {
         }
     }
 
-    fn kanji_tooltip(&self, ctx: &mut Context, ui: &Ui, kanji: &Kanji) {
-        ui.tooltip(|| KanjiView::new(kanji, 25.0).ui(ctx, ui));
+    fn kanji_tooltip(&self, ui: &Ui, kanji: &Kanji) {
+        ui.tooltip(|| KanjiView::new(kanji, 25.0).ui(ui));
     }
 
-    fn add_word(
-        &self,
-        ctx: &mut Context,
-        ui: &Ui,
-        settings: &Settings,
-        word: &Word,
-        romaji: &str,
-        show_kanji: bool,
-    ) {
+    fn add_word(&self, ui: &Ui, settings: &Settings, word: &Word, romaji: &str, show_kanji: bool) {
         let meta = word.meta();
 
         if romaji == meta.text() {
@@ -100,34 +90,34 @@ impl<'a> TermView<'a> {
             if let Some(chr) = &meta.text().chars().next() {
                 let kanji = self.kanji_info.get(chr);
                 if let Some(kanji) = kanji {
-                    KanjiView::new(kanji, 30.0).ui(ctx, ui)
+                    KanjiView::new(kanji, 30.0).ui(ui)
                 }
             }
         } else if show_kanji {
+            let mut flow = Flow::new(ui);
             for chr in meta.text().chars() {
                 let kanji = self.kanji_info.get(&chr);
                 {
-                    let _style_token = ui.push_style_var(StyleVar::ItemSpacing([0.0, 4.0]));
+                    let _style_token = ui.push_style_var(StyleVar::ItemSpacing([0.0, px(ui, 4.0)]));
                     let text = format!("{}", chr);
-                    ui.same_line();
                     draw_kanji_text(
                         ui,
-                        ctx,
+                        &mut flow,
                         &text,
                         RubyTextMode::None,
                         KanjiStyle {
-                            highlight: kanji.is_some(),
-                            highlight_color: None,
-                            stroke: false,
-                            preview: false,
+                            highlight: kanji
+                                .is_some()
+                                .then(|| ui.style_color(StyleColor::TextSelectedBg)),
+                            ink: Ink::Plain,
                             underline: UnderlineMode::None,
                         },
                     );
                 }
 
                 if let Some(kanji) = kanji {
-                    if ui.is_item_hovered() {
-                        self.kanji_tooltip(ctx, ui, kanji);
+                    if ui.is_item_hovered_with_flags(ItemHoveredFlags::FOR_TOOLTIP) {
+                        self.kanji_tooltip(ui, kanji);
                     }
                 }
             }
@@ -145,9 +135,9 @@ impl<'a> TermView<'a> {
                 if [10285144, 10285148, 10285150, 10285187].contains(&plain.seq().unwrap_or(0)) {
                     return;
                 }
-                self.add_glosses(ctx, ui, plain.gloss());
+                self.add_glosses(ui, plain.gloss());
                 for conj in plain.conj() {
-                    self.add_conj(ctx, ui, conj);
+                    self.add_conj(ui, conj);
                 }
                 if let Some(suffix) = plain.suffix() {
                     ui.bullet();
@@ -171,45 +161,37 @@ impl<'a> TermView<'a> {
                         ui.table_header(component.reading());
                         ui.table_next_row();
                         ui.table_next_column();
-                        self.add_term(ctx, ui, settings, component, romaji, false);
+                        self.add_term(ui, settings, component, romaji, false);
                     }
                 }
             }
         }
     }
 
-    fn add_term(
-        &self,
-        ctx: &mut Context,
-        ui: &Ui,
-        settings: &Settings,
-        term: &Term,
-        romaji: &str,
-        show_kanji: bool,
-    ) {
+    fn add_term(&self, ui: &Ui, settings: &Settings, term: &Term, romaji: &str, show_kanji: bool) {
         match term {
-            Term::Word(word) => self.add_word(ctx, ui, settings, word, romaji, show_kanji),
+            Term::Word(word) => self.add_word(ui, settings, word, romaji, show_kanji),
             Term::Alternative(alt) => {
                 for (idx, word) in alt.alts().iter().enumerate() {
                     if idx != 0 {
                         ui.separator();
                     }
-                    self.add_word(ctx, ui, settings, word, romaji, true);
+                    self.add_word(ui, settings, word, romaji, true);
                 }
             }
         }
     }
 
-    fn add_conj(&self, ctx: &mut Context, ui: &Ui, conj: &Conjugation) {
+    fn add_conj(&self, ui: &Ui, conj: &Conjugation) {
         for vias in conj.flatten() {
             let base = *vias.first().unwrap();
 
-            if CollapsingHeader::new(base.reading().unwrap_or("Conjugation"))
-                .default_open(true)
-                .build(ui)
-            {
+            if ui.collapsing_header(
+                base.reading().unwrap_or("Conjugation"),
+                TreeNodeFlags::DEFAULT_OPEN,
+            ) {
                 {
-                    let _wrap_token = ui.push_text_wrap_pos_with_pos(-1.0);
+                    let _wrap_token = ui.push_text_wrap_pos(-1.0);
                     for via in vias {
                         if via != base {
                             ui.same_line();
@@ -224,7 +206,7 @@ impl<'a> TermView<'a> {
                             }
                             ui.text("[");
                             ui.same_line_with_spacing(0.0, 0.0);
-                            self.add_pos(ctx, ui, prop.pos());
+                            self.add_pos(ui, prop.pos());
                             ui.same_line_with_spacing(0.0, 0.0);
                             ui.text("]");
                             ui.same_line();
@@ -235,35 +217,24 @@ impl<'a> TermView<'a> {
                                     ui.style_color(StyleColor::PlotLinesHovered),
                                     "neg",
                                 );
-                                if ui.is_item_hovered() {
-                                    ui.tooltip_text("negative");
-                                }
+                                ui.set_item_tooltip("negative");
                             }
                             if prop.fml() {
                                 ui.same_line();
                                 ui.text_colored(ui.style_color(StyleColor::PlotHistogram), "fml");
-                                if ui.is_item_hovered() {
-                                    ui.tooltip_text("formal");
-                                }
+                                ui.set_item_tooltip("formal");
                             }
                         }
                     }
                 }
-                self.add_glosses(ctx, ui, base.gloss());
+                self.add_glosses(ui, base.gloss());
             }
         }
     }
 
-    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
+    pub fn ui(&mut self, ui: &Ui, settings: &Settings) {
         // TODO: figure out ないでしょ layout issue with compound + alternative
-        let _wrap_token = ui.push_text_wrap_pos_with_pos(ui.current_font_size() * self.wrap_w);
-        self.add_term(
-            ctx,
-            ui,
-            settings,
-            self.romaji.term(),
-            self.romaji.romaji(),
-            true,
-        );
+        let _wrap_token = ui.push_text_wrap_pos(ui.current_font_size() * self.wrap_w);
+        self.add_term(ui, settings, self.romaji.term(), self.romaji.romaji(), true);
     }
 }

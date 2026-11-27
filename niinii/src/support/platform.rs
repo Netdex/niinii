@@ -1,24 +1,13 @@
 use std::time::{Duration, Instant};
 
-use copypasta::{ClipboardContext, ClipboardProvider};
-use imgui::ClipboardBackend;
+use dear_imgui_rs::SystemClipboard;
+
 use winapi::um::winuser::{
     keybd_event, GetClipboardSequenceNumber, GetKeyState, KEYEVENTF_KEYUP, VK_SCROLL,
 };
 
-pub struct ClipboardSupport(ClipboardContext);
-
-pub fn init() -> Option<ClipboardSupport> {
-    ClipboardContext::new().ok().map(ClipboardSupport)
-}
-
-impl ClipboardBackend for ClipboardSupport {
-    fn get(&mut self) -> Option<String> {
-        self.0.get_contents().ok()
-    }
-    fn set(&mut self, text: &str) {
-        let _ = self.0.set_contents(text.to_owned());
-    }
+pub fn clipboard_text() -> Option<String> {
+    SystemClipboard::new().ok()?.get_text().ok()
 }
 
 /// Changes whenever the clipboard contents change. Returns 0 if the sequence number is unavailable.

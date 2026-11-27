@@ -1,4 +1,5 @@
-use imgui::*;
+use crate::gui::{px, px2};
+use dear_imgui_rs::*;
 
 use std::sync::Arc;
 
@@ -7,6 +8,7 @@ use ichiran::prelude::Ichiran;
 use crate::{
     settings::Settings,
     translator::Backend,
+    view::{mixins::error_note, panel::Panel},
     vndb::{self, clean_description, SearchParams, SortKey, VnSummary, VndbHandle},
 };
 
@@ -38,7 +40,6 @@ const PLATFORM_OPTIONS: &[&str] = &[
 ];
 
 pub struct VndbView {
-    pub open: bool,
     params: SearchParams,
     vndb: VndbHandle,
 }
@@ -61,21 +62,14 @@ impl VndbView {
             vndb.set_active_by_id(id);
         }
         Self {
-            open: false,
             params: SearchParams::default(),
             vndb,
         }
     }
 
-    pub fn show_menu_item(&mut self, ui: &Ui) {
-        if ui.menu_item("VNDB") {
-            self.open = true;
-        }
-    }
-
     /// Menu-bar label naming the VN whose characters the translator uses.
     /// Opens the window when clicked.
-    pub fn show_status(&mut self, ui: &Ui) {
+    pub fn show_status(&self, panel: &mut Panel, ui: &Ui) {
         let state = self.vndb.state();
         let label = match (&state.active, state.loading_active) {
             (_, true) => "loading VN...",
@@ -86,53 +80,55 @@ impl VndbView {
             ui.push_style_color(StyleColor::Text, ui.style_color(StyleColor::TextDisabled))
         });
         if ui.menu_item(format!("{label}##vndb_status")) {
-            self.open = true;
+            panel.open();
         }
     }
 
-    pub fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
-        if !self.open {
-            return;
-        }
-        let Some(_window) = ui
-            .window("VNDB")
-            .size_constraints([720.0, 400.0], [1600.0, 1600.0])
-            .opened(&mut self.open)
-            .begin()
-        else {
-            return;
-        };
+    pub fn show(&mut self, panel: &mut Panel, ui: &Ui, settings: &mut Settings) {
+        panel.show(
+            ui,
+            |w| w.size_constraints(px2(ui, [720.0, 400.0]), [f32::MAX, f32::MAX]),
+            || self.contents(ui, settings),
+        );
+    }
+
+    fn contents(&mut self, ui: &Ui, settings: &mut Settings) {
         let vndb = &self.vndb;
         let state = vndb.state();
 
         // Search row.
-        ui.set_next_item_width(-160.0);
+        ui.set_next_item_width(-px(ui, 160.0));
         let submitted = ui
             .input_text("##query", &mut self.params.query)
             .enter_returns_true(true)
             .hint("Search visual novel...")
             .build();
         ui.same_line();
-        let clicked = ui.button_with_size("Search", [140.0, 0.0]);
+        let clicked = ui.button_with_size("Search", [px(ui, 140.0), 0.0]);
         if (submitted || clicked) && !self.params.query.trim().is_empty() {
             vndb.search(self.params.clone());
         }
 
         // Filter row -- explicit pixel widths so the multi-selects don't
         // get squished by the layout engine.
-        multi_select_str(ui, "lang", LANG_OPTIONS, &mut self.params.langs, 180.0);
+        multi_select_str(
+            ui,
+            "lang",
+            LANG_OPTIONS,
+            &mut self.params.langs,
+            px(ui, 180.0),
+        );
         ui.same_line();
         multi_select_str(
             ui,
             "platform",
             PLATFORM_OPTIONS,
             &mut self.params.platforms,
-            220.0,
+            px(ui, 220.0),
         );
         ui.same_line();
-        multi_select_length(ui, &mut self.params.lengths, 160.0);
+        multi_select_length(ui, &mut self.params.lengths, px(ui, 160.0));
         ui.same_line();
-        ui.set_next_item_width(140.0);
         sort_combo(ui, &mut self.params.sort);
         ui.same_line();
         ui.checkbox("reverse", &mut self.params.reverse);
@@ -146,7 +142,8 @@ impl VndbView {
             ui.separator();
             ui.text_colored([0.6, 0.9, 0.6, 1.0], &active.summary.title);
             ui.same_line();
-            ui.text_disabled(format!("[{}]", active.summary.id));
+            let id = &active.summary.id;
+            ui.text_link_open_url(id, format!("https://vndb.org/{id}"));
             ui.same_line();
             if ui.small_button("Clear") {
                 vndb.clear_active();
@@ -161,58 +158,22 @@ impl VndbView {
         }
 
         if let Some(err) = &state.last_error {
-            ui.text_colored([1.0, 0.4, 0.4, 1.0], format!("error: {}", err));
+            error_note(ui, &format!("vndb: {err}"));
         }
 
         ui.separator();
 
-        let table_flags = TableFlags::BORDERS_INNER_H
-            | TableFlags::ROW_BG
-            | TableFlags::SCROLL_Y
-            | TableFlags::SIZING_STRETCH_PROP;
+        let table_flags = TableOptions::default()
+            .flags(TableFlags::BORDERS_INNER_H | TableFlags::ROW_BG | TableFlags::SCROLL_Y)
+            .sizing_policy(TableSizingPolicy::StretchProp);
         let columns = [
-            TableColumnSetup {
-                name: "id",
-                flags: TableColumnFlags::WIDTH_FIXED,
-                init_width_or_weight: 56.0,
-                user_id: Id::default(),
-            },
-            TableColumnSetup {
-                name: "title",
-                flags: TableColumnFlags::WIDTH_STRETCH,
-                init_width_or_weight: 3.0,
-                user_id: Id::default(),
-            },
-            TableColumnSetup {
-                name: "released",
-                flags: TableColumnFlags::WIDTH_FIXED,
-                init_width_or_weight: 80.0,
-                user_id: Id::default(),
-            },
-            TableColumnSetup {
-                name: "length",
-                flags: TableColumnFlags::WIDTH_FIXED,
-                init_width_or_weight: 70.0,
-                user_id: Id::default(),
-            },
-            TableColumnSetup {
-                name: "rating",
-                flags: TableColumnFlags::WIDTH_FIXED,
-                init_width_or_weight: 90.0,
-                user_id: Id::default(),
-            },
-            TableColumnSetup {
-                name: "platforms",
-                flags: TableColumnFlags::WIDTH_STRETCH,
-                init_width_or_weight: 1.0,
-                user_id: Id::default(),
-            },
-            TableColumnSetup {
-                name: "developer",
-                flags: TableColumnFlags::WIDTH_STRETCH,
-                init_width_or_weight: 1.0,
-                user_id: Id::default(),
-            },
+            TableColumnSetup::new("id").fixed_width(px(ui, 56.0)),
+            TableColumnSetup::new("title").stretch_weight(3.0),
+            TableColumnSetup::new("released").fixed_width(px(ui, 80.0)),
+            TableColumnSetup::new("length").fixed_width(px(ui, 70.0)),
+            TableColumnSetup::new("rating").fixed_width(px(ui, 90.0)),
+            TableColumnSetup::new("platforms").stretch_weight(1.0),
+            TableColumnSetup::new("developer").stretch_weight(1.0),
         ];
         if let Some(_t) = ui.begin_table_header_with_flags("results", columns, table_flags) {
             for vn in state.search_results.iter() {
@@ -240,11 +201,11 @@ impl VndbView {
                     ui.text_disabled(alt);
                 }
                 if let Some(desc) = vn.description.as_ref().filter(|s| !s.is_empty()) {
-                    if ui.is_item_hovered() {
+                    if ui.is_item_hovered_with_flags(ItemHoveredFlags::FOR_TOOLTIP) {
                         let cleaned = clean_description(desc);
                         if !cleaned.is_empty() {
                             ui.tooltip(|| {
-                                let _w = ui.push_text_wrap_pos_with_pos(400.0);
+                                let _w = ui.push_text_wrap_pos(px(ui, 400.0));
                                 ui.text_wrapped(&cleaned);
                             });
                         }
@@ -276,7 +237,8 @@ fn sort_combo(ui: &Ui, current: &mut SortKey) {
         .find(|(k, _)| k == current)
         .map(|(_, l)| *l)
         .unwrap_or("");
-    if let Some(_t) = ui.begin_combo("##sort", label) {
+    let fit = ComboBoxOptions::new().preview_mode(ComboBoxPreviewMode::PreviewFit);
+    if let Some(_t) = ui.begin_combo_with_flags("##sort", label, fit) {
         for (k, l) in SORT_OPTIONS {
             let selected = k == current;
             if selected {
@@ -307,7 +269,11 @@ fn multi_select_str(
         ui.open_popup(&popup_id);
     }
     ui.popup(&popup_id, || {
-        if let Some(_t) = ui.begin_table_with_flags("opts", 4, TableFlags::SIZING_FIXED_FIT) {
+        if let Some(_t) = ui.begin_table_with_flags(
+            "opts",
+            4,
+            TableOptions::default().sizing_policy(TableSizingPolicy::FixedFit),
+        ) {
             for opt in options {
                 ui.table_next_column();
                 let mut checked = selected.iter().any(|s| s == opt);

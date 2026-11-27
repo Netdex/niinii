@@ -39,12 +39,15 @@ struct Shared {
 }
 impl Parser {
     pub async fn new(settings: &Settings) -> Self {
-        let ichiran = Ichiran::new(settings.ichiran_path.clone(), settings.ichiran_pool_size);
+        let ichiran = Ichiran::new(
+            settings.ichiran.ichiran_path.path.clone(),
+            settings.ichiran.ichiran_pool_size as usize,
+        );
         let pg_daemon = match ichiran.conn_params().await {
             Ok(conn_params) => {
                 let pg_daemon = PostgresDaemon::new(
-                    &settings.postgres_path,
-                    &settings.db_path,
+                    &settings.ichiran.postgres_path.path,
+                    &settings.ichiran.db_path.path,
                     conn_params,
                     false,
                 );

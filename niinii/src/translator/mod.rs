@@ -55,13 +55,13 @@ pub struct TranslateConfig {
 impl TranslateConfig {
     /// Snapshot the per-request knobs for whichever backend is active.
     pub fn from_settings(settings: &Settings) -> Self {
-        match settings.translator_type {
+        match settings.translation.translator_type {
             TranslatorType::Chat => {
                 let c = &settings.chat;
                 Self {
-                    model: settings.openai_model.clone(),
+                    model: settings.translation.openai_model.clone(),
                     system_prompt: c.system_prompt.clone(),
-                    max_context_tokens: c.max_context_tokens,
+                    max_context_tokens: c.max_context_tokens.0,
                     temperature: c.temperature,
                     top_p: c.top_p,
                     max_tokens: c.max_tokens,
@@ -77,7 +77,7 @@ impl TranslateConfig {
             TranslatorType::Responses => {
                 let r = &settings.responses;
                 Self {
-                    model: settings.openai_model.clone(),
+                    model: settings.translation.openai_model.clone(),
                     system_prompt: r.system_prompt.clone(),
                     max_context_tokens: [0, 0],
                     temperature: r.temperature,
@@ -95,7 +95,7 @@ impl TranslateConfig {
             TranslatorType::Realtime => {
                 let rt = &settings.realtime;
                 Self {
-                    model: settings.openai_model.clone(),
+                    model: settings.translation.openai_model.clone(),
                     system_prompt: rt.system_prompt.clone(),
                     max_context_tokens: [0, 0],
                     temperature: None,
@@ -130,8 +130,16 @@ impl TranslateConfig {
 /// Assistant turn state, shared by all backends.
 #[derive(Clone, Debug)]
 pub enum Response {
-    Streaming { content: String, reasoning: String },
-    Completed { content: String, reasoning: String },
+    Streaming {
+        content: String,
+        reasoning: String,
+    },
+    Completed {
+        content: String,
+        reasoning: String,
+        /// Finish reason when the model stopped before finishing the reply.
+        cut_short: Option<Arc<str>>,
+    },
     Errored(Arc<str>),
     Cancelled,
 }
@@ -143,6 +151,18 @@ impl Response {
         match self {
             Response::Streaming { content, .. } | Response::Completed { content, .. } => content,
             Response::Errored(_) | Response::Cancelled => "",
+        }
+    }
+    /// What went wrong with this exchange, if anything.
+    pub fn problem(&self) -> Option<String> {
+        match self {
+            Response::Errored(err) => Some(format!("translation failed: {err}")),
+            Response::Cancelled => Some("translation cancelled".to_owned()),
+            Response::Completed {
+                cut_short: Some(reason),
+                ..
+            } => Some(format!("response ended early: finish_reason={reason}")),
+            Response::Streaming { .. } | Response::Completed { .. } => None,
         }
     }
     /// Reasoning trace/summary, if any. Not echoed back into context.
@@ -186,5 +206,7 @@ pub trait Backend: Send + Sync + 'static {
     fn refresh_models(&self);
     fn set_system_addendum(&self, text: Option<Arc<str>>);
     fn exchange(&self, id: ExchangeId) -> Option<ExchangeView>;
+    /// Most recent error not tied to an exchange (model refresh, connection).
+    /// An exchange's own failure is on its [`Response`].
     fn last_error(&self) -> Option<Arc<str>>;
 }

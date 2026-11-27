@@ -42,7 +42,7 @@ pub struct TtsEngine {
 impl TtsEngine {
     pub fn new(settings: &Settings) -> Self {
         TtsEngine {
-            vvcore_path: settings.vv_model_path.clone().into(),
+            vvcore_path: settings.tts.vv_model_path.path.clone().into(),
             state: OnceCell::new(),
         }
     }

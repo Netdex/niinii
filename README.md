@@ -90,14 +90,6 @@ involved, prebuilt versions are included with the prepackaged builds.
 Seems like a problem with winit. niinii is almost always used in the foreground
 anyways because of always on top, so I'm not going to bother fixing this.
 
-### Issues with Chromium-based browsers
-In overlay mode, niinii displays a transparent window which covers the entire
-screen. Newer Chromium-based browsers have a feature which suspends drawing
-when the window is fully occluded, for performance reasons. The window
-displayed by niinii counts as full occlusion despite being transparent, which
-causes Chromium-based browsers to suspend drawing. I suspect this could also
-happen with some Electron apps, but I haven't tested it.
-
 ### Something else
 Run the application with tracing enabled, then create a GitHub issue with the log attached.
 ```pwsh
