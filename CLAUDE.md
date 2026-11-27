@@ -38,7 +38,7 @@ cargo build --features voicevox         # Text-to-speech (Windows only)
 - **`openai/`** — Custom OpenAI API client library (Chat Completions, Realtime WebSocket, Responses API). Not published; built specifically for this project.
 - **`ichiran/`** — Rust wrapper around `ichiran-cli`, a Common Lisp program for Japanese text segmentation. Manages a PostgreSQL subprocess and communicates via CLI invocations with S-expressions. Includes LRU caching for segments and kanji lookups.
 - **`vndb/`** — Minimal client for the VNDB Kana API (`https://api.vndb.org/kana`). Implements only the endpoints niinii needs (VN search, VN-by-id, characters-by-vn) and the search filters it surfaces in the UI.
-- **`third-party/`** — Vendored/forked dependencies: `imgui-dx11-renderer`, `vvcore` (VOICEVOX), `eventsource-stream`.
+- **`third-party/`** — Vendored/forked dependencies: `imgui-dx11-renderer`, `imgui-winit-dx11-renderer-viewports`, `vvcore` (VOICEVOX), `eventsource-stream`.
 - **`tools/prompt-tune/`** — Python (uv) tool that tunes the chat system prompt with GEPA on the VNTL dataset against a local model, with Claude Code headless as the reflection model. See its README.
 
 ### Key Subsystems in `niinii/`
@@ -57,7 +57,7 @@ The app reads `niinii.toml` at startup. This contains API keys, model settings, 
 
 ### Dependencies and Patches
 
-The workspace uses a forked `imgui-rs` (branch `glow-viewports-mdpi`) patched for viewport and DPI support. The fork is referenced via `[patch.crates-io]` in the root `Cargo.toml`. The D3D11 renderer comes from `imgui-winit-dx11-renderer-viewports` (separate repo, currently a path dependency on `../../imgui-winit-dx11-renderer-viewports`). The `freetype` library is required via vcpkg for font rendering.
+The workspace uses a forked `imgui-rs` (branch `glow-viewports-mdpi`) patched for viewport and DPI support. The fork is referenced via `[patch.crates-io]` in the root `Cargo.toml`. The D3D11 viewports renderer comes from `imgui-winit-dx11-renderer-viewports`, vendored in `third-party/`. The `freetype` library is required via vcpkg for font rendering.
 
 ### Runtime Dependencies
 
