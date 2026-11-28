@@ -21,7 +21,7 @@ jobs:
           # lfs: true
           submodules: recursive
       # - name: Extract data
-      #   run: 7z x deploy/ichiran-250113.7z
+      #   run: 7z x deploy/ichiran-260118.7z
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
