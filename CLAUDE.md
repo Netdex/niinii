@@ -21,7 +21,7 @@ cargo build --features tracing-chrome   # Chrome tracing support
 cargo build --features voicevox         # Text-to-speech (Windows only)
 ```
 
-Runtime: Japanese support needs `ichiran-cli` and a PostgreSQL instance with the Ichiran database, configured in `niinii.toml` (read at startup, written back on exit). `data/` holds these for packaged builds.
+Runtime: Japanese support needs `ichiran-cli` and a PostgreSQL instance with the Ichiran database, configured in `niinii.toml` (read at startup, written back on exit). `data/` holds these for packaged builds; `docs/ichiran.md` covers rebuilding and packing them.
 
 ## Constraints
 

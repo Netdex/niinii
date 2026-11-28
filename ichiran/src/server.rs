@@ -36,7 +36,11 @@ fn sexp_head(s: &str) -> String {
 // Capture *standard-output* during eval and return it as the response payload.
 // All callers must write their result via `(princ ...)` / `(format t ...)`;
 // the value returned by the form is discarded.
+//
+// ichiran's `with-db` connects on every call, and a Postgres connection costs
+// tens of milliseconds on Windows; `:pooled-p` keeps one open per worker.
 const SERVER_LOOP: &str = r#"(progn
+  (setf ichiran/conn:*connection* (append ichiran/conn:*connection* '(:pooled-p t)))
   (write-line "READY")
   (force-output)
   (loop for line = (read-line *standard-input* nil nil)
