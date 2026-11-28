@@ -1,19 +1,23 @@
-use imgui::*;
+use dear_imgui_reflect::ReflectSession;
+use dear_imgui_rs::*;
 
 use crate::{
-    renderer::context::Context,
+    gui::{px, px2, Frame},
+    history::{History, HistoryEvent},
     settings::{RubyTextType, Settings},
     support::{platform::ScrollLockSync, regex::CachedRegex},
     tts::{self, TtsEngine},
     view::{
-        gloss::{GlossEvent, GlossInputAction, GlossView},
-        help::HelpView,
-        mixins::{ellipses, stroke_text_with_highlight},
-        settings::SettingsView,
-        style_editor::StyleEditor,
-        transcript::TranscriptView,
-        translator::TranslatorWindow,
-        vndb::VndbView,
+        gloss::{GlossInputAction, GlossView},
+        help,
+        mixins::{error_note, stroke_text_with_highlight},
+        panel::{Panel, TextSize},
+        settings as settings_view,
+        shortcuts::Action,
+        style_editor,
+        transcript::{self, TranscriptView},
+        translator::{self as translator_view, TranslatorWindow},
+        vndb::{self as vndb_view, VndbView},
     },
 };
 
@@ -25,8 +29,56 @@ enum Error {
     TextToSpeech(#[from] tts::Error),
 }
 
+/// The app's optional windows.
+struct Panels {
+    settings: Panel,
+    style_editor: Panel,
+    translator: Panel,
+    transcript: Panel,
+    vndb: Panel,
+    help: Panel,
+}
+
+impl Panels {
+    fn new() -> Self {
+        Self {
+            settings: Panel::new("Settings", settings_view::SIZING),
+            style_editor: Panel::new("Style Editor", style_editor::SIZING),
+            translator: Panel::new("Translator", translator_view::SIZING),
+            transcript: Panel::new("Transcript", transcript::SIZING),
+            vndb: Panel::new("VNDB", vndb_view::SIZING),
+            help: Panel::new("About niinii", help::SIZING),
+        }
+    }
+}
+
+/// Dear ImGui's own inspection windows.
+#[derive(Default)]
+struct DebugTools {
+    metrics: bool,
+    log: bool,
+    id_stack: bool,
+}
+
+impl DebugTools {
+    fn show(&mut self, ui: &Ui) {
+        if self.metrics {
+            ui.show_metrics_window(&mut self.metrics);
+        }
+        if self.log {
+            ui.show_debug_log_window(&mut self.log);
+        }
+        if self.id_stack {
+            ui.show_id_stack_tool_window(&mut self.id_stack);
+        }
+    }
+}
+
+/// Longer clipboard text goes into the input box but is not glossed.
+const MAX_CLIPBOARD_GLOSS: usize = 500;
+
 pub struct App {
-    show_metrics_window: bool,
+    debug: DebugTools,
     no_inputs: bool,
     scroll_lock: ScrollLockSync,
 
@@ -34,13 +86,14 @@ pub struct App {
     /// Shown under the transcript until the next line.
     error: Option<Error>,
     tts: TtsEngine,
+    history: History,
     gloss: GlossView,
     translator_window: TranslatorWindow,
-    settings_view: SettingsView,
-    style_editor: StyleEditor,
     vndb_view: VndbView,
-    help_view: HelpView,
     transcript: TranscriptView,
+    panels: Panels,
+    /// Editor state for the reflected settings views.
+    reflect: ReflectSession,
 
     auto_tts_regex: CachedRegex,
 }
@@ -48,33 +101,33 @@ pub struct App {
 impl App {
     pub async fn new(settings: Settings) -> Self {
         let tts = TtsEngine::new(&settings);
-        let gloss = GlossView::new(&settings).await;
+        let history = History::new(&settings).await;
         let translator_window = TranslatorWindow::new(&settings);
         let vndb_view = VndbView::new(
             translator_window.backend(),
-            gloss.parser().ichiran(),
+            history.parser().ichiran(),
             &settings,
         );
         App {
-            show_metrics_window: false,
+            debug: DebugTools::default(),
             no_inputs: false,
             scroll_lock: ScrollLockSync::new(false),
             settings,
             error: None,
             tts,
-            gloss,
+            history,
+            gloss: GlossView::new(),
             translator_window,
-            settings_view: SettingsView::new(),
-            style_editor: StyleEditor::new(),
             vndb_view,
-            help_view: HelpView::new(),
             transcript: TranscriptView::new(),
+            panels: Panels::new(),
+            reflect: settings_view::reflect_session(),
             auto_tts_regex: CachedRegex::default(),
         }
     }
 
     fn request_gloss(&mut self, text: &str) {
-        let processed = match self.gloss.request(text, &self.settings) {
+        let processed = match self.history.request(text, &self.settings) {
             Ok(Some(p)) => p,
             Ok(None) => return,
             Err(err) => return self.error(Error::Gloss(err)),
@@ -83,10 +136,10 @@ impl App {
         // Auto-translate and auto-tts both run on the regex-processed input
         // text and don't need the parsed AST, so kick them off here in
         // parallel with the still-running parse.
-        if self.settings.auto_translate {
+        if self.settings.translation.auto_translate {
             self.translate(processed.clone());
         }
-        if let Some(pattern) = self.settings.auto_tts_regex.clone() {
+        if let Some(pattern) = self.settings.tts.auto_tts_regex.clone() {
             let tts_text = self.auto_tts_regex.get(&pattern).ok().and_then(|regex| {
                 regex.captures(&processed).unwrap().map(|captures| {
                     captures
@@ -104,17 +157,17 @@ impl App {
     /// Translate `text` as the line being shown.
     fn translate(&mut self, text: String) {
         let id = self.translator_window.translate(&self.settings, text);
-        self.gloss.set_translation(id);
+        self.history.set_translation(id);
     }
 
     fn translate_current(&mut self) {
-        if let Some(text) = self.gloss.ast().map(|ast| ast.original_text.clone()) {
+        if let Some(text) = self.history.ast().map(|ast| ast.original_text.clone()) {
             self.translate(text);
         }
     }
 
     fn speak_current(&mut self) {
-        if let Some(text) = self.gloss.ast().map(|ast| ast.original_text.clone()) {
+        if let Some(text) = self.history.ast().map(|ast| ast.original_text.clone()) {
             self.request_tts(&text);
         }
     }
@@ -132,128 +185,126 @@ impl App {
         self.error = Some(err);
     }
 
-    fn poll(&mut self, ui: &Ui, ctx: &mut Context) {
-        while let Some(event) = self.gloss.poll(ui, ctx, &self.settings) {
+    fn poll(&mut self) {
+        while let Some(event) = self.history.poll(&self.settings) {
             match event {
-                GlossEvent::ClipboardReceived(text) => self.request_gloss(&text),
-                GlossEvent::Failed(err) => self.error(err.into()),
+                HistoryEvent::ClipboardReceived(text) => {
+                    self.gloss.set_input(&text);
+                    if text.len() <= MAX_CLIPBOARD_GLOSS {
+                        self.request_gloss(&text);
+                    }
+                }
+                HistoryEvent::Failed(err) => self.error(err.into()),
             }
         }
     }
 
     fn cycle_ruby_text(&mut self) {
-        self.settings.ruby_text_type = match self.settings.ruby_text_type {
+        self.settings.interface.ruby_text_type = match self.settings.interface.ruby_text_type {
             RubyTextType::None => RubyTextType::Furigana,
             RubyTextType::Furigana => RubyTextType::Romaji,
             RubyTextType::Romaji => RubyTextType::None,
         };
     }
 
-    /// Keys act while any niinii window has focus, except when typing. Listed
-    /// for the user in `view::help::SHORTCUTS`.
-    fn handle_shortcuts(&mut self, ui: &Ui) {
-        if ui.io().want_text_input {
-            return;
-        }
-        let processing = self.gloss.is_processing();
-        if ui.is_key_pressed_no_repeat(Key::T) && !processing {
-            self.translate_current();
-        }
-        if cfg!(feature = "voicevox") && ui.is_key_pressed_no_repeat(Key::S) && !processing {
-            self.speak_current();
-        }
-        if ui.is_key_pressed_no_repeat(Key::R) {
-            self.cycle_ruby_text();
-        }
-        if ui.is_key_pressed(Key::LeftArrow) {
-            self.gloss.history_back();
-        }
-        if ui.is_key_pressed(Key::RightArrow) {
-            self.gloss.history_forward();
-        }
-        if ui.is_key_pressed_no_repeat(Key::End) {
-            self.gloss.history_latest();
+    fn run(&mut self, action: Action) {
+        let processing = self.history.is_processing();
+        match action {
+            Action::Translate if !processing => self.translate_current(),
+            Action::Speak if !processing => self.speak_current(),
+            Action::Translate | Action::Speak => {}
+            Action::CycleRubyText => self.cycle_ruby_text(),
+            Action::PreviousLine => self.history.back(),
+            Action::NextLine => self.history.forward(),
+            Action::LatestLine => self.history.latest(),
         }
     }
 
-    fn show_menu(&mut self, ctx: &mut Context, ui: &Ui) {
+    fn show_menu(&mut self, ui: &Ui) {
         if let Some(_token) = ui.begin_menu_bar() {
             if let Some(_menu) = ui.begin_menu("Options") {
-                ui.menu_item_config("Watch clipboard")
-                    .build_with_ref(&mut self.settings.watch_clipboard);
-                ui.menu_item_config("Show input")
-                    .build_with_ref(&mut self.settings.show_manual_input);
-                ui.menu_item_config("Auto-translate")
-                    .build_with_ref(&mut self.settings.auto_translate);
+                ui.menu_item_toggle_no_shortcut(
+                    "Watch clipboard",
+                    &mut self.settings.watch_clipboard,
+                    true,
+                );
+                ui.menu_item_toggle_no_shortcut(
+                    "Show input",
+                    &mut self.settings.show_manual_input,
+                    true,
+                );
+                ui.menu_item_toggle_no_shortcut(
+                    "Auto-translate",
+                    &mut self.settings.translation.auto_translate,
+                    true,
+                );
                 if let Some(_menu) = ui.begin_menu("Ruby text") {
                     for (label, kind) in [
                         ("None", RubyTextType::None),
                         ("Furigana", RubyTextType::Furigana),
                         ("Romaji", RubyTextType::Romaji),
                     ] {
-                        if ui
-                            .menu_item_config(label)
-                            .selected(self.settings.ruby_text_type == kind)
-                            .build()
-                        {
-                            self.settings.ruby_text_type = kind;
+                        let selected = self.settings.interface.ruby_text_type == kind;
+                        if ui.menu_item_enabled_selected_no_shortcut(label, selected, true) {
+                            self.settings.interface.ruby_text_type = kind;
                         }
                     }
                     ui.separator();
-                    if ui.menu_item_config("Cycle").shortcut("R").build() {
-                        self.cycle_ruby_text();
+                    if Action::CycleRubyText.menu_item(ui, "Cycle") {
+                        self.run(Action::CycleRubyText);
                     }
                 }
                 ui.separator();
-                self.style_editor.show_menu_item(ui);
-                self.translator_window.show_menu_item(ui);
-                self.transcript.show_menu_item(ui);
-                self.vndb_view.show_menu_item(ui);
+                self.panels.style_editor.menu_item(ui);
+                self.panels.translator.menu_item(ui);
+                self.panels.transcript.menu_item(ui);
+                self.panels.vndb.menu_item(ui);
                 ui.separator();
-                self.settings_view.show_menu_item(ui);
+                self.panels.settings.menu_item(ui);
                 ui.separator();
                 let mut no_inputs = self.no_inputs;
-                if ui
-                    .menu_item_config("Disable interaction")
-                    .shortcut("ScrLk")
-                    .build_with_ref(&mut no_inputs)
-                {
+                if ui.menu_item_toggle_with_shortcut(
+                    "Disable interaction",
+                    "ScrLk",
+                    &mut no_inputs,
+                    true,
+                ) {
                     self.set_no_inputs(no_inputs);
                 }
             }
             if let Some(_menu) = ui.begin_menu("Gloss") {
-                self.gloss.show_menu(ctx, ui);
+                self.gloss.show_menu(ui);
             }
             if let Some(_menu) = ui.begin_menu("Help") {
-                self.help_view.show_menu_item(ui);
+                self.panels.help.menu_item(ui);
             }
             if let Some(_menu) = ui.begin_menu("Debug") {
-                if ui.menu_item("Debugger") {
-                    self.show_metrics_window = true;
-                }
+                ui.menu_item_toggle_no_shortcut("Metrics", &mut self.debug.metrics, true);
+                ui.menu_item_toggle_no_shortcut("Debug log", &mut self.debug.log, true);
+                ui.menu_item_toggle_no_shortcut("ID stack tool", &mut self.debug.id_stack, true);
             }
             ui.separator();
-            let disable_state = ui.begin_disabled(self.gloss.is_processing());
-            if ui.menu_item_config("Translate").shortcut("T").build() {
-                self.translate_current();
+            let disable_state = ui.begin_disabled_with_cond(self.history.is_processing());
+            if Action::Translate.menu_item(ui, "Translate") {
+                self.run(Action::Translate);
             }
-            if cfg!(feature = "voicevox") && ui.menu_item_config("Speak").shortcut("S").build() {
-                self.speak_current();
+            if cfg!(feature = "voicevox") && Action::Speak.menu_item(ui, "Speak") {
+                self.run(Action::Speak);
             }
             drop(disable_state);
 
             ui.separator();
-            let (pos, len) = self.gloss.history_position();
+            let (pos, len) = self.history.position();
             {
-                let _disabled = ui.begin_disabled(pos <= 1);
-                if ui.menu_item_config("<").shortcut("Left").build() {
-                    self.gloss.history_back();
+                let _disabled = ui.begin_disabled_with_cond(pos <= 1);
+                if Action::PreviousLine.menu_item(ui, "<") {
+                    self.run(Action::PreviousLine);
                 }
             }
             {
-                let _disabled = ui.begin_disabled(pos >= len);
-                if ui.menu_item_config(">").shortcut("Right").build() {
-                    self.gloss.history_forward();
+                let _disabled = ui.begin_disabled_with_cond(pos >= len);
+                if Action::NextLine.menu_item(ui, ">") {
+                    self.run(Action::NextLine);
                 }
             }
             if len > 0 {
@@ -261,27 +312,19 @@ impl App {
             }
 
             ui.separator();
-            self.vndb_view.show_status(ui);
+            self.vndb_view.show_status(&mut self.panels.vndb, ui);
         }
     }
 
     /// Errors for the line being shown, under the transcript.
     fn show_notes(&self, ui: &Ui) {
         let mut notes: Vec<String> = self.error.iter().map(|e| e.to_string()).collect();
-        notes.extend(self.translator_window.notes(self.gloss.translation()));
+        notes.extend(self.translator_window.notes(self.history.translation()));
         if notes.is_empty() {
             return;
         }
-        let draw_list = ui.get_window_draw_list();
-        let _wrap = ui.push_text_wrap_pos_with_pos(0.0);
         for note in notes {
-            stroke_text_with_highlight(
-                ui,
-                &draw_list,
-                &note,
-                1.0,
-                Some(StyleColor::PlotLinesHovered),
-            );
+            error_note(ui, &note);
         }
     }
 
@@ -290,112 +333,125 @@ impl App {
         self.scroll_lock.set(no_inputs);
     }
 
-    fn show_input_toggle(&mut self, ui: &Ui) -> bool {
-        let mut hovered = false;
+    fn show_input_toggle(&mut self, ui: &Ui) {
         ui.window("Interaction")
-            .always_auto_resize(true)
-            .movable(false)
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .position([12.0, 12.0], Condition::Always)
+            .flags(
+                WindowFlags::ALWAYS_AUTO_RESIZE
+                    | WindowFlags::NO_MOVE
+                    | WindowFlags::NO_COLLAPSE
+                    | WindowFlags::NO_RESIZE
+                    | WindowFlags::NO_TITLE_BAR,
+            )
+            .position(px2(ui, [12.0, 12.0]), Condition::Always)
             .bg_alpha(0.75)
             .build(|| {
                 ui.text("Interaction disabled");
                 ui.text_disabled("(ScrLk to toggle)");
-                if ui.button_with_size("Enable interaction", [180.0, 0.0]) {
+                if ui.button_with_size("Enable interaction", [px(ui, 180.0), 0.0]) {
                     self.set_no_inputs(false);
                 }
-                hovered = ui.is_window_hovered();
             });
-        hovered
     }
 
-    pub fn ui(&mut self, ctx: &mut Context, ui: &mut Ui, run: &mut bool) {
+    pub fn ui(&mut self, ui: &Ui, frame: &mut Frame) {
         if let Some(scroll_lock) = self.scroll_lock.poll() {
             self.no_inputs = scroll_lock;
         }
+        frame.keep_on_top(self.settings.window.on_top);
+        frame.set_text_scale(self.settings.window.text_scale);
 
         let no_inputs = self.no_inputs;
-        let mut toggle_hovered = false;
         if no_inputs {
-            toggle_hovered = self.show_input_toggle(ui);
+            self.show_input_toggle(ui);
         }
 
-        let mut niinii = ui
-            .window("niinii")
-            .opened(run)
-            .menu_bar(true)
-            .draw_background(!self.settings().transparent);
-        if no_inputs {
-            niinii = niinii.no_inputs().draw_background(false);
-        }
-        niinii.build(|| {
-            self.show_menu(ctx, ui);
-
-            if no_inputs {
-                stroke_text_with_highlight(
-                    ui,
-                    &ui.get_window_draw_list(),
-                    "(interaction disabled)",
-                    1.0,
-                    Some(StyleColor::PlotLinesHovered),
-                );
-                return;
-            }
-            self.poll(ui, ctx);
-            self.handle_shortcuts(ui);
-
-            if self.settings().show_manual_input {
-                let action = self.gloss.show_input(ui);
-                if let Some(id) = self.gloss.translation() {
-                    self.translator_window.draw_usage(ui, id);
+        let mut flags = WindowFlags::MENU_BAR;
+        flags.set(
+            WindowFlags::NO_BACKGROUND,
+            self.settings.window.transparent || no_inputs,
+        );
+        flags.set(WindowFlags::NO_INPUTS, no_inputs);
+        // The app's one taskbar entry.
+        ui.set_next_window_class(
+            &WindowClass::default()
+                .viewport_flags_override_clear(WindowClassViewportFlags::NO_TASK_BAR_ICON),
+        );
+        let mut open = true;
+        ui.window("niinii")
+            .size_constraints(TextSize::new(36.0, 5.0).px(ui), [f32::MAX, f32::MAX])
+            .opened(&mut open)
+            .flags(flags)
+            .build(|| {
+                if no_inputs {
+                    frame.pass_input_through(ui);
                 }
-                if let Some(action) = action {
-                    match action {
-                        GlossInputAction::Gloss(text) => self.request_gloss(&text),
-                        GlossInputAction::Translate(text) => self.translate(text),
+                self.show_menu(ui);
+
+                if no_inputs {
+                    stroke_text_with_highlight(
+                        ui,
+                        &ui.get_window_draw_list(),
+                        "(interaction disabled)",
+                        1.0,
+                        Some(StyleColor::PlotLinesHovered),
+                    );
+                    return;
+                }
+                self.poll();
+                for action in Action::pressed(ui) {
+                    self.run(action);
+                }
+
+                if self.settings().show_manual_input {
+                    let action = self.gloss.show_input(ui, &self.history);
+                    if let Some(id) = self.history.translation() {
+                        self.translator_window.draw_usage(ui, id);
+                    }
+                    if let Some(action) = action {
+                        match action {
+                            GlossInputAction::Gloss(text) => self.request_gloss(&text),
+                            GlossInputAction::Translate(text) => self.translate(text),
+                        }
                     }
                 }
-            }
 
-            self.gloss.ui(ctx, ui, &self.settings);
-            if let Some(id) = self.gloss.translation() {
-                self.translator_window.draw_exchange(
-                    ui,
-                    ctx,
-                    id,
-                    self.gloss.showing_earlier_line(),
-                );
-            }
-            self.show_notes(ui);
+                self.gloss.ui(ui, &self.settings, &mut self.history);
+                if let Some(id) = self.history.translation() {
+                    self.translator_window.draw_exchange(
+                        ui,
+                        id,
+                        self.history.showing_earlier_line(),
+                    );
+                }
+                self.show_notes(ui);
 
-            if ctx.font_atlas_dirty() {
-                ui.new_line();
-                ui.text_disabled("(rebuilding font atlas");
-                ui.same_line_with_spacing(0.0, 0.0);
-                ui.text_disabled(ellipses(ui));
-                ui.same_line_with_spacing(0.0, 0.0);
-                ui.text_disabled(")");
-            }
-            if self.gloss.is_processing() {
-                ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
-            }
-        });
+                if self.history.is_processing() {
+                    ui.set_mouse_cursor(Some(MouseCursor::NotAllowed));
+                }
+            });
 
-        self.settings_view.ui(ui, &mut self.settings);
-        self.style_editor.ui(ui, &mut self.settings);
-        self.translator_window.ui(ui, &mut self.settings);
-        self.vndb_view.ui(ui, &mut self.settings);
-        self.help_view.ui(ui);
-        self.transcript
-            .ui(ui, &mut self.gloss, &self.translator_window);
-        if self.show_metrics_window {
-            ui.show_metrics_window(&mut self.show_metrics_window);
-        }
+        let panels = &mut self.panels;
+        settings_view::show(&mut panels.settings, ui, &self.reflect, &mut self.settings);
+        style_editor::show(&mut panels.style_editor, ui, frame, &mut self.settings);
+        self.translator_window.show(
+            &mut panels.translator,
+            ui,
+            &self.reflect,
+            &mut self.settings,
+        );
+        self.vndb_view
+            .show(&mut panels.vndb, ui, &mut self.settings);
+        help::show(&mut panels.help, ui, frame.adapter());
+        self.transcript.show(
+            &mut panels.transcript,
+            ui,
+            &mut self.history,
+            &self.translator_window,
+        );
+        self.debug.show(ui);
 
-        if no_inputs && !toggle_hovered {
-            unsafe { sys::igSetNextFrameWantCaptureMouse(false) }
+        if !open {
+            frame.exit();
         }
     }
 

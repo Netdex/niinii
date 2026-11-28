@@ -42,7 +42,7 @@ pub struct TtsEngine {
 impl TtsEngine {
     pub fn new(settings: &Settings) -> Self {
         TtsEngine {
-            vvcore_path: settings.vv_model_path.clone().into(),
+            vvcore_path: settings.tts.vv_model_path.path.clone().into(),
             state: OnceCell::new(),
         }
     }
@@ -126,8 +126,9 @@ impl TtsEngine {
                 tracing::debug!(speaker_id, "load_model");
                 vvcore.load_model(speaker_id).unwrap();
 
-                let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
-                let sink = rodio::Sink::try_new(&stream_handle).unwrap();
+                // Playback stops when the device sink is dropped.
+                let device = rodio::DeviceSinkBuilder::open_default_sink().unwrap();
+                let sink = rodio::Player::connect_new(device.mixer());
 
                 while let Ok(message) = rx_request.recv() {
                     match message {

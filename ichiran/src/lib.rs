@@ -14,11 +14,10 @@ use std::{
 };
 
 use enclose::enclose;
-use futures::{stream, TryStreamExt};
+use futures::{stream, StreamExt, TryStreamExt};
 use itertools::Itertools;
 use lru::LruCache;
 use nonzero_ext::nonzero;
-use par_stream::ParStreamExt;
 use tokio::sync::OnceCell;
 use tracing::{Instrument, Level};
 
@@ -234,29 +233,29 @@ impl Ichiran {
 
         // for entries which are not in the cache, query ichiran
         let span = tracing::Span::current();
+        let concurrency = shared.pool_size;
         let query_table: HashMap<String, Segment> = stream::iter(split_queries)
-            .par_then_unordered(
-                None,
-                enclose! { (span, shared) move |split: String| {
-                    enclose! { (span, shared) async move {
-                        let output = shared
-                            .evaluate(format!(
-                                r#"(princ (jsown:to-json (ichiran:romanize* {} :limit {})))"#,
-                                lisp_string(&split),
-                                limit
-                            ))
-                            .await?;
-                        let root: Root = serde_json::from_str(&output)?;
-                        assert_eq!(
-                            root.segments().len(),
-                            1,
-                            "unexpected number of segments",
-                        );
-                        let segment = root.segments()[0].clone();
-                        Ok::<_, IchiranError>((split.clone(), segment))
-                    }.instrument(span)
-                }}},
-            )
+            .map(enclose! { (span, shared) move |split: String| {
+                enclose! { (span, shared) async move {
+                    let output = shared
+                        .evaluate(format!(
+                            r#"(princ (jsown:to-json (ichiran:romanize* {} :limit {})))"#,
+                            lisp_string(&split),
+                            limit
+                        ))
+                        .await?;
+                    let root: Root = serde_json::from_str(&output)?;
+                    assert_eq!(
+                        root.segments().len(),
+                        1,
+                        "unexpected number of segments",
+                    );
+                    let segment = root.segments()[0].clone();
+                    Ok::<_, IchiranError>((split.clone(), segment))
+                }.instrument(span)
+            }}})
+            // As many in flight as there are workers to run them.
+            .buffer_unordered(concurrency)
             .try_collect()
             .await?;
 
@@ -298,30 +297,28 @@ impl Ichiran {
             return Ok(kanji_info);
         }
 
-        // Fan out per char so the pool can dispatch them across workers in
-        // parallel. Previously these were batched into one (list ...) form
-        // which serialized through a single worker.
+        // One call per char, so the pool can run them on several workers.
         let shared = self.shared.clone();
         let span = tracing::Span::current();
+        let concurrency = shared.pool_size;
         let results: Vec<(char, Option<Kanji>)> = stream::iter(query_chars)
-            .par_then_unordered(
-                None,
-                enclose! { (span, shared) move |c: char| {
-                    enclose! { (span, shared) async move {
-                        let expr = format!(
-                            r#"(princ (jsown:to-json (ichiran/kanji:kanji-info-json #\{})))"#,
-                            c
-                        );
-                        let output = shared.evaluate(expr).await?;
-                        let kanji = if output.trim() == "[]" {
-                            None
-                        } else {
-                            Some(serde_json::from_str::<Kanji>(&output)?)
-                        };
-                        Ok::<_, IchiranError>((c, kanji))
-                    }.instrument(span)}
-                }},
-            )
+            .map(enclose! { (span, shared) move |c: char| {
+                enclose! { (span, shared) async move {
+                    let expr = format!(
+                        r#"(princ (jsown:to-json (ichiran/kanji:kanji-info-json #\{})))"#,
+                        c
+                    );
+                    let output = shared.evaluate(expr).await?;
+                    let kanji = if output.trim() == "[]" {
+                        None
+                    } else {
+                        Some(serde_json::from_str::<Kanji>(&output)?)
+                    };
+                    Ok::<_, IchiranError>((c, kanji))
+                }.instrument(span)}
+            }})
+            // As many in flight as there are workers to run them.
+            .buffer_unordered(concurrency)
             .try_collect()
             .await?;
 
@@ -430,10 +427,7 @@ impl Ichiran {
     /// kana form.
     #[tracing::instrument(level = Level::DEBUG, skip(self), err)]
     pub async fn romaji_to_kana(&self, romaji: &str) -> Result<String, IchiranError> {
-        let expr = format!(
-            r#"(princ (ichiran:romaji-kana {}))"#,
-            lisp_string(romaji),
-        );
+        let expr = format!(r#"(princ (ichiran:romaji-kana {}))"#, lisp_string(romaji),);
         let out = self.shared.evaluate(expr).await?;
         Ok(out.trim().to_string())
     }

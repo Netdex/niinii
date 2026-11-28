@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
+use dear_imgui_rs::*;
 use ichiran::prelude::*;
-use imgui::*;
 
-use crate::{parser::SyntaxTree, renderer::context::Context, settings::Settings};
+use crate::{parser::SyntaxTree, settings::Settings};
 
 use super::term::TermView;
 
@@ -18,29 +18,29 @@ impl<'a> IndexView<'a> {
             seen_terms: HashSet::new(),
         }
     }
-    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
-        let _wrap_token = ui.push_text_wrap_pos();
-        self.add_root(ctx, ui, settings, &self.ast.root);
+    pub fn ui(&mut self, ui: &Ui, settings: &Settings) {
+        let _wrap_token = ui.push_text_wrap_pos(0.0);
+        self.add_root(ui, settings, &self.ast.root);
     }
-    fn add_root(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings, root: &Root) {
+    fn add_root(&mut self, ui: &Ui, settings: &Settings, root: &Root) {
         for segment in root.segments() {
-            let _id_token = ui.push_id_ptr(segment);
-            self.add_segment(ctx, ui, settings, segment);
+            let _id_token = ui.push_id(segment as *const _);
+            self.add_segment(ui, settings, segment);
         }
     }
-    fn add_segment(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings, segment: &Segment) {
+    fn add_segment(&mut self, ui: &Ui, settings: &Settings, segment: &Segment) {
         match segment {
             Segment::Skipped(_) => {}
             Segment::Clauses(clauses) => {
                 if let Some(clause) = clauses.first() {
-                    self.add_clause(ctx, ui, settings, clause);
+                    self.add_clause(ui, settings, clause);
                 }
             }
         }
     }
-    fn add_clause(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings, clause: &Clause) {
+    fn add_clause(&mut self, ui: &Ui, settings: &Settings, clause: &Clause) {
         for romanized in clause.romanized() {
-            let _id_token = ui.push_id_ptr(romanized);
+            let _id_token = ui.push_id(romanized as *const _);
             if !romanized.term().text().chars().any(|c| is_kanji(&c)) {
                 continue;
             }
@@ -54,7 +54,7 @@ impl<'a> IndexView<'a> {
             }
             self.seen_terms.insert(romanized.term().text().to_string());
             TermView::new(&self.ast.jmdict_data, &self.ast.kanji_info, romanized, 0.0)
-                .ui(ctx, ui, settings);
+                .ui(ui, settings);
             ui.separator()
         }
     }

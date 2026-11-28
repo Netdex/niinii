@@ -2,23 +2,7 @@
 // their own consoles
 // #![windows_subsystem = "windows"]
 
-mod app;
-mod parser;
-mod renderer;
-mod settings;
-mod support;
-mod translator;
-mod tts;
-mod view;
-mod vndb;
-
-#[cfg(windows)]
-use crate::renderer::{d3d11::D3D11Renderer, d3d11_viewports::D3D11ViewportsRenderer};
-use crate::{
-    app::App,
-    renderer::{glow_viewports::GlowRenderer, Renderer},
-    settings::{RendererType, Settings},
-};
+use niinii::{app::App, gui, settings::Settings};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 #[cfg(windows)]
@@ -28,7 +12,7 @@ fn enable_ansi_support() {
         eprintln!("Failed to enable Windows ANSI support: {:?}", err);
     }
 }
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), gui::Error> {
     #[cfg(windows)]
     enable_ansi_support();
 
@@ -64,18 +48,13 @@ fn main() -> std::io::Result<()> {
 
     let mut app = runtime.block_on(App::new(settings));
 
-    tracing::info!(renderer=?app.settings().renderer_type);
-    let mut renderer: Box<dyn Renderer> = match app.settings().renderer_type {
-        RendererType::Glow => Box::new(GlowRenderer::new(app.settings())),
-        #[cfg(windows)]
-        RendererType::Direct3D11 => Box::new(D3D11Renderer::new(app.settings())),
-        #[cfg(windows)]
-        RendererType::Direct3D11Viewports => Box::new(D3D11ViewportsRenderer::new(app.settings())),
+    let options = gui::Options {
+        title: "niinii".into(),
+        ini_path: "imgui.ini".into(),
+        theme: app.settings().theme.clone(),
     };
-
-    renderer.run(&mut app);
+    let result = gui::run(options, |ui, frame| app.ui(ui, frame));
 
     app.settings().write_to_file()?;
-
-    Ok(())
+    result
 }

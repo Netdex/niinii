@@ -1,59 +1,32 @@
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+};
 
-use futures::FutureExt;
+use dear_imgui_rs::*;
 use ichiran::prelude::*;
-use imgui::*;
-use tokio::task::JoinHandle;
-use tracing::Instrument;
 
-use super::index::IndexView;
-use super::mixins::*;
-use crate::parser::{self, Parser, SyntaxTree};
-use crate::renderer::context::{Context, ContextFlags};
-use crate::settings::{RubyTextType, Settings};
-use crate::support::{platform::clipboard_sequence_number, regex::CachedRegex};
-use crate::translator::ExchangeId;
-use crate::view::{raw::RawView, term::TermView};
+use super::{
+    index::IndexView,
+    mixins::*,
+    panel::{Panel, Sizing, TextSize},
+    raw::RawView,
+    term::TermView,
+};
+use crate::{
+    gui::px,
+    history::{Gloss, History},
+    parser::SyntaxTree,
+    settings::{RubyTextType, Settings},
+};
 
 /// Highlight color for terms that came from an injected custom entry
 /// (`Term::is_custom()`). Distinct enough from the default
 /// `TextSelectedBg` to be obvious at a glance.
 const NAME_HIGHLIGHT: [f32; 4] = [0.85, 0.55, 0.20, 0.55];
 
-/// Lines kept for stepping back through recent text.
-const HISTORY_LEN: usize = 100;
-
 /// Senses per gloss list in the hover tooltip.
 const TOOLTIP_SENSES: usize = 3;
-
-enum View {
-    /// Preview shown while a parse is in flight: the text chunked by
-    /// `basic_split` so Text/Skip blocks can be styled distinctly.
-    Text(Vec<(Split, String)>),
-    Interpret {
-        ast: SyntaxTree,
-    },
-}
-
-/// One line of text with its gloss and translation.
-struct Line {
-    id: u64,
-    /// The text as glossed and translated (after the match/replace regex).
-    text: String,
-    view: View,
-    /// Selected alternative per segment, keyed by segment index.
-    selected_clause: RefCell<HashMap<usize, i32>>,
-    translation: Option<ExchangeId>,
-}
-
-/// Emitted from `GlossView::poll`. `ClipboardReceived` surfaces new clipboard
-/// text to the caller so orchestration (parse + translate + clear) happens in
-/// one place -- `GlossView` does not self-gloss on clipboard changes.
-pub enum GlossEvent {
-    ClipboardReceived(String),
-    Failed(parser::Error),
-}
 
 /// Returned from `show_input` so the caller can dispatch. The input row owns
 /// both the Gloss and Translate buttons so the UI stays together.
@@ -62,581 +35,322 @@ pub enum GlossInputAction {
     Translate(String),
 }
 
+const DETAIL_SIZING: Sizing = Sizing {
+    default: Some(TextSize::new(33.0, 5.0)),
+    min: TextSize::new(24.0, 4.0),
+};
+
+/// View state around the line being shown: the manual input box, the word
+/// windows the user opened, and the Raw and Glossary windows.
 pub struct GlossView {
-    parser: Parser,
-    pending_ast: Option<JoinHandle<Result<SyntaxTree, parser::Error>>>,
-    pending_kanji: Option<JoinHandle<Result<HashMap<char, Kanji>, parser::Error>>>,
-    match_regex: CachedRegex,
-
     input_text: String,
-    last_clipboard: String,
-    last_clipboard_seq: u32,
+    term_windows: HashMap<Romanized, WindowKey>,
+    raw: Panel,
+    glossary: Panel,
+}
 
-    events: VecDeque<GlossEvent>,
-
-    history: VecDeque<Line>,
-    /// Index into `history` of the line being shown.
-    cursor: usize,
-    next_line_id: u64,
-    /// The line `pending_ast` / `pending_kanji` are parsing.
-    pending_line: Option<u64>,
-    show_term_window: RefCell<HashSet<Romanized>>,
-    show_raw: bool,
-    show_glossary: bool,
+impl Default for GlossView {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GlossView {
-    pub async fn new(settings: &Settings) -> Self {
+    pub fn new() -> Self {
         Self {
-            parser: Parser::new(settings).await,
-            pending_ast: None,
-            pending_kanji: None,
-            match_regex: CachedRegex::default(),
             input_text: String::new(),
-            last_clipboard: String::new(),
-            last_clipboard_seq: 0,
-            events: VecDeque::new(),
-            history: VecDeque::new(),
-            cursor: 0,
-            next_line_id: 0,
-            pending_line: None,
-            show_term_window: RefCell::new(HashSet::new()),
-            show_raw: false,
-            show_glossary: false,
+            term_windows: HashMap::new(),
+            raw: Panel::new("Raw", DETAIL_SIZING),
+            glossary: Panel::new("Glossary", DETAIL_SIZING),
         }
     }
 
-    pub fn parser(&self) -> &Parser {
-        &self.parser
+    pub fn set_input(&mut self, text: &str) {
+        text.clone_into(&mut self.input_text);
     }
 
-    fn current(&self) -> Option<&Line> {
-        self.history.get(self.cursor)
-    }
-
-    fn view(&self) -> Option<&View> {
-        self.current().map(|line| &line.view)
-    }
-
-    pub fn ast(&self) -> Option<&SyntaxTree> {
-        match self.view() {
-            Some(View::Interpret { ast }) => Some(ast),
-            _ => None,
-        }
-    }
-
-    /// Translation of the line being shown.
-    pub fn translation(&self) -> Option<ExchangeId> {
-        self.current().and_then(|line| line.translation)
-    }
-
-    pub fn set_translation(&mut self, id: ExchangeId) {
-        if let Some(line) = self.history.get_mut(self.cursor) {
-            line.translation = Some(id);
-        }
-    }
-
-    /// 1-based position of the line being shown, and the number of lines.
-    pub fn history_position(&self) -> (usize, usize) {
-        (self.cursor + 1, self.history.len())
-    }
-
-    /// Whether the line being shown is not the latest one.
-    pub fn showing_earlier_line(&self) -> bool {
-        self.cursor + 1 < self.history.len()
-    }
-
-    pub fn history_back(&mut self) {
-        self.cursor = self.cursor.saturating_sub(1);
-    }
-
-    pub fn history_forward(&mut self) {
-        self.cursor = (self.cursor + 1).min(self.history.len().saturating_sub(1));
-    }
-
-    /// Each line's index, text and translation, oldest first.
-    pub fn lines(&self) -> impl Iterator<Item = (usize, &str, Option<ExchangeId>)> {
-        self.history
-            .iter()
-            .enumerate()
-            .map(|(idx, line)| (idx, line.text.as_str(), line.translation))
-    }
-
-    /// Identifies the newest line; changes whenever a line is added.
-    pub fn latest_line_id(&self) -> Option<u64> {
-        self.history.back().map(|line| line.id)
-    }
-
-    pub fn show_line(&mut self, idx: usize) {
-        if idx < self.history.len() {
-            self.cursor = idx;
-        }
-    }
-
-    pub fn history_latest(&mut self) {
-        self.cursor = self.history.len().saturating_sub(1);
-    }
-
-    pub fn is_processing(&self) -> bool {
-        // Only block the input on the AST; kanji info loads in the background.
-        self.pending_ast.is_some()
-    }
-
-    /// Preprocess `text` through the configured match/replace regex and spawn
-    /// a parse. Aborts any prior in-flight parse. The preview text is shown
-    /// immediately; `poll` will transition to the parsed AST on completion.
-    /// Returns the post-regex text on success, or `None` if the regex yielded
-    /// empty text and nothing was spawned.
-    pub fn request(
-        &mut self,
-        text: &str,
-        settings: &Settings,
-    ) -> Result<Option<String>, parser::Error> {
-        let regex = self.match_regex.get(&settings.regex_match)?;
-        let text = regex
-            .replace_all(text, &settings.regex_replace)
-            .into_owned();
-        // VN/clipboard text often arrives with hard line breaks from dialogue
-        // wrapping; ichiran segments per-line so embedded newlines wreck the
-        // parse. Strip them along with leading/trailing whitespace.
-        let text = text.replace(['\n', '\r'], "").trim().to_owned();
-        if text.is_empty() {
-            return Ok(None);
-        }
-
-        if let Some(prev) = self.pending_ast.take() {
-            prev.abort();
-        }
-        if let Some(prev) = self.pending_kanji.take() {
-            prev.abort();
-        }
-        // A line replaced before its parse finished was never shown glossed.
-        if let Some(prev) = self.pending_line.take() {
-            if self.history.back().is_some_and(|line| line.id == prev) {
-                self.history.pop_back();
-            }
-        }
-
-        let variants = if settings.more_variants { 5 } else { 1 };
-        let splits: Vec<(Split, String)> = basic_split(&text)
-            .into_iter()
-            .map(|(kind, s)| (kind, s.to_string()))
-            .collect();
-        let id = self.next_line_id;
-        self.next_line_id += 1;
-        self.history.push_back(Line {
-            id,
-            text: text.clone(),
-            view: View::Text(splits.clone()),
-            selected_clause: RefCell::new(HashMap::new()),
-            translation: None,
-        });
-        if self.history.len() > HISTORY_LEN {
-            self.history.pop_front();
-        }
-        self.history_latest();
-        self.pending_line = Some(id);
-
-        let parser_ast = self.parser.clone();
-        let ast_text = text.clone();
-        self.pending_ast = Some(tokio::spawn(
-            async move { parser_ast.parse_ast(&ast_text, &splits, variants).await }
-                .instrument(tracing::debug_span!("parse_ast")),
-        ));
-
-        let parser_kanji = self.parser.clone();
-        let kanji_text = text.clone();
-        self.pending_kanji = Some(tokio::spawn(
-            async move { parser_kanji.parse_kanji(&kanji_text).await }
-                .instrument(tracing::debug_span!("parse_kanji")),
-        ));
-
-        Ok(Some(text))
-    }
-
-    /// Whether the clipboard may have new contents to watch. An unavailable sequence number (0)
-    /// always counts as changed.
-    fn clipboard_changed(&self, settings: &Settings) -> bool {
-        if !settings.watch_clipboard {
-            return false;
-        }
-        let seq = clipboard_sequence_number();
-        seq == 0 || seq != self.last_clipboard_seq
-    }
-
-    /// Drive clipboard watching and pending-parse completion. Returns an event
-    /// when a parse finishes so the caller can wire up auto-translate etc.
-    pub fn poll(&mut self, ui: &Ui, ctx: &mut Context, settings: &Settings) -> Option<GlossEvent> {
-        if self.clipboard_changed(settings) {
-            self.last_clipboard_seq = clipboard_sequence_number();
-            if let Some(clipboard) = ui.clipboard_text() {
-                if clipboard != self.last_clipboard {
-                    self.input_text.clone_from(&clipboard);
-                    self.last_clipboard.clone_from(&clipboard);
-                    // Ignore clipboard contents if they are unreasonably large
-                    if clipboard.len() < 500 {
-                        self.events
-                            .push_back(GlossEvent::ClipboardReceived(clipboard));
-                    }
-                }
-            }
-        }
-
-        let pending = self
-            .pending_line
-            .and_then(|id| self.history.iter().position(|line| line.id == id));
-        if let Some(handle) = self.pending_ast.as_mut() {
-            if let Some(poll) = handle.now_or_never() {
-                self.pending_ast = None;
-                match poll {
-                    Ok(Ok(ast)) => {
-                        if ctx.flags().contains(ContextFlags::SUPPORTS_ATLAS_UPDATE) {
-                            ctx.add_unknown_glyphs_from_root(&ast.root);
-                        }
-                        if let Some(idx) = pending {
-                            self.history[idx].view = View::Interpret { ast };
-                        }
-                    }
-                    Ok(Err(err)) => self.events.push_back(GlossEvent::Failed(err)),
-                    // Aborted by a follow-up request; the replacement is already in flight.
-                    Err(_) => {}
-                }
-            }
-        }
-
-        // Only drain kanji once the AST has landed -- the JoinHandle holds a
-        // completed result for us, so there's no need for a separate buffer.
-        let line = pending.and_then(|idx| self.history.get_mut(idx));
-        if let Some(Line {
-            view: View::Interpret { ast },
-            ..
-        }) = line
-        {
-            if let Some(handle) = self.pending_kanji.as_mut() {
-                if let Some(poll) = handle.now_or_never() {
-                    self.pending_kanji = None;
-                    self.pending_line = None;
-                    match poll {
-                        Ok(Ok(kanji_info)) => ast.kanji_info = kanji_info,
-                        Ok(Err(err)) => self.events.push_back(GlossEvent::Failed(err)),
-                        Err(_) => {}
-                    }
-                }
-            }
-        }
-
-        self.events.pop_front()
+    pub fn show_menu(&mut self, ui: &Ui) {
+        self.raw.menu_item(ui);
+        self.glossary.menu_item(ui);
     }
 
     /// Render the manual-input row: textarea, Gloss button, Translate button.
     /// Leaves the cursor on the same line so the caller can append adjacent
     /// controls (e.g. a usage bar). Returns the action the user triggered.
-    pub fn show_input(&mut self, ui: &Ui) -> Option<GlossInputAction> {
+    pub fn show_input(&mut self, ui: &Ui, history: &History) -> Option<GlossInputAction> {
         let mut action = None;
         {
-            let _disabled = ui.begin_disabled(self.is_processing());
+            let _disabled = ui.begin_disabled_with_cond(history.is_processing());
             let entered = ui
-                .input_text_multiline("##", &mut self.input_text, [0.0, 50.0])
-                .enter_returns_true(true)
+                .input_text_multiline("##", &mut self.input_text, [0.0, px(ui, 50.0)])
+                .flags(
+                    InputTextMultilineFlags::ENTER_RETURNS_TRUE
+                        | InputTextMultilineFlags::WORD_WRAP,
+                )
                 .build();
-            let clicked = ui.button_with_size("Gloss", [120.0, 0.0]);
+            let clicked = ui.button_with_size("Gloss", [px(ui, 120.0), 0.0]);
             if entered || clicked {
                 action = Some(GlossInputAction::Gloss(self.input_text.clone()));
             }
         }
         ui.same_line();
 
-        let enable_tl = self.ast().is_some_and(|ast| !ast.empty());
-        let disable_tl = ui.begin_disabled(!enable_tl);
-        if ui.button_with_size("Translate", [120.0, 0.0]) {
-            if let Some(gloss) = self.ast() {
-                action = Some(GlossInputAction::Translate(gloss.original_text.clone()));
+        let enable_tl = history.ast().is_some_and(|ast| !ast.empty());
+        {
+            let _disabled = ui.begin_disabled_with_cond(!enable_tl);
+            if ui.button_with_size("Translate", [px(ui, 120.0), 0.0]) {
+                if let Some(ast) = history.ast() {
+                    action = Some(GlossInputAction::Translate(ast.original_text.clone()));
+                }
             }
         }
-        drop(disable_tl);
-        if !enable_tl && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED) {
-            ui.tooltip(|| ui.text("Text does not require translation"));
+        if !enable_tl {
+            ui.set_item_tooltip("Text does not require translation");
         }
         action
     }
 
-    fn term_window(
-        &self,
-        ctx: &mut Context,
-        ui: &Ui,
-        settings: &Settings,
-        romanized: &Romanized,
-    ) -> bool {
-        let mut opened = true;
-        ui.window(romanized.term().text())
-            .size_constraints([300.0, 100.0], [1000.0, 1000.0])
-            .save_settings(false)
-            .focus_on_appearing(true)
-            .opened(&mut opened)
-            .build(|| {
-                if let Some(View::Interpret { ast: gloss, .. }) = self.view() {
-                    TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 0.0)
-                        .ui(ctx, ui, settings);
-                }
-            });
-        opened
-    }
-
-    fn term_tooltip(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, romanized: &Romanized) {
-        ui.tooltip(|| {
-            if let Some(View::Interpret { ast: gloss, .. }) = self.view() {
-                // The term window (click) shows the full entry.
-                TermView::new(&gloss.jmdict_data, &gloss.kanji_info, romanized, 30.0)
-                    .max_senses(TOOLTIP_SENSES)
-                    .ui(ctx, ui, settings)
-            }
-        });
-    }
-
-    fn add_skipped(
-        &self,
-        ctx: &mut Context,
-        ui: &Ui,
-        settings: &Settings,
-        skipped: &str,
-        preview: bool,
-    ) {
-        let _hl = self
-            .showing_earlier_line()
-            .then(|| push_earlier_line_highlight(ui));
-        draw_kanji_text(
-            ui,
-            ctx,
-            skipped,
-            if settings.ruby_text_type == RubyTextType::None {
-                RubyTextMode::None
-            } else {
-                RubyTextMode::Pad
-            },
-            KanjiStyle {
-                highlight: false,
-                highlight_color: None,
-                stroke: !preview && settings.stroke_text,
-                preview,
-                underline: UnderlineMode::None,
-            },
-        );
-    }
-
-    /// Render a text chunk that will be glossed once the parse finishes.
-    /// Drawn with `highlight: true` so it visually hints at the eventual
-    /// clause boxes.
-    fn add_preview_text(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, text: &str) {
-        let _hl = self
-            .showing_earlier_line()
-            .then(|| push_earlier_line_highlight(ui));
-        draw_kanji_text(
-            ui,
-            ctx,
-            text,
-            if settings.ruby_text_type == RubyTextType::None {
-                RubyTextMode::None
-            } else {
-                RubyTextMode::Pad
-            },
-            KanjiStyle {
-                highlight: true,
-                highlight_color: None,
-                stroke: false,
-                preview: true,
-                underline: UnderlineMode::None,
-            },
-        );
-    }
-
-    fn add_romanized(
-        &self,
-        ctx: &mut Context,
-        ui: &Ui,
-        settings: &Settings,
-        romanized: &Romanized,
-        ruby_text: RubyTextType,
-        underline: UnderlineMode,
-    ) -> bool {
-        let term = romanized.term();
-
-        let fg_text = match ruby_text {
-            RubyTextType::None => RubyTextMode::None,
-            RubyTextType::Furigana if term.text() != term.kana() => RubyTextMode::Text(term.kana()),
-            RubyTextType::Romaji => RubyTextMode::Text(romanized.romaji()),
-            _ => RubyTextMode::Pad,
-        };
-        let ul_hover = {
-            // Dropped before the tooltip below so the tooltip keeps its colors.
-            let _hl = self
-                .showing_earlier_line()
-                .then(|| push_earlier_line_highlight(ui));
-            draw_kanji_text(
-                ui,
-                ctx,
-                term.text(),
-                fg_text,
-                KanjiStyle {
-                    highlight: true,
-                    highlight_color: term.is_custom().then_some(NAME_HIGHLIGHT),
-                    stroke: settings.stroke_text,
-                    preview: false,
-                    underline,
-                },
-            )
-        };
-
-        if ui.is_item_hovered() {
-            ui.set_mouse_cursor(Some(MouseCursor::Hand));
-        }
-        // Delayed so sweeping the mouse across the line doesn't flash a
-        // tooltip per word; imgui shares the delay, so moving to a neighbor
-        // after one is shown is immediate.
-        if ui.is_item_hovered_with_flags(ItemHoveredFlags::DELAY_SHORT) {
-            self.term_tooltip(ctx, ui, settings, romanized);
-        }
-
-        let mut show_term_window = self.show_term_window.borrow_mut();
-        if ui.is_item_clicked() {
-            show_term_window.insert(romanized.clone());
-        }
-
-        ul_hover
-    }
-
-    fn add_segment(
-        &self,
-        ctx: &mut Context,
-        ui: &Ui,
-        settings: &Settings,
-        segment_idx: usize,
-        segment: &Segment,
-    ) {
-        match segment {
-            Segment::Skipped(skipped) => {
-                self.add_skipped(ctx, ui, settings, skipped, false);
-            }
-            Segment::Clauses(clauses) => {
-                let Some(line) = self.current() else { return };
-                let mut selected_clause = line.selected_clause.borrow_mut();
-                let mut clause_idx = selected_clause.get(&segment_idx).cloned().unwrap_or(0);
-
-                let clause = clauses.get(clause_idx as usize);
-                if let Some(clause) = clause {
-                    // if clause.score() > 0 {
-                    let romanized = clause.romanized();
-                    for (idx, rz) in romanized.iter().enumerate() {
-                        let underline_mode = if clauses.len() > 1 {
-                            if idx == romanized.len() - 1 {
-                                UnderlineMode::Normal
-                            } else {
-                                UnderlineMode::Pad
-                            }
-                        } else {
-                            UnderlineMode::None
-                        };
-                        let ul_hover = self.add_romanized(
-                            ctx,
-                            ui,
-                            settings,
-                            rz,
-                            settings.ruby_text_type,
-                            underline_mode,
-                        );
-                        if ul_hover {
-                            let scroll = ui.io().mouse_wheel as i32;
-                            clause_idx -= scroll;
-                            clause_idx = clause_idx.clamp(0, clauses.len() as i32 - 1);
-                            if scroll != 0 {
-                                selected_clause.insert(segment_idx, clause_idx);
-                            }
-                            ui.tooltip(|| {
-                                ui.text(format!(
-                                    "Alternate #{}/{} score={} (scroll to cycle)",
-                                    clause_idx + 1,
-                                    clauses.len(),
-                                    clause.score()
-                                ));
-                                ui.separator();
-                                let _wrap_token =
-                                    ui.push_text_wrap_pos_with_pos(ui.current_font_size() * 20.0);
-                                let romaji = clause
-                                    .romanized()
-                                    .iter()
-                                    .map(|x| x.romaji())
-                                    .collect::<Vec<&str>>()
-                                    .join(" ");
-                                ui.text_wrapped(romaji);
-                            });
-                        }
-                    }
-                    // } else {
-                    //     self.add_skipped(ctx, ui, settings, &clause.text(), false);
-                    // }
-                }
-            }
-        }
-    }
-
-    fn add_root(&self, ctx: &mut Context, ui: &Ui, settings: &Settings, root: &Root) {
-        for (segment_idx, segment) in root.segments().iter().enumerate() {
-            self.add_segment(ctx, ui, settings, segment_idx, segment);
-        }
-    }
-
-    pub fn ui(&mut self, ctx: &mut Context, ui: &Ui, settings: &Settings) {
-        ui.text(""); // anchor for line wrapping
-        let Some(line) = self.history.get(self.cursor) else {
+    /// The line being shown, glossed, and the windows opened from it.
+    pub fn ui(&mut self, ui: &Ui, settings: &Settings, history: &mut History) {
+        let earlier = history.showing_earlier_line();
+        let Some(line) = history.current_mut() else {
             return;
         };
-        match &line.view {
-            View::Interpret { ast } => {
-                self.add_root(ctx, ui, settings, &ast.root);
-
-                if self.show_raw {
-                    ui.window("Raw")
-                        .size([300., 110.], Condition::FirstUseEver)
-                        .opened(&mut self.show_raw)
-                        .build(|| {
-                            RawView::new(&ast.root).ui(ctx, ui);
-                        });
+        {
+            let mut draw = LineDraw {
+                ui,
+                settings,
+                highlight: if earlier {
+                    earlier_line_highlight(ui)
+                } else {
+                    ui.style_color(StyleColor::TextSelectedBg)
+                },
+                term_windows: &mut self.term_windows,
+                flow: Flow::new(ui),
+            };
+            match &line.gloss {
+                Gloss::Parsed(ast) => {
+                    for (idx, segment) in ast.root.segments().iter().enumerate() {
+                        draw.segment(ast, idx, segment, &mut line.selected_clause);
+                    }
                 }
-                if self.show_glossary {
-                    ui.window("Glossary")
-                        .size([300., 110.], Condition::FirstUseEver)
-                        .opened(&mut self.show_glossary)
-                        .build(|| {
-                            IndexView::new(ast).ui(ctx, ui, settings);
-                        });
-                }
-            }
-            View::Text(splits) => {
-                for (kind, chunk) in splits {
-                    match kind {
-                        Split::Text => self.add_preview_text(ctx, ui, settings, chunk),
-                        Split::Skip => self.add_skipped(ctx, ui, settings, chunk, true),
+                Gloss::Preview(splits) => {
+                    for (kind, chunk) in splits {
+                        match kind {
+                            Split::Text => draw.preview(chunk),
+                            Split::Skip => draw.skipped(chunk, Ink::Preview),
+                        }
                     }
                 }
             }
         }
         ui.new_line();
 
-        // show all term windows, close if requested (this is actually witchcraft)
-        self.show_term_window
-            .borrow_mut()
-            .retain(|romanized| self.term_window(ctx, ui, settings, romanized));
+        let Some(ast) = line.ast() else {
+            return;
+        };
+        self.raw
+            .show(ui, WindowFlags::empty(), || RawView::new(&ast.root).ui(ui));
+        self.glossary.show(ui, WindowFlags::empty(), || {
+            IndexView::new(ast).ui(ui, settings)
+        });
+        self.term_windows
+            .retain(|romanized, key| term_window(ui, settings, ast, romanized, key));
+    }
+}
+
+/// Draws one line's text.
+struct LineDraw<'a> {
+    ui: &'a Ui,
+    settings: &'a Settings,
+    /// Box behind glossed words; gray when the line is not the latest.
+    highlight: [f32; 4],
+    term_windows: &'a mut HashMap<Romanized, WindowKey>,
+    flow: Flow,
+}
+
+impl LineDraw<'_> {
+    /// Ruby text above a word, or space for it so lines stay aligned.
+    fn ruby<'r>(&self, romanized: Option<&'r Romanized>) -> RubyTextMode<'r> {
+        match (self.settings.interface.ruby_text_type, romanized) {
+            (RubyTextType::None, _) => RubyTextMode::None,
+            (RubyTextType::Furigana, Some(rz)) if rz.term().text() != rz.term().kana() => {
+                RubyTextMode::Text(rz.term().kana())
+            }
+            (RubyTextType::Romaji, Some(rz)) => RubyTextMode::Text(rz.romaji()),
+            _ => RubyTextMode::Pad,
+        }
     }
 
-    pub fn show_menu(&mut self, _ctx: &mut Context, ui: &Ui) {
-        if ui.menu_item_config("Raw").selected(self.show_raw).build() {
-            self.show_raw = true;
+    /// Text the parser does not gloss, such as punctuation.
+    fn skipped(&mut self, text: &str, ink: Ink) {
+        let ruby = self.ruby(None);
+        draw_kanji_text(
+            self.ui,
+            &mut self.flow,
+            text,
+            ruby,
+            KanjiStyle {
+                highlight: None,
+                ink,
+                underline: UnderlineMode::None,
+            },
+        );
+    }
+
+    /// Text that will be glossed once the parse finishes, boxed like the
+    /// words it will become.
+    fn preview(&mut self, text: &str) {
+        let ruby = self.ruby(None);
+        draw_kanji_text(
+            self.ui,
+            &mut self.flow,
+            text,
+            ruby,
+            KanjiStyle {
+                highlight: Some(self.highlight),
+                ink: Ink::Preview,
+                underline: UnderlineMode::None,
+            },
+        );
+    }
+
+    /// A glossed word: hover for its entry, click to keep it open. Returns
+    /// whether its underline is hovered.
+    fn word(&mut self, ast: &SyntaxTree, romanized: &Romanized, underline: UnderlineMode) -> bool {
+        let ui = self.ui;
+        let term = romanized.term();
+        let ruby = self.ruby(Some(romanized));
+        let ul_hover = draw_kanji_text(
+            ui,
+            &mut self.flow,
+            term.text(),
+            ruby,
+            KanjiStyle {
+                highlight: Some(if term.is_custom() {
+                    NAME_HIGHLIGHT
+                } else {
+                    self.highlight
+                }),
+                ink: Ink::text(self.settings.interface.stroke_text),
+                underline,
+            },
+        );
+
+        if ui.is_item_hovered() {
+            ui.set_mouse_cursor(Some(MouseCursor::Hand));
         }
-        if ui
-            .menu_item_config("Glossary")
-            .selected(self.show_glossary)
-            .build()
-        {
-            self.show_glossary = true;
+        if ui.is_item_hovered_with_flags(ItemHoveredFlags::FOR_TOOLTIP) {
+            ui.tooltip(|| {
+                // The term window (click) shows the full entry.
+                TermView::new(&ast.jmdict_data, &ast.kanji_info, romanized, 30.0)
+                    .max_senses(TOOLTIP_SENSES)
+                    .ui(ui, self.settings)
+            });
+        }
+        if ui.is_item_clicked() && !self.term_windows.contains_key(romanized) {
+            if let Some(key) = term_window_key(romanized) {
+                self.term_windows.insert(romanized.clone(), key);
+            }
+        }
+        ul_hover
+    }
+
+    fn segment(
+        &mut self,
+        ast: &SyntaxTree,
+        segment_idx: usize,
+        segment: &Segment,
+        selected_clause: &mut HashMap<usize, usize>,
+    ) {
+        let ui = self.ui;
+        match segment {
+            Segment::Skipped(skipped) => {
+                self.skipped(skipped, Ink::text(self.settings.interface.stroke_text));
+            }
+            Segment::Clauses(clauses) => {
+                let clause_idx = selected_clause.get(&segment_idx).copied().unwrap_or(0);
+                let Some(clause) = clauses.get(clause_idx) else {
+                    return;
+                };
+                // if clause.score() > 0 {
+                let romanized = clause.romanized();
+                for (idx, rz) in romanized.iter().enumerate() {
+                    let underline_mode = if clauses.len() > 1 {
+                        if idx == romanized.len() - 1 {
+                            UnderlineMode::Normal
+                        } else {
+                            UnderlineMode::Pad
+                        }
+                    } else {
+                        UnderlineMode::None
+                    };
+                    if !self.word(ast, rz, underline_mode) {
+                        continue;
+                    }
+                    // Scrolling over the underline cycles through the
+                    // alternative interpretations.
+                    let scroll = ui.io().mouse_wheel() as isize;
+                    let next = clause_idx
+                        .saturating_add_signed(-scroll)
+                        .min(clauses.len() - 1);
+                    if next != clause_idx {
+                        selected_clause.insert(segment_idx, next);
+                    }
+                    ui.tooltip(|| {
+                        ui.text(format!(
+                            "Alternate #{}/{} score={} (scroll to cycle)",
+                            next + 1,
+                            clauses.len(),
+                            clause.score()
+                        ));
+                        ui.separator();
+                        let _wrap_token = ui.push_text_wrap_pos(ui.current_font_size() * 20.0);
+                        let romaji = clause
+                            .romanized()
+                            .iter()
+                            .map(|x| x.romaji())
+                            .collect::<Vec<&str>>()
+                            .join(" ");
+                        ui.text_wrapped(romaji);
+                    });
+                }
+                // } else {
+                //     self.skipped(&clause.text(), Ink::text(self.settings.interface.stroke_text));
+                // }
+            }
         }
     }
+}
+
+/// Identity of a word's window. Titled with the word's text, which other
+/// interpretations of the same text share, so the identity comes from the
+/// interpretation itself.
+fn term_window_key(romanized: &Romanized) -> Option<WindowKey> {
+    let mut hasher = DefaultHasher::new();
+    romanized.hash(&mut hasher);
+    WindowKey::new(
+        format!("term-{:016x}", hasher.finish()),
+        romanized.term().text(),
+    )
+    .ok()
+}
+
+/// A word's full entry in its own window. Returns false once closed.
+fn term_window(
+    ui: &Ui,
+    settings: &Settings,
+    ast: &SyntaxTree,
+    romanized: &Romanized,
+    key: &WindowKey,
+) -> bool {
+    let mut opened = true;
+    ui.window(key)
+        .size_constraints(TextSize::new(33.0, 4.5).px(ui), [f32::MAX, f32::MAX])
+        .flags(WindowFlags::NO_SAVED_SETTINGS)
+        .opened(&mut opened)
+        .build(|| {
+            TermView::new(&ast.jmdict_data, &ast.kanji_info, romanized, 0.0).ui(ui, settings);
+        });
+    opened
 }

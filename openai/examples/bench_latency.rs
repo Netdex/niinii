@@ -40,16 +40,18 @@ const MAX_TOKENS: u32 = 256;
 /// `BENCH_REALTIME_MODEL` env var. The configured `openai_model` is typically a
 /// chat/responses model that the Realtime API rejects.
 fn realtime_model() -> ModelId {
-    ModelId(
-        std::env::var("BENCH_REALTIME_MODEL").unwrap_or_else(|_| "gpt-realtime".to_string()),
-    )
+    ModelId(std::env::var("BENCH_REALTIME_MODEL").unwrap_or_else(|_| "gpt-realtime".to_string()))
 }
 
 /// Optional realtime reasoning effort via `BENCH_REALTIME_EFFORT` (minimal/low/
 /// medium/high/xhigh). Unset = omit the field (server default). Only meaningful
 /// for reasoning-capable realtime models (e.g. `gpt-realtime-2`).
 fn realtime_effort() -> Option<ReasoningEffort> {
-    match std::env::var("BENCH_REALTIME_EFFORT").ok()?.to_lowercase().as_str() {
+    match std::env::var("BENCH_REALTIME_EFFORT")
+        .ok()?
+        .to_lowercase()
+        .as_str()
+    {
         "minimal" => Some(ReasoningEffort::Minimal),
         "low" => Some(ReasoningEffort::Low),
         "medium" => Some(ReasoningEffort::Medium),
@@ -230,7 +232,10 @@ async fn realtime_connect(
 /// Run one turn on an already-open realtime session: send the user line, request
 /// a response, and time the streamed text. The persistent connection is reused
 /// across turns, so this excludes the WebSocket handshake.
-async fn bench_realtime_turn(conn: &mut Realtime, user_line: &str) -> Result<Sample, openai::Error> {
+async fn bench_realtime_turn(
+    conn: &mut Realtime,
+    user_line: &str,
+) -> Result<Sample, openai::Error> {
     let t0 = Instant::now();
     // One flush: item.create + response.create reach the server together.
     conn.send_all(&[
@@ -338,9 +343,7 @@ async fn main() {
     let cfg = match load_config() {
         Some(cfg) => cfg,
         None => {
-            eprintln!(
-                "SKIP bench_latency: niinii.toml missing openai_api_endpoint / openai_model"
-            );
+            eprintln!("SKIP bench_latency: niinii.toml missing openai_api_endpoint / openai_model");
             return;
         }
     };
@@ -463,7 +466,14 @@ async fn main() {
         .collect();
     if means.len() >= 2 {
         means.sort_by_key(|(_, m)| *m);
-        let parts: Vec<String> = means.iter().map(|(n, m)| format!("{n}={}", ms(*m))).collect();
-        eprintln!("\nTTFT mean: {}  (fastest: {})", parts.join(" "), means[0].0);
+        let parts: Vec<String> = means
+            .iter()
+            .map(|(n, m)| format!("{n}={}", ms(*m)))
+            .collect();
+        eprintln!(
+            "\nTTFT mean: {}  (fastest: {})",
+            parts.join(" "),
+            means[0].0
+        );
     }
 }

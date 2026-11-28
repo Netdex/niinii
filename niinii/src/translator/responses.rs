@@ -272,7 +272,11 @@ fn reduce(state: &mut ResponsesState, event: ResponsesEvent) {
                     return;
                 }
             };
-            ex.response = Response::Completed { content, reasoning };
+            ex.response = Response::Completed {
+                content,
+                reasoning,
+                cut_short: None,
+            };
             ex.usage = usage;
             // Advance the chain only on success.
             if !response_id.is_empty() {
@@ -281,9 +285,8 @@ fn reduce(state: &mut ResponsesState, event: ResponsesEvent) {
         }
         ResponsesEvent::Failed { id, error } => {
             if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                ex.response = Response::Errored(error.clone());
+                ex.response = Response::Errored(error);
             }
-            state.last_error = Some(error);
         }
         ResponsesEvent::Cancelled { id } => {
             if let Some(ex) = find_mut(&mut state.exchanges, id) {
@@ -474,8 +477,8 @@ impl Backend for ResponsesHandle {
 
 pub fn spawn(settings: &Settings) -> ResponsesHandle {
     let client = openai::Client::new(
-        &settings.openai_api_key,
-        &settings.openai_api_endpoint,
+        &settings.translation.openai_api_key.0,
+        &settings.translation.openai_api_endpoint,
         ConnectionPolicy {
             timeout: Duration::from_millis(settings.responses.timeout),
             connect_timeout: Duration::from_millis(settings.responses.connection_timeout),

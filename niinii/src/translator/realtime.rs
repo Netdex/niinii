@@ -598,14 +598,17 @@ fn reduce(state: &mut RealtimeState, event: RealtimeEvent) {
                     return;
                 }
             };
-            ex.response = Response::Completed { content, reasoning };
+            ex.response = Response::Completed {
+                content,
+                reasoning,
+                cut_short: None,
+            };
             ex.usage = usage;
         }
         RealtimeEvent::Failed { id, error } => {
             if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                ex.response = Response::Errored(error.clone());
+                ex.response = Response::Errored(error);
             }
-            state.last_error = Some(error);
         }
         RealtimeEvent::Cancelled { id } => {
             if let Some(ex) = find_mut(&mut state.exchanges, id) {
@@ -675,8 +678,8 @@ impl Backend for RealtimeHandle {
 
 pub fn spawn(settings: &Settings) -> RealtimeHandle {
     let client = openai::Client::new(
-        &settings.openai_api_key,
-        &settings.openai_api_endpoint,
+        &settings.translation.openai_api_key.0,
+        &settings.translation.openai_api_endpoint,
         ConnectionPolicy {
             timeout: Duration::from_millis(settings.realtime.timeout),
             connect_timeout: Duration::from_millis(settings.realtime.connection_timeout),

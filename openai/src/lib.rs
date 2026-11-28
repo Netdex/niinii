@@ -6,9 +6,9 @@
 //! A: Yes, and?
 
 pub mod chat;
+mod protocol;
 pub mod realtime;
 pub mod responses;
-mod protocol;
 
 use std::{sync::Arc, time::Duration};
 

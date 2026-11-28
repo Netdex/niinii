@@ -84,7 +84,10 @@ impl Client {
         ) {
             conds.push(c);
         }
-        if let Some(c) = or_group("length", params.lengths.iter().map(|n| serde_json::json!(n))) {
+        if let Some(c) = or_group(
+            "length",
+            params.lengths.iter().map(|n| serde_json::json!(n)),
+        ) {
             conds.push(c);
         }
         let filters: serde_json::Value = match conds.len() {

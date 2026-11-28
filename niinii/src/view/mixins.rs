@@ -1,13 +1,20 @@
-use imgui::{ColorStackToken, DrawListMut, MouseCursor, StyleColor, Ui};
+use dear_imgui_rs::{
+    ColorStackToken, DrawListMut, MouseCursor, StyleColor, TableColumnFlags, TableColumnWidth,
+    TableFlags, Ui,
+};
 use strum::IntoEnumIterator;
 
-use crate::renderer::context::{Context, TextStyle};
+use crate::gui::{px, FontSize};
 
 pub fn help_marker(ui: &Ui, text: &str) {
-    ui.text_colored(ui.style_color(StyleColor::TextDisabled), "[?]");
-    if ui.is_item_hovered() {
-        ui.tooltip_text(text);
-    }
+    ui.text_disabled("(?)");
+    ui.set_item_tooltip(text);
+}
+
+/// Secondary text, wrapped at the window's edge.
+pub fn text_disabled_wrapped(ui: &Ui, text: impl AsRef<str>) {
+    let _color = ui.push_style_color(StyleColor::Text, ui.style_color(StyleColor::TextDisabled));
+    ui.text_wrapped(text);
 }
 
 pub fn wrap_bullet(ui: &Ui, text: &str) {
@@ -41,6 +48,7 @@ pub fn stroke_token_with_offsets(
     style: StrokeStyle,
 ) {
     let StrokeStyle { thick, fore, back } = style;
+    let thick = px(ui, thick);
     for off in offsets {
         draw_list.add_text(
             [pos[0] + off[0] * thick, pos[1] + off[1] * thick],
@@ -71,6 +79,73 @@ pub fn stroke_token_with_color(
     stroke_token_with_offsets(ui, draw_list, text, pos, &offsets, style);
 }
 
+/// Lays items out left to right from the cursor, starting a new line when
+/// the next one would not fit.
+pub struct Flow {
+    start_x: f32,
+    end_x: f32,
+    placed: bool,
+}
+
+impl Flow {
+    pub fn new(ui: &Ui) -> Self {
+        let start_x = ui.cursor_screen_pos()[0];
+        Self {
+            start_x,
+            end_x: start_x + ui.content_region_avail()[0],
+            placed: false,
+        }
+    }
+
+    /// Moves the cursor to where the next item, `width` wide and `spacing`
+    /// after the previous one, goes.
+    pub fn place(&mut self, ui: &Ui, width: f32, spacing: f32) {
+        if self.placed {
+            let end = ui.item_rect_max()[0] + spacing + width;
+            // An item too wide for any line stays on the current one.
+            if end <= self.end_x || width > self.end_x - self.start_x {
+                ui.same_line_with_spacing(0.0, spacing);
+            }
+        }
+        self.placed = true;
+    }
+
+    /// Outlined text, wrapping between words.
+    pub fn stroke_text(
+        &mut self,
+        ui: &Ui,
+        draw_list: &DrawListMut,
+        text: &str,
+        thick: f32,
+        highlight: Option<StyleColor>,
+    ) {
+        for token in text.split_inclusive(char::is_whitespace) {
+            let sz = ui.calc_text_size(token);
+            self.place(ui, sz[0], 0.0);
+            let p = ui.cursor_screen_pos();
+            if let Some(highlight) = highlight {
+                draw_list
+                    .add_rect(p, [p[0] + sz[0], p[1] + sz[1]], ui.style_color(highlight))
+                    .filled(true)
+                    .build();
+            }
+            stroke_token_with_color(
+                ui,
+                draw_list,
+                token,
+                p,
+                StrokeStyle {
+                    thick,
+                    fore: StyleColor::Text,
+                    back: StyleColor::TitleBg,
+                },
+            );
+            ui.dummy(sz);
+        }
+    }
+}
+
+/// Outlined text on its own lines.
 pub fn stroke_text_with_highlight(
     ui: &Ui,
     draw_list: &DrawListMut,
@@ -78,82 +153,87 @@ pub fn stroke_text_with_highlight(
     thick: f32,
     highlight: Option<StyleColor>,
 ) {
-    ui.new_line();
-    let tokens = text.split_inclusive(char::is_whitespace);
-    for token in tokens {
-        let sz = ui.calc_text_size(token);
-        wrap_line_with_spacing(ui, sz[0], 0.0);
-        let p = ui.cursor_screen_pos();
-        if let Some(highlight) = highlight {
-            draw_list
-                .add_rect(p, [p[0] + sz[0], p[1] + sz[1]], ui.style_color(highlight))
-                .filled(true)
-                .build();
-        }
-        stroke_token_with_color(
-            ui,
-            draw_list,
-            token,
-            ui.cursor_screen_pos(),
-            StrokeStyle {
-                thick,
-                fore: StyleColor::Text,
-                back: StyleColor::TitleBg,
-            },
-        );
-        ui.dummy(sz)
-    }
+    Flow::new(ui).stroke_text(ui, draw_list, text, thick, highlight);
 }
 
-/// Run `f` with `style`'s font drawn at `scale`. Scaling a larger font down
-/// stays sharp and needs no extra font in the atlas.
-pub fn with_scaled_font<R>(
-    ui: &Ui,
-    ctx: &Context,
-    style: TextStyle,
-    scale: f32,
-    f: impl FnOnce() -> R,
-) -> R {
-    let _font = ui.push_font(ctx.get_font(style));
-    // The window scale applies to whichever font is current, so it is set
-    // after pushing and reset before the font is popped.
-    ui.set_window_font_scale(scale);
-    let result = f();
-    ui.set_window_font_scale(1.0);
-    result
+/// Height of a word-wrapped multiline field filling the available width with
+/// `text`: one line at least, `max_height` at most (it scrolls beyond that).
+pub fn wrapped_field_height(ui: &Ui, text: &str, max_height: f32) -> f32 {
+    let style = unsafe { ui.style() };
+    let [pad_x, pad_y] = style.frame_padding();
+    // Room for the scrollbar keeps the measured wrap from running wider than
+    // the field's own.
+    let width = ui.content_region_avail()[0] - 2.0 * pad_x - style.scrollbar_size();
+    let text_height =
+        ui.calc_text_size_with_opts(text, false, width.max(1.0))[1].max(ui.text_line_height());
+    (text_height + 2.0 * pad_y).min(max_height)
+}
+
+/// A problem the user should see, drawn as a highlighted note after the
+/// content it is about.
+pub fn error_note(ui: &Ui, text: &str) {
+    let draw_list = ui.get_window_draw_list();
+    stroke_text_with_highlight(
+        ui,
+        &draw_list,
+        text,
+        1.0,
+        Some(StyleColor::PlotLinesHovered),
+    );
+}
+
+/// Highlight for text from an earlier line: the usual highlight in light gray.
+pub fn earlier_line_highlight(ui: &Ui) -> [f32; 4] {
+    let alpha = ui.style_color(StyleColor::TextSelectedBg)[3];
+    [0.75, 0.75, 0.75, alpha]
 }
 
 /// Marks text from an earlier line by drawing its highlight in light gray
 /// while the returned token lives.
 pub fn push_earlier_line_highlight(ui: &Ui) -> ColorStackToken<'_> {
-    let alpha = ui.style_color(StyleColor::TextSelectedBg)[3];
-    ui.push_style_color(StyleColor::TextSelectedBg, [0.75, 0.75, 0.75, alpha])
+    ui.push_style_color(StyleColor::TextSelectedBg, earlier_line_highlight(ui))
 }
 
 /// Gap between glossed words, as a fraction of the style's item spacing.
 const GLOSS_SPACING: f32 = 0.5;
 
+/// How glossed text is inked.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Ink {
+    Plain,
+    /// Outlined, for reading over busy backgrounds.
+    Stroked,
+    /// Dimmed with a drop shadow: text not glossed yet.
+    Preview,
+}
+
+impl Ink {
+    /// `Stroked` when the stroke setting is on, `Plain` otherwise.
+    pub fn text(stroke: bool) -> Self {
+        if stroke {
+            Ink::Stroked
+        } else {
+            Ink::Plain
+        }
+    }
+}
+
 pub struct KanjiStyle {
-    pub highlight: bool,
-    /// Override for the highlight rectangle color. `None` falls back to
-    /// `StyleColor::TextSelectedBg`. Ignored when `highlight` is false.
-    pub highlight_color: Option<[f32; 4]>,
-    pub stroke: bool,
-    pub preview: bool,
+    /// Color of the box behind the text, if any.
+    pub highlight: Option<[f32; 4]>,
+    pub ink: Ink,
     pub underline: UnderlineMode,
 }
 pub fn draw_kanji_text(
     ui: &Ui,
-    ctx: &Context,
+    flow: &mut Flow,
     text: &str,
     ruby_text: RubyTextMode,
     style: KanjiStyle,
 ) -> bool {
     let KanjiStyle {
         highlight,
-        highlight_color,
-        stroke,
-        preview,
+        ink,
         underline,
     } = style;
     let ruby_sz = match ruby_text {
@@ -162,19 +242,17 @@ pub fn draw_kanji_text(
         RubyTextMode::None => [0.0, 0.0],
     };
 
-    let _kanji_font_token = ui.push_font(ctx.get_font(TextStyle::Kanji));
-    let kanji_sz = ui.calc_text_size(text);
-    drop(_kanji_font_token);
+    let kanji_sz = FontSize::KANJI.with(ui, || ui.calc_text_size(text));
 
     let vpad = match ruby_text {
         RubyTextMode::None => 0.0,
-        _ => 8.0,
+        _ => px(ui, 8.0),
     };
     let w = f32::max(kanji_sz[0], ruby_sz[0]);
     let h = kanji_sz[1] + ruby_sz[1] + vpad;
 
-    let spacing = unsafe { ui.style().item_spacing[0] } * GLOSS_SPACING;
-    wrap_line_with_spacing(ui, w, spacing);
+    let spacing = unsafe { ui.style() }.item_spacing()[0] * GLOSS_SPACING;
+    flow.place(ui, w, spacing);
 
     let x = ui.cursor_screen_pos()[0];
     let mut y = ui.cursor_screen_pos()[1] + vpad;
@@ -182,7 +260,7 @@ pub fn draw_kanji_text(
     let draw_list = ui.get_window_draw_list();
 
     let maybe_stroke_text = |text: &str, pos: [f32; 2], thick: f32| {
-        if stroke {
+        if ink == Ink::Stroked {
             stroke_token_with_color(
                 ui,
                 &draw_list,
@@ -207,16 +285,15 @@ pub fn draw_kanji_text(
     let cx = x + w / 2.0 - kanji_sz[0] / 2.0;
     y += ruby_sz[1];
 
-    if highlight {
-        let color = highlight_color.unwrap_or_else(|| ui.style_color(StyleColor::TextSelectedBg));
+    if let Some(color) = highlight {
         draw_list
             .add_rect([cx, y], [cx + kanji_sz[0], y + kanji_sz[1]], color)
-            .rounding(5.0)
+            .rounding(px(ui, 5.0))
             .filled(true)
             .build();
     }
 
-    let ul_thick = 4.0;
+    let ul_thick = px(ui, 4.0);
     let ul0 = [x, y + kanji_sz[1] + ul_thick / 2.0];
     let ul1 = match underline {
         UnderlineMode::Normal => [x + w, y + kanji_sz[1] + ul_thick / 2.0],
@@ -228,24 +305,24 @@ pub fn draw_kanji_text(
         .thickness(ul_thick)
         .build();
 
-    let _kanji_font_token = ui.push_font(ctx.get_font(TextStyle::Kanji));
-    if preview {
-        stroke_token_with_offsets(
-            ui,
-            &draw_list,
-            text,
-            [cx, y],
-            &[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
-            StrokeStyle {
-                thick: 2.0,
-                fore: StyleColor::TextDisabled,
-                back: StyleColor::MenuBarBg,
-            },
-        )
-    } else {
-        maybe_stroke_text(text, [cx, y], 1.5);
-    }
-    drop(_kanji_font_token);
+    FontSize::KANJI.with(ui, || {
+        if ink == Ink::Preview {
+            stroke_token_with_offsets(
+                ui,
+                &draw_list,
+                text,
+                [cx, y],
+                &[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                StrokeStyle {
+                    thick: 2.0,
+                    fore: StyleColor::TextDisabled,
+                    back: StyleColor::MenuBarBg,
+                },
+            )
+        } else {
+            maybe_stroke_text(text, [cx, y], 1.5);
+        }
+    });
 
     ui.dummy([w, h]);
 
@@ -256,55 +333,55 @@ pub fn draw_kanji_text(
         )
 }
 
-pub fn wrap_line_with_spacing(ui: &Ui, expected_width: f32, spacing: f32) -> bool {
-    let max_width = ui.window_content_region_max()[0];
-    let visible_x = ui.window_pos()[0] + max_width;
-    let last_x = ui.item_rect_max()[0];
-    let next_x = last_x + spacing + expected_width;
-    // don't wrap if it will fit on the current line, or if it won't even fit on an empty line
-    if next_x < visible_x || expected_width >= max_width {
-        ui.same_line_with_spacing(0.0, spacing);
-        false
-    } else {
-        true
+/// A form laid out like the reflected settings grid: `pairs` label/widget
+/// pairs per row, each label in a column sized to its longest label and each
+/// widget filling the column after it. Fill it with [`form_cell`].
+pub fn form_grid(ui: &Ui, id: &str, pairs: usize, cells: impl FnOnce()) {
+    if let Some(_table) = ui.begin_table_with_flags(id, pairs * 2, TableFlags::NO_SAVED_SETTINGS) {
+        for _ in 0..pairs {
+            ui.table_setup_column(
+                "##label",
+                TableColumnFlags::NONE,
+                Some(TableColumnWidth::Fixed(0.0)),
+            );
+            ui.table_setup_column(
+                "##value",
+                TableColumnFlags::NONE,
+                Some(TableColumnWidth::Stretch(1.0)),
+            );
+        }
+        cells();
     }
 }
 
-pub fn checkbox_option<T: Default, U>(
-    ui: &Ui,
-    val: &mut Option<T>,
-    f: impl FnOnce(&Ui, &mut T) -> U,
-) -> U {
-    checkbox_option_with_default(ui, val, T::default(), f)
+/// One label/widget pair of a [`form_grid`]; `widget` fills its column.
+pub fn form_cell(ui: &Ui, label: &str, widget: impl FnOnce()) {
+    let _id = ui.push_id(label);
+    ui.table_next_column();
+    ui.align_text_to_frame_padding();
+    ui.text(label);
+    ui.table_next_column();
+    let _width = ui.push_item_width(-f32::MIN_POSITIVE);
+    widget();
 }
 
-pub fn checkbox_option_with_default<T, U>(
-    ui: &Ui,
-    val: &mut Option<T>,
-    default: T,
-    f: impl FnOnce(&Ui, &mut T) -> U,
-) -> U {
-    let mut default = Some(default);
-    let mut chk_value = val.is_some();
-    let _id = ui.push_id_ptr(val);
-    if ui.checkbox("##", &mut chk_value) {
-        *val = if chk_value { default.take() } else { None }
-    }
-    ui.same_line();
-    if let Some(val) = val {
-        f(ui, val)
-    } else {
-        let _token = ui.begin_disabled(true);
-        let mut dummy = default.unwrap();
-        f(ui, &mut dummy)
-    }
+/// A single [`form_grid`] row.
+pub fn form_row(ui: &Ui, label: &str, widget: impl FnOnce()) {
+    form_grid(ui, label, 1, || form_cell(ui, label, widget));
 }
 
-pub fn combo_enum<T>(ui: &Ui, label: impl AsRef<str>, val: &mut T)
+/// A combo choosing an enum value, as wide as its widest value so a column
+/// of them lines up.
+pub fn combo_enum_fit<T>(ui: &Ui, label: impl AsRef<str>, val: &mut T)
 where
     T: IntoEnumIterator + PartialEq,
     for<'a> &'a T: Into<&'static str>,
 {
+    let widest = T::iter()
+        .map(|e| ui.calc_text_size(<&T as Into<&'static str>>::into(&e))[0])
+        .fold(0.0, f32::max);
+    let padding = unsafe { ui.style() }.frame_padding()[0];
+    ui.set_next_item_width(widest + 2.0 * padding + ui.frame_height());
     let val_name = <&T as Into<&'static str>>::into(val);
     if let Some(_token) = ui.begin_combo(label, val_name) {
         for e in T::iter() {

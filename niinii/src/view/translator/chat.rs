@@ -1,21 +1,25 @@
+use dear_imgui_reflect::{ImGuiReflectExt, ReflectSession};
 use std::collections::HashMap;
 
-use imgui::*;
+use crate::gui::px;
+use dear_imgui_rs::*;
 use openai::chat::{Message, Role};
 
 use crate::{
     settings::Settings,
     translator::{chat::LINE_PREFIX, ChatHandle, ContextEdit, MsgId},
     view::mixins::{
-        checkbox_option, checkbox_option_with_default, combo_enum, combo_list, drag_handle,
-        help_marker,
+        combo_enum_fit, combo_list, drag_handle, error_note, form_row, wrapped_field_height,
     },
 };
+
+use super::{read_only_text, wrapped_editor};
 
 /// Render the chat backend's window body: tuning knobs plus the editable context
 /// buffer. The window framing is owned by the caller (`TranslatorWindow::ui`).
 pub fn window(
     ui: &Ui,
+    reflect: &ReflectSession,
     settings: &mut Settings,
     handle: &ChatHandle,
     buffers: &mut HashMap<MsgId, String>,
@@ -29,98 +33,17 @@ pub fn window(
         }
     });
 
-    if ui.collapsing_header("Tuning", TreeNodeFlags::DEFAULT_OPEN) {
-        let align = 10.0;
-        if let Some(_token) = ui.begin_table("##", 2) {
-            ui.table_next_column();
-            ui.set_next_item_width(ui.current_font_size() * -align);
-            combo_list(ui, "Model", &state.models, &mut settings.openai_model);
-            ui.table_next_column();
-            ui.checkbox("Stream", &mut chatgpt.stream);
-            ui.same_line();
-            help_marker(
-                ui,
-                "Use streaming API (may require ID verification for some models)",
-            );
-            ui.table_next_column();
-            ui.set_next_item_width(ui.current_font_size() * -align);
-            ui.input_scalar_n("Context tokens", &mut chatgpt.max_context_tokens)
-                .build();
-            ui.same_line();
-            help_marker(
-                ui,
-                "Target/threshold. For limiting context size while optimizing usage of prefix caches",
-            );
-            ui.table_next_column();
-            checkbox_option(ui, &mut chatgpt.max_tokens, |ui, max_tokens| {
-                ui.set_next_item_width(ui.current_font_size() * -align);
-                ui.input_scalar("Max response tokens", max_tokens).build();
-            });
-            ui.table_next_column();
-            checkbox_option_with_default(ui, &mut chatgpt.temperature, 1.0, |ui, temperature| {
-                ui.set_next_item_width(ui.current_font_size() * -align);
-                ui.slider_config("Temperature", 0.0f32, 2.0f32)
-                    .display_format("%.2f")
-                    .flags(SliderFlags::ALWAYS_CLAMP)
-                    .build(temperature);
-            });
-            ui.table_next_column();
-            checkbox_option_with_default(ui, &mut chatgpt.top_p, 1.0, |ui, top_p| {
-                ui.set_next_item_width(ui.current_font_size() * -align);
-                ui.slider_config("Top P", 0.0f32, 1.0f32)
-                    .display_format("%.2f")
-                    .flags(SliderFlags::ALWAYS_CLAMP)
-                    .build(top_p);
-            });
-            ui.table_next_column();
-            checkbox_option_with_default(
-                ui,
-                &mut chatgpt.presence_penalty,
-                0.0,
-                |ui, presence_penalty| {
-                    ui.set_next_item_width(ui.current_font_size() * -align);
-                    ui.slider_config("Presence penalty", -2.0f32, 2.0f32)
-                        .display_format("%.2f")
-                        .flags(SliderFlags::ALWAYS_CLAMP)
-                        .build(presence_penalty);
-                },
-            );
-            ui.table_next_column();
-            checkbox_option_with_default(
-                ui,
-                &mut chatgpt.service_tier,
-                openai::ServiceTier::Auto,
-                |ui, service_tier| {
-                    ui.set_next_item_width(ui.current_font_size() * -align);
-                    combo_enum(ui, "Service tier", service_tier);
-                },
-            );
-            ui.table_next_column();
-            checkbox_option_with_default(
-                ui,
-                &mut chatgpt.reasoning_effort,
-                openai::ReasoningEffort::Medium,
-                |ui, reasoning_effort| {
-                    ui.set_next_item_width(ui.current_font_size() * -align);
-                    combo_enum(ui, "Reasoning effort", reasoning_effort);
-                },
-            );
-            ui.same_line();
-            help_marker(ui, "Effort for reasoning models (GPT-5 and o3 models)");
-            ui.table_next_column();
-            checkbox_option_with_default(
-                ui,
-                &mut chatgpt.verbosity,
-                openai::Verbosity::Medium,
-                |ui, verbosity| {
-                    ui.set_next_item_width(ui.current_font_size() * -align);
-                    combo_enum(ui, "Verbosity", verbosity);
-                },
-            );
-        }
-    }
+    form_row(ui, "Model", || {
+        combo_list(
+            ui,
+            "##model",
+            &state.models,
+            &mut settings.translation.openai_model,
+        )
+    });
+    ui.inspector(reflect).input("Tuning", chatgpt);
 
-    ui.child_window("context_window").build(|| {
+    ui.child_window("context_window").build(ui, || {
         if let Some(_t) = ui.begin_table_header_with_flags(
             "context",
             [
@@ -130,32 +53,21 @@ pub fn window(
                 TableColumnSetup::new("Role"),
                 TableColumnSetup::new("Message"),
             ],
-            TableFlags::SIZING_STRETCH_PROP,
+            TableOptions::default().sizing_policy(TableSizingPolicy::StretchProp),
         ) {
             // Rows for the parts of the system message, in the order it is
             // assembled.
             {
                 let _id = ui.push_id("system_prompt");
                 fixed_row_lead(ui, Role::System);
-                ui.input_text_multiline(
-                    "##text",
-                    &mut chatgpt.system_prompt,
-                    [ui.content_region_avail()[0], 200.0],
-                )
-                .build();
+                wrapped_editor(ui, "##text", &mut chatgpt.system_prompt, px(ui, 200.0));
             }
             if let Some(addendum) = state.system_addendum.as_deref() {
-                static_row(ui, "addendum", Role::System, addendum, 200.0);
+                static_row(ui, "addendum", Role::System, addendum, px(ui, 200.0));
             }
             // Prepended to every unlocked User row below and to the line
             // being translated.
-            static_row(
-                ui,
-                "line_prefix",
-                Role::User,
-                LINE_PREFIX,
-                ui.frame_height() + ui.text_line_height(),
-            );
+            static_row(ui, "line_prefix", Role::User, LINE_PREFIX, px(ui, 200.0));
 
             // Sweep buffers whose messages are gone; keep the rest. Stable
             // MsgIds make this robust to reorder/insert/delete.
@@ -174,19 +86,19 @@ pub fn window(
 
             for (idx, entry) in state.context.iter().enumerate() {
                 let message = &entry.message;
-                let _id = ui.push_id_usize(idx);
+                let _id = ui.push_id(idx);
                 ui.table_next_column();
                 drag_handle(ui);
                 if let Some(_tooltip) = ui
                     .drag_drop_source_config("##dd_message")
-                    .flags(DragDropFlags::SOURCE_ALLOW_NULL_ID)
+                    .flags(DragDropSourceFlags::ALLOW_NULL_ID)
                     .begin_payload(idx)
                 {
                     ui.text(format!("{:?}", message));
                 }
                 if let Some(target) = ui.drag_drop_target() {
                     if let Some(Ok(payload)) =
-                        target.accept_payload::<usize, _>("##dd_message", DragDropFlags::empty())
+                        target.accept_payload::<usize, _>("##dd_message", DragDropTargetFlags::NONE)
                     {
                         interact = Some(Interaction::Swap(payload.data, idx));
                     }
@@ -197,17 +109,17 @@ pub fn window(
                 }
                 ui.table_next_column();
                 let mut lock = message.name.is_some();
-                ui.disabled(message.role != Role::User, || {
+                {
+                    let _disabled = ui.begin_disabled_with_cond(message.role != Role::User);
                     if ui.checkbox("##lock", &mut lock) {
                         interact =
                             Some(Interaction::SetName(idx, lock.then(|| "info".to_string())));
                     }
-                });
+                }
                 ui.table_next_column();
                 ui.group(|| {
-                    ui.set_next_item_width(ui.current_font_size() * 6.0);
                     let mut role = message.role.clone();
-                    combo_enum(ui, "##role", &mut role);
+                    combo_enum_fit(ui, "##role", &mut role);
                     if role != message.role {
                         interact = Some(Interaction::SetRole(idx, role));
                     }
@@ -216,8 +128,8 @@ pub fn window(
                 let buf = buffers
                     .entry(entry.id)
                     .or_insert_with(|| message.content.clone().unwrap_or_default());
-                ui.set_next_item_width(ui.content_region_avail()[0]);
-                ui.input_text("##content", buf).build();
+                let height = wrapped_field_height(ui, buf, px(ui, 160.0));
+                wrapped_editor(ui, "##content", buf, height);
                 if ui.is_item_deactivated_after_edit() {
                     interact = Some(Interaction::CommitContent(idx, buf.clone()));
                 }
@@ -258,6 +170,9 @@ pub fn window(
             ui.table_next_column();
             ui.text_disabled("drag and drop by handle to reorder");
         }
+        if let Some(err) = state.last_error.as_deref() {
+            error_note(ui, &format!("translator: {err}"));
+        }
     });
 }
 
@@ -265,29 +180,29 @@ pub fn window(
 /// locked, and a fixed role. The caller fills the last cell.
 fn fixed_row_lead(ui: &Ui, role: Role) {
     ui.table_next_column();
-    ui.disabled(true, || drag_handle(ui));
+    {
+        let _disabled = ui.begin_disabled_with_cond(true);
+        drag_handle(ui);
+    }
     ui.table_next_column();
     ui.table_next_column();
-    ui.disabled(true, || {
+    {
+        let _disabled = ui.begin_disabled_with_cond(true);
         let mut dummy = true;
         ui.checkbox("##lock", &mut dummy);
-    });
+    }
     ui.table_next_column();
-    ui.disabled(true, || {
-        ui.set_next_item_width(ui.current_font_size() * 6.0);
+    {
+        let _disabled = ui.begin_disabled_with_cond(true);
         let mut role = role;
-        combo_enum(ui, "##role", &mut role);
-    });
+        combo_enum_fit(ui, "##role", &mut role);
+    }
     ui.table_next_column();
 }
 
 /// A read-only row in the context table for text the app adds itself.
-fn static_row(ui: &Ui, id: &str, role: Role, text: &str, height: f32) {
+fn static_row(ui: &Ui, id: &str, role: Role, text: &str, max_height: f32) {
     let _id = ui.push_id(id);
     fixed_row_lead(ui, role);
-    // Read-only rather than disabled so long text stays scrollable and copyable.
-    let mut buf = text.to_owned();
-    ui.input_text_multiline("##text", &mut buf, [ui.content_region_avail()[0], height])
-        .read_only(true)
-        .build();
+    read_only_text(ui, "##text", text, max_height);
 }

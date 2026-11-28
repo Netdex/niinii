@@ -236,9 +236,7 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
             finish_reason,
             max_context_tokens,
         } => {
-            state.last_error = finish_reason
-                .filter(|r| r != "stop")
-                .map(|r| Arc::from(format!("response ended early: finish_reason={r}")));
+            state.last_error = None;
             let Some(ex) = find_mut(&mut state.exchanges, id) else {
                 return;
             };
@@ -253,6 +251,7 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
             ex.response = Response::Completed {
                 content: content.clone(),
                 reasoning,
+                cut_short: finish_reason.filter(|r| r != "stop").map(Arc::from),
             };
             ex.usage = usage;
             let assistant = Message {
@@ -267,9 +266,8 @@ fn reduce(state: &mut ChatState, event: ChatEvent) {
         }
         ChatEvent::Failed { id, error } => {
             if let Some(ex) = find_mut(&mut state.exchanges, id) {
-                ex.response = Response::Errored(error.clone());
+                ex.response = Response::Errored(error);
             }
-            state.last_error = Some(error);
         }
         ChatEvent::Cancelled { id } => {
             if let Some(ex) = find_mut(&mut state.exchanges, id) {
@@ -604,8 +602,8 @@ impl Backend for ChatHandle {
 
 pub fn spawn(settings: &Settings) -> ChatHandle {
     let client = openai::Client::new(
-        &settings.openai_api_key,
-        &settings.openai_api_endpoint,
+        &settings.translation.openai_api_key.0,
+        &settings.translation.openai_api_endpoint,
         ConnectionPolicy {
             timeout: Duration::from_millis(settings.chat.timeout),
             connect_timeout: Duration::from_millis(settings.chat.connection_timeout),

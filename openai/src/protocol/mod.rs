@@ -83,21 +83,29 @@ pub struct StreamOptions {
     pub include_usage: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter,
+)]
+#[cfg_attr(feature = "reflect", derive(dear_imgui_reflect::ImGuiReflect))]
 #[serde(rename_all = "lowercase")]
 pub enum ServiceTier {
+    #[default]
     Auto,
     Default,
     Flex,
     Priority,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter,
+)]
+#[cfg_attr(feature = "reflect", derive(dear_imgui_reflect::ImGuiReflect))]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
     /// GPT-5 (non-.5) level; not a GPT-5.5 level.
     Minimal,
     Low,
+    #[default]
     Medium,
     High,
     /// GPT-5.5: hardest asynchronous tasks where latency is acceptable.
@@ -105,10 +113,14 @@ pub enum ReasoningEffort {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, IntoStaticStr, EnumIter,
+)]
+#[cfg_attr(feature = "reflect", derive(dear_imgui_reflect::ImGuiReflect))]
 #[serde(rename_all = "lowercase")]
 pub enum Verbosity {
     Low,
+    #[default]
     Medium,
     High,
 }

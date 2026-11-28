@@ -1,48 +1,27 @@
-use imgui::*;
+use dear_imgui_rs::*;
 
-use super::mixins::wrap_bullet;
+use super::{
+    mixins::{text_disabled_wrapped, wrap_bullet},
+    panel::{Panel, Sizing, TextSize},
+    shortcuts::Action,
+};
 
-/// Keep in sync with `App::handle_shortcuts`.
-const SHORTCUTS: &[(&str, &str)] = &[
-    ("T", "Translate the shown line"),
-    ("S", "Speak the shown line (VOICEVOX builds)"),
-    ("R", "Cycle ruby text: none, furigana, romaji"),
-    ("Left / Right", "Previous / next line"),
-    ("End", "Latest line"),
-    (
-        "ScrLk",
-        "Toggle interaction (works while the game has focus)",
-    ),
-];
+pub const SIZING: Sizing = Sizing {
+    default: Some(TextSize::new(52.0, 20.0)),
+    min: TextSize::new(40.0, 10.0),
+};
 
 /// Usage notes, shortcuts and credits.
-pub struct HelpView {
-    pub open: bool,
-}
-
-impl HelpView {
-    pub fn new() -> Self {
-        Self { open: false }
-    }
-
-    pub fn show_menu_item(&mut self, ui: &Ui) {
-        if ui.menu_item("About niinii") {
-            self.open = true;
-        }
-    }
-
-    pub fn ui(&mut self, ui: &Ui) {
-        if !self.open {
-            return;
-        }
-        ui.window("About niinii")
-            .size([460.0, 420.0], Condition::FirstUseEver)
-            .opened(&mut self.open)
-            .build(|| {
+/// `adapter` names the GPU adapter rendering the windows.
+pub fn show(panel: &mut Panel, ui: &Ui, adapter: &str) {
+    panel.show(
+        ui,
+        WindowFlags::empty(),
+        || {
                 ui.text(concat!("niinii ", env!("CARGO_PKG_VERSION")));
-                ui.text_disabled("Glossing and translation for reading Japanese text.");
                 ui.text(concat!("By ", env!("CARGO_PKG_AUTHORS")));
-                ui.text_disabled("github.com/Netdex/niinii");
+                ui.text_link_open_url("github.com/Netdex/niinii", "https://github.com/Netdex/niinii");
+                text_disabled_wrapped(ui, format!("Renderer: {adapter}"));
                 ui.separator();
 
                 if ui.collapsing_header("Usage", TreeNodeFlags::DEFAULT_OPEN) {
@@ -53,25 +32,32 @@ impl HelpView {
                 }
 
                 if ui.collapsing_header("Keyboard shortcuts", TreeNodeFlags::DEFAULT_OPEN) {
-                    ui.text_disabled("While a niinii window has focus and no text field is active.");
+                    text_disabled_wrapped(ui, "While a niinii window has focus and no text field is active.");
                     if let Some(_table) =
                         ui.begin_table_with_flags("shortcuts", 2, TableFlags::NO_SAVED_SETTINGS)
                     {
-                        ui.table_setup_column_with(TableColumnSetup {
-                            // Fixed with no width given: imgui fits it to the keys.
-                            flags: TableColumnFlags::WIDTH_FIXED,
-                            ..TableColumnSetup::new("key")
-                        });
-                        ui.table_setup_column_with(TableColumnSetup {
-                            flags: TableColumnFlags::WIDTH_STRETCH,
-                            ..TableColumnSetup::new("action")
-                        });
-                        for (key, action) in SHORTCUTS {
+                        // Fixed with no width given: imgui fits it to the keys.
+                        ui.table_setup_column(
+                            "key",
+                            TableColumnFlags::NONE,
+                            Some(TableColumnWidth::Fixed(0.0)),
+                        );
+                        ui.table_setup_column(
+                            "action",
+                            TableColumnFlags::NONE,
+                            Some(TableColumnWidth::Stretch(1.0)),
+                        );
+                        for action in Action::all() {
                             ui.table_next_column();
-                            ui.text(key);
+                            ui.text(action.key_name(ui));
                             ui.table_next_column();
-                            ui.text_wrapped(action);
+                            ui.text_wrapped(action.description());
                         }
+                        // Polled from the OS, so it works while the game has focus.
+                        ui.table_next_column();
+                        ui.text("ScrLk");
+                        ui.table_next_column();
+                        ui.text_wrapped("Toggle interaction (works while the game has focus)");
                     }
                 }
 
@@ -81,6 +67,6 @@ impl HelpView {
                     wrap_bullet(ui, "Character data from VNDB (vndb.org).");
                     wrap_bullet(ui, "Third-party licenses are listed in NOTICE.");
                 }
-            });
-    }
+        },
+    );
 }

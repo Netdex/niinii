@@ -332,7 +332,10 @@ mod tests {
 
         // String forms.
         session.truncation = Some(RealtimeTruncation::Auto);
-        assert_eq!(serde_json::to_value(&session).unwrap()["truncation"], "auto");
+        assert_eq!(
+            serde_json::to_value(&session).unwrap()["truncation"],
+            "auto"
+        );
         session.truncation = Some(RealtimeTruncation::Disabled);
         assert_eq!(
             serde_json::to_value(&session).unwrap()["truncation"],
@@ -356,7 +359,10 @@ mod tests {
             post_instructions_token_limit: Some(4096),
         });
         let json = serde_json::to_value(&session).unwrap();
-        assert_eq!(json["truncation"]["token_limits"]["post_instructions"], 4096);
+        assert_eq!(
+            json["truncation"]["token_limits"]["post_instructions"],
+            4096
+        );
     }
 
     #[test]

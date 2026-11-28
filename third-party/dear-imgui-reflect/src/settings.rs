@@ -1,0 +1,177 @@
+//! Per-session and per-member settings for dear-imgui-reflect.
+//!
+//! This module defines [`ReflectSettings`] and [`MemberSettings`], along with
+//! container and numeric configuration types that mirror many concepts from
+//! ImReflect's `ImSettings` API.
+
+mod bool;
+mod container;
+mod member;
+mod numeric;
+mod option;
+#[cfg(test)]
+mod tests;
+mod tuple;
+
+use std::any::TypeId;
+use std::collections::HashMap;
+
+pub use self::bool::{BoolSettings, BoolStyle};
+pub use self::container::{ArraySettings, MapSettings, VecSettings};
+pub use self::member::MemberSettings;
+pub use self::option::OptionSettings;
+pub use self::numeric::{
+    F32NumericSettings, F64NumericSettings, I32NumericSettings, NumericDefaultRange, NumericRange,
+    NumericTypeSettings, NumericWidgetKind, U32NumericSettings,
+};
+pub use self::tuple::{TupleRenderMode, TupleSettings};
+
+/// Settings that control how certain types are rendered by `dear-imgui-reflect`.
+///
+/// A [`crate::ReflectSession`] owns one settings value. Configure it before
+/// starting an inspector pass, then share that explicit session wherever the
+/// same defaults should apply.
+#[derive(Clone, Debug, Default)]
+pub struct ReflectSettings {
+    vec: VecSettings,
+    bools: BoolSettings,
+    options: OptionSettings,
+    arrays: ArraySettings,
+    maps: MapSettings,
+    tuples: TupleSettings,
+    numerics_i32: I32NumericSettings,
+    numerics_f32: F32NumericSettings,
+    numerics_u32: U32NumericSettings,
+    numerics_f64: F64NumericSettings,
+    member_overrides: HashMap<TypeId, HashMap<String, MemberSettings>>,
+}
+
+impl ReflectSettings {
+    /// Creates a new settings object with reasonable defaults.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Settings that apply to all `Vec<T>` containers rendered via reflection.
+    pub fn vec(&self) -> &VecSettings {
+        &self.vec
+    }
+
+    /// Mutable access to settings that apply to all `Vec<T>` containers.
+    pub fn vec_mut(&mut self) -> &mut VecSettings {
+        &mut self.vec
+    }
+
+    /// Settings that apply to all `bool` fields rendered via reflection.
+    pub fn bools(&self) -> &BoolSettings {
+        &self.bools
+    }
+
+    /// Mutable access to settings that apply to all `bool` fields.
+    pub fn bools_mut(&mut self) -> &mut BoolSettings {
+        &mut self.bools
+    }
+
+    /// Settings that apply to all `Option<T>` values rendered via reflection.
+    pub fn options(&self) -> &OptionSettings {
+        &self.options
+    }
+
+    /// Mutable access to settings that apply to all `Option<T>` values.
+    pub fn options_mut(&mut self) -> &mut OptionSettings {
+        &mut self.options
+    }
+
+    /// Settings that apply to fixed-size arrays rendered via reflection.
+    pub fn arrays(&self) -> &ArraySettings {
+        &self.arrays
+    }
+
+    /// Mutable access to settings that apply to fixed-size arrays.
+    pub fn arrays_mut(&mut self) -> &mut ArraySettings {
+        &mut self.arrays
+    }
+
+    /// Settings that apply to string-keyed maps rendered via reflection.
+    pub fn maps(&self) -> &MapSettings {
+        &self.maps
+    }
+
+    /// Mutable access to settings that apply to string-keyed maps.
+    pub fn maps_mut(&mut self) -> &mut MapSettings {
+        &mut self.maps
+    }
+
+    /// Settings that apply to tuple-like values rendered via reflection.
+    pub fn tuples(&self) -> &TupleSettings {
+        &self.tuples
+    }
+
+    /// Mutable access to settings that apply to tuple-like values.
+    pub fn tuples_mut(&mut self) -> &mut TupleSettings {
+        &mut self.tuples
+    }
+
+    /// Type-level numeric settings for `i32` values rendered via reflection.
+    pub fn numerics_i32(&self) -> &I32NumericSettings {
+        &self.numerics_i32
+    }
+
+    /// Mutable access to type-level numeric settings for `i32` values.
+    pub fn numerics_i32_mut(&mut self) -> &mut I32NumericSettings {
+        &mut self.numerics_i32
+    }
+
+    /// Type-level numeric settings for `f32` values rendered via reflection.
+    pub fn numerics_f32(&self) -> &F32NumericSettings {
+        &self.numerics_f32
+    }
+
+    /// Mutable access to type-level numeric settings for `f32` values.
+    pub fn numerics_f32_mut(&mut self) -> &mut F32NumericSettings {
+        &mut self.numerics_f32
+    }
+
+    /// Type-level numeric settings for `u32` values rendered via reflection.
+    pub fn numerics_u32(&self) -> &U32NumericSettings {
+        &self.numerics_u32
+    }
+
+    /// Mutable access to type-level numeric settings for `u32` values.
+    pub fn numerics_u32_mut(&mut self) -> &mut U32NumericSettings {
+        &mut self.numerics_u32
+    }
+
+    /// Type-level numeric settings for `f64` values rendered via reflection.
+    pub fn numerics_f64(&self) -> &F64NumericSettings {
+        &self.numerics_f64
+    }
+
+    /// Mutable access to type-level numeric settings for `f64` values.
+    pub fn numerics_f64_mut(&mut self) -> &mut F64NumericSettings {
+        &mut self.numerics_f64
+    }
+
+    /// Returns member-level settings for a given type and field name, if any.
+    ///
+    /// Member keys follow the paths generated by the derive macro:
+    ///
+    /// - Named-field structs: `"field_name"`
+    /// - Tuple structs: `"0"`, `"1"`, ...
+    /// - Enums with payloads: `"Variant.field_name"` or `"Variant.0"`, `"Variant.1"`, ...
+    /// - Tuple element overrides: `"tuple_field[0]"`, `"tuple_field[1]"`, ...
+    pub fn member<T: 'static>(&self, field: &str) -> Option<&MemberSettings> {
+        self.member_overrides
+            .get(&TypeId::of::<T>())
+            .and_then(|map| map.get(field))
+    }
+
+    /// Returns mutable member settings for a type and field, creating them as needed.
+    pub fn for_member<T: 'static>(&mut self, field: &str) -> &mut MemberSettings {
+        self.member_overrides
+            .entry(TypeId::of::<T>())
+            .or_default()
+            .entry(field.to_owned())
+            .or_default()
+    }
+}

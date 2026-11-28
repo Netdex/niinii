@@ -1,45 +1,32 @@
-use imgui::*;
+use dear_imgui_rs::*;
 
-use crate::settings::Settings;
+use crate::{
+    gui::{capture_theme, Frame},
+    settings::Settings,
+};
 
-use super::mixins::help_marker;
+use super::{
+    mixins::help_marker,
+    panel::{Panel, Sizing, TextSize},
+};
 
-#[derive(Default)]
-pub struct StyleEditor {
-    pub open: bool,
-}
+pub const SIZING: Sizing = Sizing {
+    default: None,
+    min: TextSize::new(44.0, 14.0),
+};
 
-impl StyleEditor {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn show_menu_item(&mut self, ui: &Ui) {
-        if ui.menu_item("Style Editor") {
-            self.open = true;
-        }
-    }
-
-    pub fn ui(&mut self, ui: &Ui, settings: &mut Settings) {
-        if !self.open {
-            return;
-        }
-        let Some(_window) = ui
-            .window("Style Editor")
-            .opened(&mut self.open)
-            .menu_bar(true)
-            .begin()
-        else {
-            return;
-        };
+pub fn show(panel: &mut Panel, ui: &Ui, frame: &mut Frame, settings: &mut Settings) {
+    panel.show(ui, WindowFlags::MENU_BAR, || {
         ui.menu_bar(|| {
             if ui.menu_item("Save") {
-                settings.set_style(Some(&ui.clone_style()));
+                settings.theme = Some(capture_theme(&ui.clone_style(), frame.style_scale()));
+                frame.theme_saved(settings.theme.clone());
             }
             if ui.menu_item("Reset") {
-                settings.set_style(None);
+                settings.theme = None;
+                frame.theme_saved(None);
             }
-            if settings.style.is_some() {
+            if settings.theme.is_some() {
                 ui.menu_with_enabled("Style saved", false, || {});
                 help_marker(
                     ui,
@@ -48,5 +35,5 @@ impl StyleEditor {
             }
         });
         ui.show_default_style_editor();
-    }
+    });
 }

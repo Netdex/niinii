@@ -10,7 +10,6 @@
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
-use tracing::Level;
 use tokio_tungstenite::{
     connect_async_with_config,
     tungstenite::{
@@ -20,6 +19,7 @@ use tokio_tungstenite::{
     },
     MaybeTlsStream, WebSocketStream,
 };
+use tracing::Level;
 
 pub use crate::protocol::realtime::{
     ClientEvent, ContentPart, InputTokenDetails, Item, ItemType, Modality, OutputTokenDetails,
