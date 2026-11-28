@@ -435,7 +435,11 @@ impl Ichiran {
     pub async fn conn_params(&self) -> Result<ConnParams, IchiranError> {
         let conn_params = self
             .shared
-            .evaluate(r#"(format t "~{~a~^,~}" ichiran/conn::*connection*)"#)
+            .evaluate(
+                r#"(destructuring-bind (db user password host &key (port 5432) &allow-other-keys)
+                     ichiran/conn:*connection*
+                   (format t "~a,~a,~a,~a,~a" db user password host port))"#,
+            )
             .await?;
         let parse_error = || IchiranError::Server(format!("parse error:\n{conn_params}"));
 
@@ -445,7 +449,7 @@ impl Ichiran {
             .collect_tuple()
             .ok_or_else(parse_error)?;
 
-        let (database, user, password, hostname, _, port) = conn_params;
+        let (database, user, password, hostname, port) = conn_params;
         let port = port.parse::<u16>().map_err(|_| parse_error())?;
 
         Ok(ConnParams {
