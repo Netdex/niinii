@@ -2,12 +2,17 @@ use dear_file_browser::{Backend, DialogMode, FileDialog, FileDialogError};
 use dear_imgui_reflect::{ImGuiReflectExt, ImGuiValue, Inspector, ReflectSession};
 use dear_imgui_rs::*;
 
-use crate::{
-    gui::px2,
-    settings::{ContextLimit, FilePath, FolderPath, Secret, Settings},
+use crate::settings::{ContextLimit, FilePath, FolderPath, Secret, Settings};
+
+use super::{
+    mixins::error_note,
+    panel::{Panel, Sizing, TextSize},
 };
 
-use super::{mixins::error_note, panel::Panel};
+pub const SIZING: Sizing = Sizing {
+    default: Some(TextSize::new(62.0, 24.0)),
+    min: TextSize::new(48.0, 12.0),
+};
 
 /// The editor configuration all reflected settings views share.
 pub fn reflect_session() -> ReflectSession {
@@ -17,26 +22,19 @@ pub fn reflect_session() -> ReflectSession {
 }
 
 pub fn show(panel: &mut Panel, ui: &Ui, reflect: &ReflectSession, settings: &mut Settings) {
-    panel.show(
-        ui,
-        |w| {
-            w.size(px2(ui, [560.0, 520.0]), Condition::FirstUseEver)
-                .size_constraints(px2(ui, [360.0, 240.0]), [f32::MAX, f32::MAX])
-        },
-        || {
-            let mut inspector = ui.inspector(reflect);
-            inspector.input("Ichiran", &mut settings.ichiran);
-            inspector.input("Text", &mut settings.text);
-            inspector.input("Interface", &mut settings.interface);
-            inspector.input("Translation", &mut settings.translation);
-            if cfg!(feature = "voicevox") {
-                inspector.input("Text-to-speech", &mut settings.tts);
-            }
-            inspector.input("Windows", &mut settings.window);
-            ui.separator();
-            ui.text_disabled("* Restart to apply these changes");
-        },
-    );
+    panel.show(ui, WindowFlags::empty(), || {
+        let mut inspector = ui.inspector(reflect);
+        inspector.input("Ichiran", &mut settings.ichiran);
+        inspector.input("Text", &mut settings.text);
+        inspector.input("Interface", &mut settings.interface);
+        inspector.input("Translation", &mut settings.translation);
+        if cfg!(feature = "voicevox") {
+            inspector.input("Text-to-speech", &mut settings.tts);
+        }
+        inspector.input("Windows", &mut settings.window);
+        ui.separator();
+        ui.text_disabled("* Restart to apply these changes");
+    });
 }
 
 impl ImGuiValue for FilePath {
@@ -117,8 +115,11 @@ fn path_field(
             Err(err) => *pick_error = Some(format!("could not open the dialog: {err}")),
         }
     }
-    ui.same_line_with_spacing(0.0, style.item_inner_spacing()[0]);
-    ui.text(label.split("##").next().unwrap_or(label));
+    let visible = label.split("##").next().unwrap_or(label);
+    if !visible.is_empty() {
+        ui.same_line_with_spacing(0.0, style.item_inner_spacing()[0]);
+        ui.text(visible);
+    }
     if let Some(err) = pick_error {
         error_note(ui, err);
     }

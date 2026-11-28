@@ -6,9 +6,15 @@ use std::{
 use dear_imgui_rs::*;
 use ichiran::prelude::*;
 
-use super::{index::IndexView, mixins::*, panel::Panel, raw::RawView, term::TermView};
+use super::{
+    index::IndexView,
+    mixins::*,
+    panel::{Panel, Sizing, TextSize},
+    raw::RawView,
+    term::TermView,
+};
 use crate::{
-    gui::{px, px2},
+    gui::px,
     history::{Gloss, History},
     parser::SyntaxTree,
     settings::{RubyTextType, Settings},
@@ -29,6 +35,11 @@ pub enum GlossInputAction {
     Translate(String),
 }
 
+const DETAIL_SIZING: Sizing = Sizing {
+    default: Some(TextSize::new(33.0, 5.0)),
+    min: TextSize::new(24.0, 4.0),
+};
+
 /// View state around the line being shown: the manual input box, the word
 /// windows the user opened, and the Raw and Glossary windows.
 pub struct GlossView {
@@ -38,13 +49,19 @@ pub struct GlossView {
     glossary: Panel,
 }
 
+impl Default for GlossView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GlossView {
     pub fn new() -> Self {
         Self {
             input_text: String::new(),
             term_windows: HashMap::new(),
-            raw: Panel::new("Raw"),
-            glossary: Panel::new("Glossary"),
+            raw: Panel::new("Raw", DETAIL_SIZING),
+            glossary: Panel::new("Glossary", DETAIL_SIZING),
         }
     }
 
@@ -132,16 +149,11 @@ impl GlossView {
         let Some(ast) = line.ast() else {
             return;
         };
-        self.raw.show(
-            ui,
-            |w| w.size(px2(ui, [300.0, 110.0]), Condition::FirstUseEver),
-            || RawView::new(&ast.root).ui(ui),
-        );
-        self.glossary.show(
-            ui,
-            |w| w.size(px2(ui, [300.0, 110.0]), Condition::FirstUseEver),
-            || IndexView::new(ast).ui(ui, settings),
-        );
+        self.raw
+            .show(ui, WindowFlags::empty(), || RawView::new(&ast.root).ui(ui));
+        self.glossary.show(ui, WindowFlags::empty(), || {
+            IndexView::new(ast).ui(ui, settings)
+        });
         self.term_windows
             .retain(|romanized, key| term_window(ui, settings, ast, romanized, key));
     }
@@ -228,9 +240,6 @@ impl LineDraw<'_> {
         if ui.is_item_hovered() {
             ui.set_mouse_cursor(Some(MouseCursor::Hand));
         }
-        // The tooltip delay keeps a sweep across the line from flashing one
-        // tooltip per word; imgui shares it, so moving to a neighbor after one
-        // is shown is immediate.
         if ui.is_item_hovered_with_flags(ItemHoveredFlags::FOR_TOOLTIP) {
             ui.tooltip(|| {
                 // The term window (click) shows the full entry.
@@ -337,7 +346,7 @@ fn term_window(
 ) -> bool {
     let mut opened = true;
     ui.window(key)
-        .size_constraints(px2(ui, [300.0, 100.0]), [f32::MAX, f32::MAX])
+        .size_constraints(TextSize::new(33.0, 4.5).px(ui), [f32::MAX, f32::MAX])
         .flags(WindowFlags::NO_SAVED_SETTINGS)
         .opened(&mut opened)
         .build(|| {

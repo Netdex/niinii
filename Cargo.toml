@@ -1,8 +1,9 @@
 [patch.crates-io]
-# Vendored 0.23.0 with local additions (layouts, help markers, conditional
-# and optional-value attributes); see CLAUDE.md.
+# Vendored with local changes; see third-party/README.md.
 dear-imgui-reflect = { path = "third-party/dear-imgui-reflect" }
 dear-imgui-reflect-derive = { path = "third-party/dear-imgui-reflect-derive" }
+dear-imgui-winit = { path = "third-party/dear-imgui-winit" }
+wgpu-hal = { path = "third-party/wgpu-hal" }
 
 [workspace]
 members = ["niinii", "ichiran", "openai", "vndb"]

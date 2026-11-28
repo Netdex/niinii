@@ -1,21 +1,27 @@
-use crate::gui::px2;
 use dear_imgui_rs::*;
 
-use super::{mixins::wrap_bullet, panel::Panel, shortcuts::Action};
+use super::{
+    mixins::{text_disabled_wrapped, wrap_bullet},
+    panel::{Panel, Sizing, TextSize},
+    shortcuts::Action,
+};
+
+pub const SIZING: Sizing = Sizing {
+    default: Some(TextSize::new(52.0, 20.0)),
+    min: TextSize::new(40.0, 10.0),
+};
 
 /// Usage notes, shortcuts and credits.
-pub fn show(panel: &mut Panel, ui: &Ui) {
+/// `adapter` names the GPU adapter rendering the windows.
+pub fn show(panel: &mut Panel, ui: &Ui, adapter: &str) {
     panel.show(
         ui,
-        |w| {
-            w.size(px2(ui, [460.0, 420.0]), Condition::FirstUseEver)
-                .size_constraints(px2(ui, [300.0, 200.0]), [f32::MAX, f32::MAX])
-        },
+        WindowFlags::empty(),
         || {
                 ui.text(concat!("niinii ", env!("CARGO_PKG_VERSION")));
                 ui.text(concat!("By ", env!("CARGO_PKG_AUTHORS")));
                 ui.text_link_open_url("github.com/Netdex/niinii", "https://github.com/Netdex/niinii");
-                ui.text_disabled("Glossing and translation for reading Japanese text.");
+                text_disabled_wrapped(ui, format!("Renderer: {adapter}"));
                 ui.separator();
 
                 if ui.collapsing_header("Usage", TreeNodeFlags::DEFAULT_OPEN) {
@@ -26,7 +32,7 @@ pub fn show(panel: &mut Panel, ui: &Ui) {
                 }
 
                 if ui.collapsing_header("Keyboard shortcuts", TreeNodeFlags::DEFAULT_OPEN) {
-                    ui.text_disabled("While a niinii window has focus and no text field is active.");
+                    text_disabled_wrapped(ui, "While a niinii window has focus and no text field is active.");
                     if let Some(_table) =
                         ui.begin_table_with_flags("shortcuts", 2, TableFlags::NO_SAVED_SETTINGS)
                     {

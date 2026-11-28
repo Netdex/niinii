@@ -8,7 +8,9 @@ use openai::chat::{Message, Role};
 use crate::{
     settings::Settings,
     translator::{chat::LINE_PREFIX, ChatHandle, ContextEdit, MsgId},
-    view::mixins::{combo_enum_fit, combo_list, drag_handle, error_note, wrapped_field_height},
+    view::mixins::{
+        combo_enum_fit, combo_list, drag_handle, error_note, form_row, wrapped_field_height,
+    },
 };
 
 use super::{read_only_text, wrapped_editor};
@@ -31,12 +33,14 @@ pub fn window(
         }
     });
 
-    combo_list(
-        ui,
-        "Model",
-        &state.models,
-        &mut settings.translation.openai_model,
-    );
+    form_row(ui, "Model", || {
+        combo_list(
+            ui,
+            "##model",
+            &state.models,
+            &mut settings.translation.openai_model,
+        )
+    });
     ui.inspector(reflect).input("Tuning", chatgpt);
 
     ui.child_window("context_window").build(ui, || {

@@ -1,7 +1,11 @@
 use dear_imgui_reflect::{ImGuiReflectExt, ReflectSession};
 use dear_imgui_rs::*;
 
-use crate::{settings::Settings, translator::ResponsesHandle, view::mixins::combo_list};
+use crate::{
+    settings::Settings,
+    translator::ResponsesHandle,
+    view::mixins::{combo_list, form_row},
+};
 
 use super::history::history;
 
@@ -22,12 +26,14 @@ pub fn window(
         }
     });
 
-    combo_list(
-        ui,
-        "Model",
-        &state.models,
-        &mut settings.translation.openai_model,
-    );
+    form_row(ui, "Model", || {
+        combo_list(
+            ui,
+            "##model",
+            &state.models,
+            &mut settings.translation.openai_model,
+        )
+    });
     ui.inspector(reflect).input("Tuning", resp);
 
     let chain = state

@@ -225,9 +225,12 @@ pub fn imgui_option_with<T>(
 ) -> bool {
     let ui = inspector.ui();
     let inline = inspector.settings().options().inline;
+    // Measured before the checkbox moves the cursor: a width relative to the
+    // right edge would otherwise lose the checkbox twice.
+    let full_width = ui.calc_item_width();
     let mut enabled = value.is_some();
     let checkbox_label = if inline {
-        format!("##{label}##enabled")
+        format!("##{}##enabled", label.trim_start_matches("##"))
     } else {
         label.to_owned()
     };
@@ -248,7 +251,7 @@ pub fn imgui_option_with<T>(
     let spacing = unsafe { ui.style() }.item_inner_spacing()[0];
     ui.same_line_with_spacing(0.0, spacing);
     // The editor fills the rest of the default item width.
-    let width = ui.calc_item_width() - ui.frame_height() - spacing;
+    let width = full_width - ui.frame_height() - spacing;
     let _width = ui.push_item_width(width.max(1.0));
     match value.as_mut() {
         Some(inner) => changed |= edit(inspector, label, inner),

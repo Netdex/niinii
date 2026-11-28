@@ -48,11 +48,8 @@ async fn main() {
             .map(|(k, s)| (k, s.to_string()))
             .collect();
         let t = Instant::now();
-        let (_root, _kanji) = tokio::try_join!(
-            ichiran.romanize(&splits, 1),
-            ichiran.kanji_from_str(text),
-        )
-        .unwrap();
+        let (_root, _kanji) =
+            tokio::try_join!(ichiran.romanize(&splits, 1), ichiran.kanji_from_str(text),).unwrap();
         eprintln!("iter {}: {:.0?}", i, t.elapsed());
     }
     let elapsed = total_start.elapsed();

@@ -4,10 +4,14 @@
 mod fonts;
 mod frame;
 mod native;
+mod style;
+mod transitions;
 
 use std::{path::PathBuf, sync::Arc};
 
-use dear_imgui_rs::{ConfigFlags, Context, SystemClipboard, Theme, TreeLineMode, Ui};
+use dear_imgui_rs::{
+    ConfigFlags, Context, SystemClipboard, Theme, TooltipHoveredFlags, TreeLineMode, Ui,
+};
 use dear_imgui_wgpu::{
     multi_viewport::{WgpuPreparedMainFrame, WinitViewportRoute},
     FramebufferExtent, GammaMode, WgpuInitInfo, WgpuRenderer, WgpuViewportSurfaceConfig,
@@ -24,6 +28,9 @@ use winit::{
 pub use fonts::{px, px2, FontSize};
 pub use frame::Frame;
 use native::NativeWindows;
+pub use style::capture_theme;
+use style::StyleScale;
+use transitions::NoTransitions;
 
 pub type Error = Box<dyn std::error::Error>;
 
@@ -107,7 +114,11 @@ struct Gui {
     platform: WinitPlatform,
     route: WinitViewportRoute,
     native: NativeWindows,
-    dpi_scale: f32,
+    _transitions: NoTransitions,
+    /// DPI of the primary monitor at startup, which the style is scaled to.
+    dpi: f32,
+    style: StyleScale,
+    adapter: Arc<str>,
     /// Declared by the previous frame.
     text_scale: f32,
     // Dropped last: the platform and renderer hold state registered with it.
@@ -130,28 +141,33 @@ impl Gui {
         // A DXGI swapchain made directly from an HWND cannot be transparent;
         // one made from a DirectComposition visual can.
         let mut instance_desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
-        instance_desc.backends = wgpu::Backends::DX12;
+        let backends =
+            wgpu::Backends::from_env().unwrap_or(wgpu::Backends::DX12 | wgpu::Backends::GL);
+        instance_desc.backends = backends;
         instance_desc.backend_options.dx12.presentation_system =
             wgpu::Dx12SwapchainKind::DxgiFromVisual;
         let instance = wgpu::Instance::new(instance_desc);
         let surface = instance.create_surface(Arc::clone(&host))?;
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            compatible_surface: Some(&surface),
-            ..Default::default()
-        }))?;
-        tracing::info!(adapter = ?adapter.get_info());
+        let adapter = pick_adapter(&instance, backends, &surface)?;
+        let info = adapter.get_info();
+        tracing::info!(adapter = ?info);
+        let adapter_name: Arc<str> =
+            format!("{} ({:?}, {:?})", info.name, info.backend, info.device_type).into();
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))?;
 
         let caps = surface.get_capabilities(&adapter);
+        // Not sRGB: ImGui's colors and alpha are meant to blend in gamma space,
+        // and wgpu's GL backend presents sRGB targets through a blit whose sRGB
+        // handling differs between drivers.
         let format = [
-            wgpu::TextureFormat::Bgra8UnormSrgb,
-            wgpu::TextureFormat::Rgba8UnormSrgb,
+            wgpu::TextureFormat::Bgra8Unorm,
+            wgpu::TextureFormat::Rgba8Unorm,
         ]
         .into_iter()
         .find(|f| caps.formats.contains(f))
         .unwrap_or(caps.formats[0]);
+        tracing::info!(?format, formats = ?caps.formats, alpha_modes = ?caps.alpha_modes, "surface");
         let size = host.inner_size();
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -160,7 +176,15 @@ impl Gui {
             width: size.width.max(1),
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+            // Only DirectComposition swapchains can be transparent.
+            alpha_mode: if caps
+                .alpha_modes
+                .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+            {
+                wgpu::CompositeAlphaMode::PreMultiplied
+            } else {
+                caps.alpha_modes[0]
+            },
             view_formats: vec![],
             desired_maximum_frame_latency: 1,
         };
@@ -185,18 +209,19 @@ impl Gui {
             // can be typed straight away.
             io.set_config_input_text_enter_keep_active(true);
         }
-        let dpi_scale = host.scale_factor() as f32;
-        {
-            let style = imgui.style_mut();
-            style.set_tree_lines_mode(TreeLineMode::TO_NODES);
-            if let Some(theme) = &options.theme {
-                theme.apply_to_style(style);
-            }
-            style.scale_all_sizes(dpi_scale);
-            style.set_font_scale_dpi(dpi_scale);
-        }
+        let dpi = host.scale_factor() as f32;
+        imgui
+            .style_mut()
+            .set_tree_lines_mode(TreeLineMode::TO_NODES);
+        imgui.style_mut().set_font_scale_dpi(dpi);
+        // Tooltips show at once, without waiting for the mouse to rest.
+        imgui
+            .style_mut()
+            .set_hover_flags_for_tooltip_mouse(TooltipHoveredFlags::ALLOW_WHEN_DISABLED);
+        let style = StyleScale::new(&mut imgui, options.theme.clone(), dpi);
         fonts::load(&mut imgui);
 
+        let transitions = NoTransitions::install()?;
         let mut platform = WinitPlatform::new(&mut imgui)?;
         platform.attach_window(Arc::clone(&host), HiDpiMode::Default, &mut imgui)?;
         platform.set_viewport_window_config(WinitViewportWindowConfig {
@@ -226,7 +251,10 @@ impl Gui {
             platform,
             route,
             native: NativeWindows::default(),
-            dpi_scale,
+            _transitions: transitions,
+            dpi,
+            style,
+            adapter: adapter_name,
             text_scale: 1.0,
             imgui,
         })
@@ -249,11 +277,16 @@ impl Gui {
     ) -> Result<bool, Error> {
         self.platform.prepare_frame(&mut self.imgui, &self.host)?;
         self.imgui.style_mut().set_font_scale_main(self.text_scale);
-        let mut declared = Frame::new(self.dpi_scale);
+        self.style
+            .update(&mut self.imgui, self.dpi * self.text_scale);
+        let mut declared = Frame::new(self.style.applied(), Arc::clone(&self.adapter));
         let frame = self.imgui.begin_frame();
         build(frame.ui(), &mut declared);
         self.platform.prepare_render(frame.ui(), &self.host)?;
         self.text_scale = declared.text_scale();
+        if let Some(theme) = declared.take_saved_theme() {
+            self.style.set_theme(theme);
+        }
 
         let prepared = self.route.prepare(event_loop, frame)?;
         let main = self
@@ -328,4 +361,26 @@ impl HostSurface {
         self.queue.present(texture);
         Ok(())
     }
+}
+
+/// Hardware DX12, then hardware OpenGL (VMware's guest driver has no DX12),
+/// then software DX12 (WARP).
+fn pick_adapter(
+    instance: &wgpu::Instance,
+    backends: wgpu::Backends,
+    surface: &wgpu::Surface,
+) -> Result<wgpu::Adapter, Error> {
+    let rank = |adapter: &wgpu::Adapter| {
+        let info = adapter.get_info();
+        (
+            info.device_type == wgpu::DeviceType::Cpu,
+            info.backend != wgpu::Backend::Dx12,
+            info.device_type != wgpu::DeviceType::IntegratedGpu,
+        )
+    };
+    pollster::block_on(instance.enumerate_adapters(backends))
+        .into_iter()
+        .filter(|adapter| adapter.is_surface_supported(surface))
+        .min_by_key(rank)
+        .ok_or_else(|| format!("no {backends:?} adapter can present to the window").into())
 }

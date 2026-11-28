@@ -97,9 +97,11 @@ impl NativeWindows {
 /// Moves `window` to the top of the top-most windows, without activating it.
 /// winit skips this when the window is already marked always-on-top.
 fn raise_topmost(window: &Window) -> Result<(), Error> {
-    use winapi::{
-        shared::windef::HWND,
-        um::winuser::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE},
+    use windows_sys::Win32::{
+        Foundation::HWND,
+        UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        },
     };
     let RawWindowHandle::Win32(handle) = window.window_handle()?.as_raw() else {
         return Ok(());

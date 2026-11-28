@@ -238,7 +238,9 @@ mod tests {
         ));
         assert_eq!(
             serde_json::from_str::<StreamEvent>(delta).unwrap(),
-            StreamEvent::OutputTextDelta { delta: "Hel".into() }
+            StreamEvent::OutputTextDelta {
+                delta: "Hel".into()
+            }
         );
         assert_eq!(
             serde_json::from_str::<StreamEvent>(rdelta).unwrap(),

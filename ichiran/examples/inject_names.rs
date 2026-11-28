@@ -32,16 +32,15 @@ async fn main() {
     // previous crashed run doesn't bias the "before" result.
     ichiran.clear_custom_entries().await.unwrap();
 
-    let cases = [
-        ("\u{4eac}\u{4ecb}\u{306f}\u{6765}\u{305f}", &[
-            CustomEntry {
-                kanji: Some("\u{4eac}\u{4ecb}".to_string()),
-                kana: "\u{304d}\u{3087}\u{3046}\u{3059}\u{3051}".to_string(),
-                pos: "n-pr".to_string(),
-                gloss: "Kyousuke (given name)".to_string(),
-            },
-        ][..]),
-    ];
+    let cases = [(
+        "\u{4eac}\u{4ecb}\u{306f}\u{6765}\u{305f}",
+        &[CustomEntry {
+            kanji: Some("\u{4eac}\u{4ecb}".to_string()),
+            kana: "\u{304d}\u{3087}\u{3046}\u{3059}\u{3051}".to_string(),
+            pos: "n-pr".to_string(),
+            gloss: "Kyousuke (given name)".to_string(),
+        }][..],
+    )];
 
     for (text, entries) in cases {
         println!("=== {} ===", text);

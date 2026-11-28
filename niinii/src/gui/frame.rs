@@ -1,22 +1,26 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
-use dear_imgui_rs::{Id, Ui};
+use dear_imgui_rs::{Id, Theme, Ui};
 
 /// What the UI declares about its native windows for one frame. Nothing
 /// carries over: each frame states the full policy, and the gui brings the
 /// native windows in line with it afterwards.
 pub struct Frame {
-    dpi_scale: f32,
+    style_scale: f32,
+    adapter: Arc<str>,
     text_scale: f32,
+    saved_theme: Option<Option<Theme>>,
     on_top: bool,
     passthrough: HashSet<Id>,
     exit: bool,
 }
 
 impl Frame {
-    pub(super) fn new(dpi_scale: f32) -> Self {
+    pub(super) fn new(style_scale: f32, adapter: Arc<str>) -> Self {
         Self {
-            dpi_scale,
+            style_scale,
+            saved_theme: None,
+            adapter,
             text_scale: 1.0,
             on_top: false,
             passthrough: HashSet::new(),
@@ -25,8 +29,19 @@ impl Frame {
     }
 
     /// Scale of the monitor the style was sized for at startup.
-    pub fn dpi_scale(&self) -> f32 {
-        self.dpi_scale
+    pub fn style_scale(&self) -> f32 {
+        self.style_scale
+    }
+
+    /// The theme the style is rebuilt from when the scale changes, after the
+    /// user saved or reset it.
+    pub fn theme_saved(&mut self, theme: Option<Theme>) {
+        self.saved_theme = Some(theme);
+    }
+
+    /// The GPU adapter rendering the windows: name, backend and device type.
+    pub fn adapter(&self) -> &str {
+        &self.adapter
     }
 
     /// Multiplies every text size, and with it the lengths written with
@@ -48,6 +63,10 @@ impl Frame {
 
     pub fn exit(&mut self) {
         self.exit = true;
+    }
+
+    pub(super) fn take_saved_theme(&mut self) -> Option<Option<Theme>> {
+        self.saved_theme.take()
     }
 
     pub(super) fn text_scale(&self) -> f32 {

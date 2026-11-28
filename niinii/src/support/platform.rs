@@ -2,8 +2,9 @@ use std::time::{Duration, Instant};
 
 use dear_imgui_rs::SystemClipboard;
 
-use winapi::um::winuser::{
-    keybd_event, GetClipboardSequenceNumber, GetKeyState, KEYEVENTF_KEYUP, VK_SCROLL,
+use windows_sys::Win32::{
+    System::DataExchange::GetClipboardSequenceNumber,
+    UI::Input::KeyboardAndMouse::{keybd_event, GetKeyState, KEYEVENTF_KEYUP, VK_SCROLL},
 };
 
 pub fn clipboard_text() -> Option<String> {
@@ -17,7 +18,7 @@ pub fn clipboard_sequence_number() -> u32 {
 
 pub fn get_scroll_lock() -> bool {
     unsafe {
-        let state = GetKeyState(VK_SCROLL);
+        let state = GetKeyState(VK_SCROLL.into());
         (state & 0x0001) != 0
     }
 }

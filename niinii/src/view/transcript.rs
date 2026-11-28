@@ -1,13 +1,26 @@
-use crate::gui::px2;
 use dear_imgui_rs::*;
 
-use super::{panel::Panel, translator::TranslatorWindow};
+use super::{
+    panel::{Panel, Sizing, TextSize},
+    translator::TranslatorWindow,
+};
 use crate::history::History;
+
+pub const SIZING: Sizing = Sizing {
+    default: Some(TextSize::new(71.0, 18.0)),
+    min: TextSize::new(44.0, 8.0),
+};
 
 /// Recent lines with their translations, oldest first. Clicking a row shows
 /// that line in the main view.
 pub struct TranscriptView {
     latest_line: Option<u64>,
+}
+
+impl Default for TranscriptView {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TranscriptView {
@@ -22,14 +35,9 @@ impl TranscriptView {
         history: &mut History,
         translator: &TranslatorWindow,
     ) {
-        panel.show(
-            ui,
-            |w| {
-                w.size(px2(ui, [640.0, 400.0]), Condition::FirstUseEver)
-                    .size_constraints(px2(ui, [320.0, 160.0]), [f32::MAX, f32::MAX])
-            },
-            || self.table(ui, history, translator),
-        );
+        panel.show(ui, WindowFlags::empty(), || {
+            self.table(ui, history, translator)
+        });
     }
 
     fn table(&mut self, ui: &Ui, history: &mut History, translator: &TranslatorWindow) {

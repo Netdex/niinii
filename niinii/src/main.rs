@@ -2,20 +2,7 @@
 // their own consoles
 // #![windows_subsystem = "windows"]
 
-mod app;
-mod gui;
-mod history;
-mod parser;
-mod settings;
-mod support;
-mod translator;
-mod tts;
-#[cfg(test)]
-mod ui_tests;
-mod view;
-mod vndb;
-
-use crate::{app::App, settings::Settings};
+use niinii::{app::App, gui, settings::Settings};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 #[cfg(windows)]

@@ -38,6 +38,9 @@ mod tests;
 ///
 /// - `#[imgui(columns = 2)]` — lay the fields out in a table, filling each row
 ///   left to right.
+/// - `#[imgui(grid)]` -- one table row per field: the label in a column
+///   sized to the longest label, the widget filling the next. With
+///   `columns = N`, N label/widget pairs per row.
 /// - `#[imgui(open)]` — show the struct's tree node expanded at first.
 #[proc_macro_derive(ImGuiReflect, attributes(imgui))]
 pub fn derive_imgui_reflect(input: TokenStream) -> TokenStream {

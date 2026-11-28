@@ -24,10 +24,12 @@ impl FontSize {
     }
 }
 
-/// Converts a length written for 100% scale with body text into pixels at the
-/// current scale, which follows the monitor's DPI and the user's text scaling.
+/// Converts a length written for 100% scale into pixels at the current scale,
+/// which follows the monitor's DPI and the user's text scaling but not the
+/// font in use.
 pub fn px(ui: &Ui, length: f32) -> f32 {
-    length * ui.current_font_size() / FontSize::BODY.0
+    let style = unsafe { ui.style() };
+    length * style.font_scale_dpi() * style.font_scale_main()
 }
 
 /// [`px`] for both components of a size.

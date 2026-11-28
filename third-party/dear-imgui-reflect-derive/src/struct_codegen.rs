@@ -328,10 +328,15 @@ pub(crate) fn derive_for_struct(
             .into();
         }
 
-        let label = if let Some(lit) = label_override {
+        let display_label = if let Some(lit) = label_override {
             quote! { #lit }
         } else {
             quote! { #field_name_lit }
+        };
+        let label = if layout.grid {
+            quote! { concat!("##", #display_label) }
+        } else {
+            display_label.clone()
         };
 
         let field_access_expr = match field_access {
@@ -1967,14 +1972,30 @@ pub(crate) fn derive_for_struct(
         } else {
             inner_stmt
         };
-        let inner_stmt = match &help {
-            Some(help) => quote! {
-                #inner_stmt
+        let help_stmt = help.as_ref().map(|help| {
+            quote! {
                 ui.same_line();
                 ui.text_disabled("(?)");
                 ui.set_item_tooltip(#help);
-            },
-            None => inner_stmt,
+            }
+        });
+        let inner_stmt = if layout.grid {
+            quote! {
+                ui.table_next_column();
+                ui.align_text_to_frame_padding();
+                ui.text(#display_label);
+                #help_stmt
+                ui.table_next_column();
+                // Fill the cell; editors made of several items size them from this.
+                let __width = ui.push_item_width(-f32::MIN_POSITIVE);
+                #inner_stmt
+                drop(__width);
+            }
+        } else {
+            quote! {
+                #inner_stmt
+                #help_stmt
+            }
         };
         let enabled_expr = match &enabled_if {
             Some(expr) => quote! { (#expr) },
@@ -2033,6 +2054,32 @@ pub(crate) fn derive_for_struct(
 
     let default_open = layout.open;
     let fields_body = match layout.columns {
+        _ if layout.grid => {
+            let pairs = layout.columns.unwrap_or(1);
+            let table_columns = pairs * 2;
+            quote! {
+                if let Some(__table) = ui.begin_table_with_flags(
+                    "##fields",
+                    #table_columns,
+                    ::dear_imgui_reflect::imgui::TableFlags::NO_SAVED_SETTINGS,
+                ) {
+                    let _ = __table;
+                    for _ in 0..#pairs {
+                        ui.table_setup_column(
+                            "##label",
+                            ::dear_imgui_reflect::imgui::TableColumnFlags::NONE,
+                            Some(::dear_imgui_reflect::imgui::TableColumnWidth::Fixed(0.0)),
+                        );
+                        ui.table_setup_column(
+                            "##value",
+                            ::dear_imgui_reflect::imgui::TableColumnFlags::NONE,
+                            Some(::dear_imgui_reflect::imgui::TableColumnWidth::Stretch(1.0)),
+                        );
+                    }
+                    #(#field_stmts)*
+                }
+            }
+        }
         Some(columns) if columns > 1 => quote! {
             if let Some(__table) = ui.begin_table("##fields", #columns) {
                 let _ = __table;
@@ -2073,6 +2120,9 @@ struct StructLayout {
     columns: Option<usize>,
     /// The struct's tree node starts expanded.
     open: bool,
+    /// Each field is a table row: its label in a column of its own, sized to
+    /// the longest label, and its widget filling the next column.
+    grid: bool,
 }
 
 impl StructLayout {
@@ -2080,6 +2130,7 @@ impl StructLayout {
         let mut layout = StructLayout {
             columns: None,
             open: false,
+            grid: false,
         };
         for attr in attrs.iter().filter(|a| a.path().is_ident("imgui")) {
             attr.parse_nested_meta(|meta| {
@@ -2096,7 +2147,13 @@ impl StructLayout {
                     layout.open = true;
                     return Ok(());
                 }
-                Err(meta.error("unsupported struct attribute; expected `columns = N` or `open`"))
+                if meta.path.is_ident("grid") {
+                    layout.grid = true;
+                    return Ok(());
+                }
+                Err(meta.error(
+                    "unsupported struct attribute; expected `columns = N`, `open` or `grid`",
+                ))
             })?;
         }
         Ok(layout)

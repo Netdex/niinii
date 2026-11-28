@@ -1,4 +1,4 @@
-use crate::gui::{px, px2};
+use crate::gui::px;
 use dear_imgui_rs::*;
 
 use std::sync::Arc;
@@ -8,7 +8,10 @@ use ichiran::prelude::Ichiran;
 use crate::{
     settings::Settings,
     translator::Backend,
-    view::{mixins::error_note, panel::Panel},
+    view::{
+        mixins::{error_note, form_cell, form_grid},
+        panel::{Panel, Sizing, TextSize},
+    },
     vndb::{self, clean_description, SearchParams, SortKey, VnSummary, VndbHandle},
 };
 
@@ -38,6 +41,11 @@ const PLATFORM_OPTIONS: &[&str] = &[
     "win", "lin", "mac", "web", "ios", "and", "swi", "ps5", "ps4", "ps3", "ps2", "ps1", "psp",
     "psv", "n3d", "nds", "xb1", "xbo", "x36", "xbx", "dvd", "drc", "dos", "fmt", "mob", "oth",
 ];
+
+pub const SIZING: Sizing = Sizing {
+    default: None,
+    min: TextSize::new(80.0, 18.0),
+};
 
 pub struct VndbView {
     params: SearchParams,
@@ -85,55 +93,51 @@ impl VndbView {
     }
 
     pub fn show(&mut self, panel: &mut Panel, ui: &Ui, settings: &mut Settings) {
-        panel.show(
-            ui,
-            |w| w.size_constraints(px2(ui, [720.0, 400.0]), [f32::MAX, f32::MAX]),
-            || self.contents(ui, settings),
-        );
+        panel.show(ui, WindowFlags::empty(), || self.contents(ui, settings));
     }
 
     fn contents(&mut self, ui: &Ui, settings: &mut Settings) {
         let vndb = &self.vndb;
         let state = vndb.state();
 
-        // Search row.
-        ui.set_next_item_width(-px(ui, 160.0));
+        let style = unsafe { ui.style() };
+        let search = "Search";
+        let button_width = ui.calc_text_size(search)[0] + 2.0 * style.frame_padding()[0];
+        ui.set_next_item_width(-(button_width + style.item_spacing()[0]));
         let submitted = ui
             .input_text("##query", &mut self.params.query)
             .enter_returns_true(true)
             .hint("Search visual novel...")
             .build();
         ui.same_line();
-        let clicked = ui.button_with_size("Search", [px(ui, 140.0), 0.0]);
+        let clicked = ui.button(search);
         if (submitted || clicked) && !self.params.query.trim().is_empty() {
             vndb.search(self.params.clone());
         }
 
-        // Filter row -- explicit pixel widths so the multi-selects don't
-        // get squished by the layout engine.
-        multi_select_str(
-            ui,
-            "lang",
-            LANG_OPTIONS,
-            &mut self.params.langs,
-            px(ui, 180.0),
-        );
-        ui.same_line();
-        multi_select_str(
-            ui,
-            "platform",
-            PLATFORM_OPTIONS,
-            &mut self.params.platforms,
-            px(ui, 220.0),
-        );
-        ui.same_line();
-        multi_select_length(ui, &mut self.params.lengths, px(ui, 160.0));
-        ui.same_line();
-        sort_combo(ui, &mut self.params.sort);
-        ui.same_line();
-        ui.checkbox("reverse", &mut self.params.reverse);
+        let params = &mut self.params;
+        form_grid(ui, "filters", 2, || {
+            form_cell(ui, "Language", || {
+                multi_select_str(ui, "##lang", LANG_OPTIONS, &mut params.langs)
+            });
+            form_cell(ui, "Platform", || {
+                multi_select_str(ui, "##platform", PLATFORM_OPTIONS, &mut params.platforms)
+            });
+            form_cell(ui, "Length", || {
+                multi_select_length(ui, &mut params.lengths)
+            });
+            form_cell(ui, "Sort", || {
+                let reverse = "Reverse";
+                let reverse_width = ui.frame_height()
+                    + style.item_inner_spacing()[0]
+                    + ui.calc_text_size(reverse)[0];
+                ui.set_next_item_width(-(reverse_width + style.item_spacing()[0]));
+                sort_combo(ui, &mut params.sort);
+                ui.same_line();
+                ui.checkbox(reverse, &mut params.reverse);
+            });
+        });
         if state.searching {
-            ui.same_line();
             ui.text_disabled("searching...");
         }
 
@@ -237,8 +241,7 @@ fn sort_combo(ui: &Ui, current: &mut SortKey) {
         .find(|(k, _)| k == current)
         .map(|(_, l)| *l)
         .unwrap_or("");
-    let fit = ComboBoxOptions::new().preview_mode(ComboBoxPreviewMode::PreviewFit);
-    if let Some(_t) = ui.begin_combo_with_flags("##sort", label, fit) {
+    if let Some(_t) = ui.begin_combo("##sort", label) {
         for (k, l) in SORT_OPTIONS {
             let selected = k == current;
             if selected {
@@ -251,24 +254,13 @@ fn sort_combo(ui: &Ui, current: &mut SortKey) {
     }
 }
 
-fn multi_select_str(
-    ui: &Ui,
-    label: &str,
-    options: &[&'static str],
-    selected: &mut Vec<String>,
-    width: f32,
-) {
-    let summary = if selected.is_empty() {
-        format!("{}: any", label)
+fn multi_select_str(ui: &Ui, label: &str, options: &[&'static str], selected: &mut Vec<String>) {
+    let preview = if selected.is_empty() {
+        "any".to_owned()
     } else {
-        format!("{}: {}", label, selected.join(", "))
+        selected.join(", ")
     };
-    let _id = ui.push_id(label);
-    let popup_id = format!("{}_popup", label);
-    if ui.button_with_size(format!("{}##btn", summary), [width, 0.0]) {
-        ui.open_popup(&popup_id);
-    }
-    ui.popup(&popup_id, || {
+    if let Some(_combo) = ui.begin_combo(label, preview) {
         if let Some(_t) = ui.begin_table_with_flags(
             "opts",
             4,
@@ -292,25 +284,20 @@ fn multi_select_str(
         if ui.button("Clear") {
             selected.clear();
         }
-    });
+    }
 }
 
-fn multi_select_length(ui: &Ui, selected: &mut Vec<u8>, width: f32) {
-    let summary = if selected.is_empty() {
-        "length: any".to_string()
+fn multi_select_length(ui: &Ui, selected: &mut Vec<u8>) {
+    let preview = if selected.is_empty() {
+        "any".to_owned()
     } else {
-        let names: Vec<&str> = selected
+        selected
             .iter()
             .filter_map(|n| LENGTH_OPTIONS.iter().find(|(v, _)| v == n).map(|(_, l)| *l))
-            .collect();
-        format!("length: {}", names.join(", "))
+            .collect::<Vec<_>>()
+            .join(", ")
     };
-    let _id = ui.push_id("length");
-    let popup_id = "length_popup";
-    if ui.button_with_size(format!("{}##btn", summary), [width, 0.0]) {
-        ui.open_popup(popup_id);
-    }
-    ui.popup(popup_id, || {
+    if let Some(_combo) = ui.begin_combo("##length", preview) {
         for (v, l) in LENGTH_OPTIONS {
             let mut checked = selected.contains(v);
             if ui.checkbox(*l, &mut checked) {
@@ -327,7 +314,7 @@ fn multi_select_length(ui: &Ui, selected: &mut Vec<u8>, width: f32) {
         if ui.button("Clear") {
             selected.clear();
         }
-    });
+    }
 }
 
 /// Render the active VN's metadata as a single bullet-separated line.

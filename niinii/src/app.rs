@@ -11,13 +11,13 @@ use crate::{
         gloss::{GlossInputAction, GlossView},
         help,
         mixins::{error_note, stroke_text_with_highlight},
-        panel::Panel,
+        panel::{Panel, TextSize},
         settings as settings_view,
         shortcuts::Action,
         style_editor,
-        transcript::TranscriptView,
-        translator::TranslatorWindow,
-        vndb::VndbView,
+        transcript::{self, TranscriptView},
+        translator::{self as translator_view, TranslatorWindow},
+        vndb::{self as vndb_view, VndbView},
     },
 };
 
@@ -42,12 +42,12 @@ struct Panels {
 impl Panels {
     fn new() -> Self {
         Self {
-            settings: Panel::new("Settings"),
-            style_editor: Panel::new("Style Editor"),
-            translator: Panel::new("Translator"),
-            transcript: Panel::new("Transcript"),
-            vndb: Panel::new("VNDB"),
-            help: Panel::new("About niinii"),
+            settings: Panel::new("Settings", settings_view::SIZING),
+            style_editor: Panel::new("Style Editor", style_editor::SIZING),
+            translator: Panel::new("Translator", translator_view::SIZING),
+            transcript: Panel::new("Transcript", transcript::SIZING),
+            vndb: Panel::new("VNDB", vndb_view::SIZING),
+            help: Panel::new("About niinii", help::SIZING),
         }
     }
 }
@@ -378,7 +378,7 @@ impl App {
         );
         let mut open = true;
         ui.window("niinii")
-            .size_constraints(px2(ui, [320.0, 120.0]), [f32::MAX, f32::MAX])
+            .size_constraints(TextSize::new(36.0, 5.0).px(ui), [f32::MAX, f32::MAX])
             .opened(&mut open)
             .flags(flags)
             .build(|| {
@@ -441,7 +441,7 @@ impl App {
         );
         self.vndb_view
             .show(&mut panels.vndb, ui, &mut self.settings);
-        help::show(&mut panels.help, ui);
+        help::show(&mut panels.help, ui, frame.adapter());
         self.transcript.show(
             &mut panels.transcript,
             ui,

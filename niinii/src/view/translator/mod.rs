@@ -7,7 +7,6 @@ pub mod responses;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::gui::px2;
 use dear_imgui_rs::*;
 use openai::ModelId;
 
@@ -20,7 +19,7 @@ use crate::{
     },
     view::{
         mixins::{ellipses, push_earlier_line_highlight, wrapped_field_height, Flow},
-        panel::Panel,
+        panel::{Panel, Sizing, TextSize},
     },
 };
 
@@ -52,6 +51,11 @@ impl BackendKind {
         }
     }
 }
+
+pub const SIZING: Sizing = Sizing {
+    default: None,
+    min: TextSize::new(66.0, 14.0),
+};
 
 /// Owns the active translator backend. Acts as both the controller
 /// (submit/cancel translations) and the view; which exchange to show is up to
@@ -147,25 +151,16 @@ impl TranslatorWindow {
         reflect: &ReflectSession,
         settings: &mut Settings,
     ) {
-        panel.show(
-            ui,
-            |w| {
-                w.size_constraints(px2(ui, [600.0, 300.0]), [f32::MAX, f32::MAX])
-                    .flags(WindowFlags::MENU_BAR)
-            },
-            || match &mut self.kind {
-                BackendKind::Chat { handle, buffers } => {
-                    chat::window(ui, reflect, settings, handle, buffers)
-                }
-                BackendKind::Responses { handle } => {
-                    responses::window(ui, reflect, settings, handle)
-                }
-                BackendKind::Realtime {
-                    handle,
-                    instr_tokens,
-                } => realtime::window(ui, reflect, settings, handle, instr_tokens),
-            },
-        );
+        panel.show(ui, WindowFlags::MENU_BAR, || match &mut self.kind {
+            BackendKind::Chat { handle, buffers } => {
+                chat::window(ui, reflect, settings, handle, buffers)
+            }
+            BackendKind::Responses { handle } => responses::window(ui, reflect, settings, handle),
+            BackendKind::Realtime {
+                handle,
+                instr_tokens,
+            } => realtime::window(ui, reflect, settings, handle, instr_tokens),
+        });
     }
 }
 

@@ -1,5 +1,6 @@
 use dear_imgui_rs::{
-    ColorStackToken, ComboBoxOptions, ComboBoxPreviewMode, DrawListMut, MouseCursor, StyleColor, Ui,
+    ColorStackToken, DrawListMut, MouseCursor, StyleColor, TableColumnFlags, TableColumnWidth,
+    TableFlags, Ui,
 };
 use strum::IntoEnumIterator;
 
@@ -8,6 +9,12 @@ use crate::gui::{px, FontSize};
 pub fn help_marker(ui: &Ui, text: &str) {
     ui.text_disabled("(?)");
     ui.set_item_tooltip(text);
+}
+
+/// Secondary text, wrapped at the window's edge.
+pub fn text_disabled_wrapped(ui: &Ui, text: impl AsRef<str>) {
+    let _color = ui.push_style_color(StyleColor::Text, ui.style_color(StyleColor::TextDisabled));
+    ui.text_wrapped(text);
 }
 
 pub fn wrap_bullet(ui: &Ui, text: &str) {
@@ -41,6 +48,7 @@ pub fn stroke_token_with_offsets(
     style: StrokeStyle,
 ) {
     let StrokeStyle { thick, fore, back } = style;
+    let thick = px(ui, thick);
     for off in offsets {
         draw_list.add_text(
             [pos[0] + off[0] * thick, pos[1] + off[1] * thick],
@@ -325,23 +333,57 @@ pub fn draw_kanji_text(
         )
 }
 
-/// A combo choosing an enum value, as wide as the current value.
+/// A form laid out like the reflected settings grid: `pairs` label/widget
+/// pairs per row, each label in a column sized to its longest label and each
+/// widget filling the column after it. Fill it with [`form_cell`].
+pub fn form_grid(ui: &Ui, id: &str, pairs: usize, cells: impl FnOnce()) {
+    if let Some(_table) = ui.begin_table_with_flags(id, pairs * 2, TableFlags::NO_SAVED_SETTINGS) {
+        for _ in 0..pairs {
+            ui.table_setup_column(
+                "##label",
+                TableColumnFlags::NONE,
+                Some(TableColumnWidth::Fixed(0.0)),
+            );
+            ui.table_setup_column(
+                "##value",
+                TableColumnFlags::NONE,
+                Some(TableColumnWidth::Stretch(1.0)),
+            );
+        }
+        cells();
+    }
+}
+
+/// One label/widget pair of a [`form_grid`]; `widget` fills its column.
+pub fn form_cell(ui: &Ui, label: &str, widget: impl FnOnce()) {
+    let _id = ui.push_id(label);
+    ui.table_next_column();
+    ui.align_text_to_frame_padding();
+    ui.text(label);
+    ui.table_next_column();
+    let _width = ui.push_item_width(-f32::MIN_POSITIVE);
+    widget();
+}
+
+/// A single [`form_grid`] row.
+pub fn form_row(ui: &Ui, label: &str, widget: impl FnOnce()) {
+    form_grid(ui, label, 1, || form_cell(ui, label, widget));
+}
+
+/// A combo choosing an enum value, as wide as its widest value so a column
+/// of them lines up.
 pub fn combo_enum_fit<T>(ui: &Ui, label: impl AsRef<str>, val: &mut T)
 where
     T: IntoEnumIterator + PartialEq,
     for<'a> &'a T: Into<&'static str>,
 {
-    combo_enum_with(ui, label, val, ComboBoxPreviewMode::PreviewFit)
-}
-
-fn combo_enum_with<T>(ui: &Ui, label: impl AsRef<str>, val: &mut T, mode: ComboBoxPreviewMode)
-where
-    T: IntoEnumIterator + PartialEq,
-    for<'a> &'a T: Into<&'static str>,
-{
+    let widest = T::iter()
+        .map(|e| ui.calc_text_size(<&T as Into<&'static str>>::into(&e))[0])
+        .fold(0.0, f32::max);
+    let padding = unsafe { ui.style() }.frame_padding()[0];
+    ui.set_next_item_width(widest + 2.0 * padding + ui.frame_height());
     let val_name = <&T as Into<&'static str>>::into(val);
-    let options = ComboBoxOptions::new().preview_mode(mode);
-    if let Some(_token) = ui.begin_combo_with_flags(label, val_name, options) {
+    if let Some(_token) = ui.begin_combo(label, val_name) {
         for e in T::iter() {
             let selected = *val == e;
             if selected {

@@ -4,7 +4,7 @@ use dear_imgui_rs::*;
 use crate::{
     settings::Settings,
     translator::RealtimeHandle,
-    view::mixins::{combo_list, help_marker},
+    view::mixins::{combo_list, form_row, help_marker},
 };
 
 use super::history::history;
@@ -57,12 +57,14 @@ pub fn window(
         }
     });
 
-    combo_list(
-        ui,
-        "Model",
-        &state.models,
-        &mut settings.translation.openai_model,
-    );
+    form_row(ui, "Model", || {
+        combo_list(
+            ui,
+            "##model",
+            &state.models,
+            &mut settings.translation.openai_model,
+        )
+    });
     ui.same_line();
     help_marker(ui, "Requires a realtime-capable model (e.g. gpt-realtime)");
     ui.inspector(reflect).input("Tuning", rt);

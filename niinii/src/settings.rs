@@ -78,7 +78,7 @@ pub struct Secret(pub String);
 
 #[derive(Clone, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(open)]
+#[imgui(grid, open)]
 pub struct IchiranSettings {
     #[imgui(name = "ichiran-cli*", help = "Path of ichiran-cli executable")]
     pub ichiran_path: FilePath,
@@ -111,7 +111,7 @@ impl Default for IchiranSettings {
 /// Rewrites incoming text before it is glossed.
 #[derive(Clone, Default, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(open)]
+#[imgui(grid, open)]
 pub struct TextSettings {
     #[imgui(name = "Regex match")]
     pub regex_match: String,
@@ -121,7 +121,7 @@ pub struct TextSettings {
 
 #[derive(Clone, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(open)]
+#[imgui(grid, open)]
 pub struct InterfaceSettings {
     #[imgui(name = "Ruby text")]
     pub ruby_text_type: RubyTextType,
@@ -146,7 +146,7 @@ impl Default for InterfaceSettings {
 
 #[derive(Clone, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(open)]
+#[imgui(grid, open)]
 pub struct TranslationSettings {
     #[imgui(name = "Translator*")]
     pub translator_type: TranslatorType,
@@ -176,7 +176,7 @@ impl Default for TranslationSettings {
 
 #[derive(Clone, Default, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(open)]
+#[imgui(grid, open)]
 pub struct TtsSettings {
     #[imgui(name = "VOICEVOX models*", help = "Path of VOICEVOX models")]
     pub vv_model_path: FolderPath,
@@ -188,7 +188,7 @@ pub struct TtsSettings {
 
 #[derive(Clone, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(open)]
+#[imgui(grid, open)]
 pub struct WindowSettings {
     /// Multiplier on all text sizes.
     #[imgui(name = "Text size", slider, min = 0.5, max = 2.0, format = "%.2fx")]
@@ -210,7 +210,7 @@ impl Default for WindowSettings {
 
 #[derive(Clone, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(columns = 2, open)]
+#[imgui(grid, columns = 2, open)]
 pub struct ChatSettings {
     #[imgui(skip)]
     pub system_prompt: String,
@@ -292,7 +292,7 @@ impl Default for ChatSettings {
 /// output tokens). All are adjustable in the tuning UI.
 #[derive(Clone, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(columns = 2, open)]
+#[imgui(grid, columns = 2, open)]
 pub struct ResponsesSettings {
     #[imgui(skip)]
     pub system_prompt: String,
@@ -401,7 +401,7 @@ pub enum TruncationMode {
 /// Requires a realtime-capable model in the shared `openai_model` setting.
 #[derive(Clone, Deserialize, Serialize, ImGuiReflect)]
 #[serde(default)]
-#[imgui(columns = 2, open)]
+#[imgui(grid, columns = 2, open)]
 pub struct RealtimeSettings {
     #[imgui(skip)]
     pub system_prompt: String,
